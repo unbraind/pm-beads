@@ -1,10 +1,6 @@
 // pm-ext-beads — Beads JSONL importer for pm-cli
 
-function defineExtension(ext: any) {
-  return Object.assign({ activate() {} }, ext, {
-    activate(api: any) { ext.activate?.(api); },
-  });
-}
+import { defineExtension } from "@unbrained/pm-cli/sdk";
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
