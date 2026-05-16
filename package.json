@@ -2,6 +2,14 @@
   "name": "pm-ext-beads",
   "version": "0.1.0",
   "description": "Beads JSONL importer extension for pm-cli",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/unbraind/pm-ext-beads.git"
+  },
+  "bugs": {
+    "url": "https://github.com/unbraind/pm-ext-beads/issues"
+  },
+  "homepage": "https://github.com/unbraind/pm-ext-beads#readme",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
