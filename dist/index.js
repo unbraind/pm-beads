@@ -1,4 +1,4 @@
-// pm-ext-beads — Beads JSONL importer for pm-cli
+// pm-beads — Beads JSONL importer for pm-cli
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -32,7 +32,7 @@ function mapPriority(raw) {
 // Extension
 // ---------------------------------------------------------------------------
 export default defineExtension({
-    name: "pm-ext-beads",
+    name: "pm-beads",
     version: "0.1.0",
     activate(api) {
         // -----------------------------------------------------------------------

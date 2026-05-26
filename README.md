@@ -1,4 +1,4 @@
-# pm-ext-beads
+# pm-beads
 
 Beads JSONL importer for [pm-cli](https://github.com/unbraind/pm-cli).
 
@@ -9,7 +9,7 @@ Import work items from the Beads JSONL format into pm items. Each JSON line beco
 ## Installation
 
 ```bash
-pm extension install github.com/unbraind/pm-ext-beads --global
+pm install github.com/unbraind/pm-beads --global
 ```
 
 ## Commands
@@ -43,3 +43,7 @@ Each line is a JSON object. Required: `title`. Optional: `description`, `status`
 ## License
 
 MIT
+
+## Release Automation
+
+This package is release-ready for GitHub, npm, and Bun-compatible installs. CI runs type checking, build, production dependency audit, package packing, Bun install verification, and pm-changelog validation. The daily release workflow publishes only when commits exist after the latest release tag and uses pm-changelog to generate CHANGELOG.md and GitHub release notes.
