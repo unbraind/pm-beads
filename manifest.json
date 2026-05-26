@@ -1,5 +1,5 @@
 {
-  "name": "pm-ext-beads",
+  "name": "pm-beads",
   "version": "0.1.0",
   "description": "Beads JSONL importer. Import work items from the Beads JSONL format into pm.",
   "author": "@unbraind",
@@ -9,5 +9,8 @@
     "commands",
     "schema",
     "importers"
-  ]
+  ],
+  "pm": {
+    "compatibility": "v2"
+  }
 }
