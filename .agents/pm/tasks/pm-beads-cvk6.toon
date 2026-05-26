@@ -1,0 +1,12 @@
+id: pm-beads-cvk6
+title: Add bun-install verification to release workflow
+description: Smoke-test that the just-published npm package installs cleanly via bun via daily release workflow.
+type: Task
+status: closed
+priority: 2
+tags[3]: bun,ci,release
+created_at: "2026-05-26T20:58:04.524Z"
+updated_at: "2026-05-26T20:58:10.094Z"
+author: codex
+close_reason: completed via PR
+body: ""
