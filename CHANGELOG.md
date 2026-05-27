@@ -12,6 +12,8 @@
 
 - Add bun-install verification to release workflow ([pm-beads-cvk6](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-cvk6.toon))
 
+## 2026.05.26 - 2026-05-26
+
 ### Fixed
 
 - ci: fix release workflow step ordering ([pm-beads-jwwg](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-jwwg.toon))
