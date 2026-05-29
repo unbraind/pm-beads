@@ -6,7 +6,7 @@
 
 - Hands-on functional test pass 2026-05-29 \(real data\) ([pm-beads-dt52](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/features/pm-beads-dt52.toon))
 
-### Other
+### Fixed
 
 - beads import returns error object instead of throwing \(exit 0 on failure + malformed file\) ([pm-beads-w7ru](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-w7ru.toon))
 - beads import --dry-run silently ignored \(still writes\) ([pm-beads-nfpq](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-nfpq.toon))
