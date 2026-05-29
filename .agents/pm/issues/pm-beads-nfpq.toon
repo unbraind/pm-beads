@@ -1,0 +1,13 @@
+id: pm-beads-nfpq
+title: beads import --dry-run silently ignored (still writes)
+description: ""
+type: Issue
+status: closed
+priority: 1
+tags: []
+created_at: "2026-05-29T15:42:00.883Z"
+updated_at: "2026-05-29T15:42:14.008Z"
+author: codex
+parent: pm-beads-dt52
+close_reason: Fixed via readBoolOption. Verified --dry-run writes nothing (before=0 after=0).
+body: "Bug class #1 (option-key normalization). Runtime normalizes --dry-run to dryRun; handler read ctx.options[\"dry-run\"] (always undefined).\nRepro: pm beads import items.jsonl --dry-run\nObserved: actually imported 3 items (before=0 after=3), printed \"Imported 3\". Exit 0.\nExpected: write nothing, print [dry-run] previews.\nFix: added readBoolOption(options,\"dry-run\",\"dryRun\"). Verified before=0 after=0, prints dry-run previews."

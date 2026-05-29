@@ -6,6 +6,18 @@ const defineExtension = ((extension) => extension);
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+/**
+ * Read a boolean option honoring both the kebab-case long flag and the
+ * camelCase key the runtime normalizes it to (e.g. `--dry-run` -> `dryRun`).
+ * Without this, `ctx.options["dry-run"]` is silently `undefined`.
+ */
+function readBoolOption(options, ...keys) {
+    for (const key of keys) {
+        if (options[key] !== undefined)
+            return Boolean(options[key]);
+    }
+    return false;
+}
 function mapStatus(raw) {
     if (!raw)
         return "open";
@@ -57,10 +69,9 @@ export default defineExtension({
             async run(ctx) {
                 const filePath = ctx.args[0];
                 if (!filePath) {
-                    console.error("Usage: pm beads import <file> [--dry-run]");
-                    return { error: "No file path provided" };
+                    throw new Error("Usage: pm beads import <file> [--dry-run]");
                 }
-                const dryRun = Boolean(ctx.options["dry-run"]);
+                const dryRun = readBoolOption(ctx.options, "dry-run", "dryRun");
                 const typeOverride = ctx.options["type"];
                 const priorityOverride = ctx.options["priority"];
                 const tagsOverride = ctx.options["tags"];
@@ -72,8 +83,7 @@ export default defineExtension({
                 }
                 catch (err) {
                     const msg = err instanceof Error ? err.message : String(err);
-                    console.error(`Failed to read file: ${msg}`);
-                    return { error: msg };
+                    throw new Error(`Failed to read file: ${msg}`);
                 }
                 const lines = raw.split("\n").filter((l) => l.trim());
                 if (lines.length === 0) {
@@ -141,6 +151,11 @@ export default defineExtension({
                 if (dryRun) {
                     console.error(`[dry-run] Would import ${imported}, skip ${skipped}.`);
                     return { dryRun: true, wouldImport: imported, wouldSkip: skipped };
+                }
+                // A file where every line failed (e.g. malformed JSONL) is a hard error
+                // so callers get a non-zero exit code.
+                if (imported === 0 && skipped > 0) {
+                    throw new Error(`No items imported — all ${skipped} line(s) failed (malformed input?).`);
                 }
                 console.error(`Imported ${imported}, skipped ${skipped}.`);
                 return { imported, skipped };
