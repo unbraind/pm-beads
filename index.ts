@@ -69,7 +69,7 @@ function mapPriority(raw: number | string | undefined): string | undefined {
 
 export default defineExtension({
   name: "pm-beads",
-  version: "2026.5.28",
+  version: "2026.5.29",
 
   activate(api: any) {
     // -----------------------------------------------------------------------
