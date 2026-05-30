@@ -45,7 +45,7 @@ function mapPriority(raw) {
 // ---------------------------------------------------------------------------
 export default defineExtension({
     name: "pm-beads",
-    version: "2026.5.29",
+    version: "2026.5.30",
     activate(api) {
         // -----------------------------------------------------------------------
         // Command: pm beads import <file>
