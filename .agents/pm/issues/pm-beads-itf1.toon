@@ -1,0 +1,13 @@
+id: pm-beads-itf1
+title: Command handler threw plain Error (no exitCode) → runtime double-invocation
+description: "beads import threw plain Error without numeric exitCode; pm re-invokes the handler on the unhandled path. Added CommandError mirroring SDK EXIT_CODE; missing-arg=2, missing-file=3, all-malformed=1; single invocation."
+type: Issue
+status: closed
+priority: 2
+tags: []
+created_at: "2026-06-01T10:19:14.836Z"
+updated_at: "2026-06-01T10:19:15.117Z"
+author: codex
+parent: pm-beads-dt52
+close_reason: "Fixed: CommandError carries exitCode. Verified JSONL import + error paths exit 2/3/1 single invocation."
+body: ""
