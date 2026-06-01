@@ -4,6 +4,29 @@ import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 const defineExtension = ((extension) => extension);
 // ---------------------------------------------------------------------------
+// Error contract
+// ---------------------------------------------------------------------------
+// pm's extension command runtime only treats a thrown error as a cleanly
+// handled non-zero exit when the error carries a numeric `exitCode` property
+// (see @unbrained/pm-cli runCommandHandler). A plain `Error` makes the runtime
+// fall through to its "unhandled" path, which RE-INVOKES the command handler a
+// second time and exits with a generic code. We mirror the SDK's EXIT_CODE
+// contract here rather than importing it: standalone-installed extensions load
+// only their own `dist/`, so `@unbrained/pm-cli` is not resolvable at runtime.
+const EXIT_CODE = {
+    GENERIC_FAILURE: 1,
+    USAGE: 2,
+    NOT_FOUND: 3,
+};
+class CommandError extends Error {
+    exitCode;
+    constructor(message, exitCode = EXIT_CODE.GENERIC_FAILURE) {
+        super(message);
+        this.name = "CommandError";
+        this.exitCode = exitCode;
+    }
+}
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 /**
@@ -69,7 +92,7 @@ export default defineExtension({
             async run(ctx) {
                 const filePath = ctx.args[0];
                 if (!filePath) {
-                    throw new Error("Usage: pm beads import <file> [--dry-run]");
+                    throw new CommandError("Usage: pm beads import <file> [--dry-run]", EXIT_CODE.USAGE);
                 }
                 const dryRun = readBoolOption(ctx.options, "dry-run", "dryRun");
                 const typeOverride = ctx.options["type"];
@@ -83,7 +106,8 @@ export default defineExtension({
                 }
                 catch (err) {
                     const msg = err instanceof Error ? err.message : String(err);
-                    throw new Error(`Failed to read file: ${msg}`);
+                    const exitCode = /ENOENT|no such file/i.test(msg) ? EXIT_CODE.NOT_FOUND : EXIT_CODE.GENERIC_FAILURE;
+                    throw new CommandError(`Failed to read file: ${msg}`, exitCode);
                 }
                 const lines = raw.split("\n").filter((l) => l.trim());
                 if (lines.length === 0) {
@@ -155,7 +179,7 @@ export default defineExtension({
                 // A file where every line failed (e.g. malformed JSONL) is a hard error
                 // so callers get a non-zero exit code.
                 if (imported === 0 && skipped > 0) {
-                    throw new Error(`No items imported — all ${skipped} line(s) failed (malformed input?).`);
+                    throw new CommandError(`No items imported — all ${skipped} line(s) failed (malformed input?).`);
                 }
                 console.error(`Imported ${imported}, skipped ${skipped}.`);
                 return { imported, skipped };
