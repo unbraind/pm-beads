@@ -1,0 +1,14 @@
+id: pm-beads-qxdz
+title: "Round-trip deepening: idempotent upsert import + beads validate"
+description: "Deepen pm-beads beyond import-only: idempotent re-import (upsert keyed on bead_id provenance marker), and a 'beads validate' command. Exporter, dry-run, dependency edges already shipped in 2026.6.2."
+type: Feature
+status: closed
+priority: 1
+tags: []
+created_at: "2026-06-02T21:59:26.790Z"
+updated_at: "2026-06-02T22:09:31.448Z"
+author: codex
+notes[1]{created_at,author,text}:
+  "2026-06-02T22:09:30.419Z",codex,"SDK/CLI finding (report only): 'pm update <id> --status closed' on an already-closed item fails with exit_code 4 ('already terminal; use --force to close again'). This breaks naive upsert of closed items; worked around by omitting --status when the mapped status equals the item's current status. Suggest pm treat a no-op terminal->same-terminal status update as idempotent (no --force) so importers/sync tools can re-assert state safely."
+close_reason: "Round-trip deepened: idempotent upsert + validate shipped, tested, tracked."
+body: ""

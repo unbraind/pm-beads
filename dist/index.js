@@ -1,10 +1,17 @@
 // pm-beads — Beads JSONL importer/exporter for pm-cli
 //
 // Capabilities (see manifest.json):
-//   commands  — `pm beads import <file>` (legacy, full-featured command)
-//   importers — `pm beads import` (native import pipeline) + legacy `beads-import`
+//   commands  — `pm beads-import` / `pm beads-export` / `pm beads-validate`
+//               (rich-help aliases of the import/export/validate pipelines)
+//   importers — `pm beads import` (native import pipeline, with `--upsert`)
 //   exporters — `pm beads export` (serialize pm items back to Beads JSONL)
 //   schema    — declares the `bead_id` item field
+//
+// Idempotent re-import: `pm beads import <file> --upsert` keys on the original
+// Beads id (recovered from the `[bead_id: <id>]` provenance marker, NOT from
+// tags, which pm case-folds on storage) so re-importing the same file updates
+// the matched items in place instead of creating duplicates, and replaces their
+// dependency edges atomically (`--replace-deps`) so edges do not accumulate.
 //
 // Round-trip guarantee: the original Beads `id` and the dependency/blocker edges
 // survive a `pm beads import` → `pm beads export` cycle. pm's `create` command has
@@ -138,6 +145,27 @@ export function stripBeadIdMarker(text) {
         return "";
     return text.replace(BEAD_ID_MARKER, "").trim();
 }
+// Known pm statuses a mapped Beads status can land on. Used by `beads validate`
+// to flag records whose status maps to the `open` fallback only because it was
+// unrecognized (vs. genuinely "open").
+export const KNOWN_BEADS_STATUSES = new Set([
+    "open", "todo", "new",
+    "in_progress", "wip", "doing",
+    "blocked", "on_hold",
+    "closed", "done", "complete",
+    "canceled", "cancelled",
+    "draft",
+]);
+// Normalize a Beads id to a stable key for dedup/upsert. Bead ids are
+// case-sensitive identifiers; we trim but DO NOT lowercase them (unlike tags,
+// which pm case-folds on storage). Keying off the case-preserving description
+// marker — not tags — is what keeps re-import idempotent. See decision note.
+export function normalizeBeadKey(id) {
+    if (typeof id !== "string")
+        return undefined;
+    const t = id.trim();
+    return t.length ? t : undefined;
+}
 // Normalize the many ways a Beads record can express blocker edges into a flat
 // list of upstream bead ids that block this item.
 export function extractBlockerIds(item) {
@@ -163,6 +191,130 @@ export function extractBlockerIds(item) {
         push(item.blocked_by);
     return [...ids];
 }
+/**
+ * Structurally validate the raw text of a Beads JSONL file.
+ *
+ * Pure (no I/O) so it can be unit-tested directly. Errors (nonzero exit):
+ * invalid JSON, missing required `title`, dangling dependency references
+ * (an edge that names a bead id not defined in the file). Warnings (exit 0):
+ * unknown status strings, duplicate ids.
+ */
+export function validateBeadsText(text, file) {
+    const issues = [];
+    const lines = text.split("\n");
+    const parsed = [];
+    for (let i = 0; i < lines.length; i++) {
+        const raw = lines[i];
+        if (!raw.trim())
+            continue; // blank lines are allowed/ignored
+        let obj;
+        try {
+            obj = JSON.parse(raw);
+        }
+        catch {
+            issues.push({ line: i + 1, severity: "error", code: "invalid_json", message: "line is not valid JSON" });
+            continue;
+        }
+        if (obj === null || typeof obj !== "object" || Array.isArray(obj)) {
+            issues.push({ line: i + 1, severity: "error", code: "not_object", message: "line is not a JSON object" });
+            continue;
+        }
+        parsed.push({ line: i + 1, item: obj });
+    }
+    // Collect known ids for dangling-reference detection.
+    const knownIds = new Set();
+    const seenIds = new Map();
+    for (const { line, item } of parsed) {
+        const id = normalizeBeadKey(item.id);
+        if (id) {
+            if (seenIds.has(id)) {
+                issues.push({
+                    line,
+                    severity: "warning",
+                    code: "duplicate_id",
+                    message: `duplicate id "${id}" (first seen on line ${seenIds.get(id)})`,
+                });
+            }
+            else {
+                seenIds.set(id, line);
+            }
+            knownIds.add(id);
+        }
+    }
+    for (const { line, item } of parsed) {
+        const title = String(item.title || item.name || "").trim();
+        if (!title) {
+            issues.push({ line, severity: "error", code: "missing_title", message: "missing required field: title" });
+        }
+        if (typeof item.status === "string" && item.status.trim() &&
+            !KNOWN_BEADS_STATUSES.has(item.status.trim().toLowerCase())) {
+            issues.push({
+                line,
+                severity: "warning",
+                code: "unknown_status",
+                message: `unknown status "${item.status}" (will map to "open")`,
+            });
+        }
+        for (const blockerId of extractBlockerIds(item)) {
+            if (!knownIds.has(blockerId)) {
+                issues.push({
+                    line,
+                    severity: "error",
+                    code: "dangling_dependency",
+                    message: `dependency references unknown bead id "${blockerId}"`,
+                });
+            }
+        }
+    }
+    const valid = !issues.some((iss) => iss.severity === "error");
+    const report = { records: parsed.length, valid, issues };
+    if (file)
+        report.file = file;
+    return report;
+}
+function runValidate(filePath, opts) {
+    if (!filePath) {
+        throw new CommandError("Usage: pm beads validate <file> [--json]", EXIT_CODE.USAGE);
+    }
+    const absolutePath = resolve(filePath);
+    let raw;
+    try {
+        raw = readFileSync(absolutePath, "utf-8");
+    }
+    catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        const exitCode = /ENOENT|no such file/i.test(msg) ? EXIT_CODE.NOT_FOUND : EXIT_CODE.GENERIC_FAILURE;
+        throw new CommandError(`Failed to read file: ${msg}`, exitCode);
+    }
+    const report = validateBeadsText(raw, absolutePath);
+    const errors = report.issues.filter((i) => i.severity === "error").length;
+    if (opts.json) {
+        // In JSON mode, return the report so the runtime serializes it (and it is
+        // not discarded the way a thrown error would discard handler stdout). The
+        // report carries `valid: false`; signal a nonzero process exit without
+        // throwing so the structured report still reaches the caller.
+        if (!report.valid)
+            process.exitCode = EXIT_CODE.GENERIC_FAILURE;
+        return report;
+    }
+    if (report.issues.length === 0) {
+        console.error(`OK: ${report.records} record(s), no issues.`);
+    }
+    else {
+        for (const iss of report.issues) {
+            const where = iss.line ? `line ${iss.line}` : "file";
+            console.error(`  ${iss.severity.toUpperCase()} [${iss.code}] ${where}: ${iss.message}`);
+        }
+        const warns = report.issues.length - errors;
+        console.error(`${report.records} record(s): ${errors} error(s), ${warns} warning(s).`);
+    }
+    // Nonzero exit when structurally invalid (errors present). Warnings alone
+    // keep a zero exit so a clean-but-imperfect file still passes CI gates.
+    if (!report.valid) {
+        throw new CommandError(`Validation failed: ${errors} structural error(s).`, EXIT_CODE.GENERIC_FAILURE);
+    }
+    return report;
+}
 function parseBeadsFile(filePath) {
     const absolutePath = resolve(filePath);
     let raw;
@@ -187,12 +339,34 @@ function parseBeadsFile(filePath) {
     }
     return items;
 }
+// Build a bead-id → existing-item index from the current workspace so an
+// `--upsert` import can update matched items instead of creating duplicates.
+// Keys off the case-preserving `[bead_id: <id>]` description marker (the same
+// provenance the exporter reads), NOT off tags (which pm case-folds).
+export function buildBeadIndex(items) {
+    const index = new Map();
+    for (const item of items) {
+        if (!item.id)
+            continue;
+        const beadId = decodeBeadId(item);
+        const key = normalizeBeadKey(beadId);
+        // First write wins so the oldest matching item is the stable upsert target.
+        if (key && !index.has(key))
+            index.set(key, { pmId: item.id, status: item.status });
+    }
+    return index;
+}
 // Run the import. Two passes so dependency edges can reference items created
-// earlier in the same file: pass 1 creates every item and records bead-id → pm-id;
-// pass 2 wires up the blocker edges via `pm update --dep`.
+// earlier in the same file: pass 1 creates (or, with --upsert, updates) every
+// item and records bead-id → pm-id; pass 2 wires up the blocker edges via
+// `pm update --dep` (with --replace-deps when upserting, so re-import does not
+// accumulate duplicate edges).
 function runImport(filePath, pmRoot, opts) {
     if (!filePath) {
-        throw new CommandError("Usage: pm beads import <file> [--dry-run] [--no-preserve-ids] [--type <type>] [--priority <n>] [--tags <tags>]", EXIT_CODE.USAGE);
+        throw new CommandError("Usage: pm beads import <file> [--dry-run] [--upsert] [--no-preserve-ids] [--type <type>] [--priority <n>] [--tags <tags>]", EXIT_CODE.USAGE);
+    }
+    if (opts.upsert && !opts.preserveIds) {
+        throw new CommandError("--upsert requires preserved Beads ids (it keys on them); do not combine with --no-preserve-ids.", EXIT_CODE.USAGE);
     }
     const absolutePath = resolve(filePath);
     console.error(`Parsing Beads JSONL from: ${absolutePath}`);
@@ -203,10 +377,17 @@ function runImport(filePath, pmRoot, opts) {
         console.error("File is empty.");
         return { imported: 0, skipped: 0 };
     }
-    // Map of original bead id -> the pm id we created for it (used to wire deps).
+    // With --upsert, look up existing items so a matching bead id updates the
+    // prior item instead of creating a duplicate. Built once, up front (also in
+    // dry-run, so the preview reports create vs. update accurately).
+    const existingIndex = opts.upsert
+        ? buildBeadIndex(readPmItems(pmRoot))
+        : new Map();
+    // Map of original bead id -> the pm id we created/updated for it (wires deps).
     const beadToPm = new Map();
-    const created = [];
+    const touched = [];
     let imported = 0;
+    let updated = 0;
     for (let i = 0; i < records.length; i++) {
         const item = records[i];
         const title = String(item.title || item.name || "").trim();
@@ -227,73 +408,133 @@ function runImport(filePath, pmRoot, opts) {
         const baseDescription = item.description || title;
         const description = encodeBeadId(baseDescription, beadId);
         const blockers = extractBlockerIds(item);
+        const key = normalizeBeadKey(beadId);
+        const existing = opts.upsert && key ? existingIndex.get(key) : undefined;
+        const existingPmId = existing?.pmId;
         if (opts.dryRun) {
-            console.error(`  [dry-run] ${title} (${type}, ${status}${beadId ? `, bead_id=${beadId}` : ""}` +
+            const action = opts.upsert && key && existingIndex.get(key) ? "update" : "create";
+            console.error(`  [dry-run] ${action} ${title} (${type}, ${status}${beadId ? `, bead_id=${beadId}` : ""}` +
                 `${blockers.length ? `, blocked_by=${blockers.join(",")}` : ""})`);
-            imported++;
+            if (action === "update")
+                updated++;
+            else
+                imported++;
             continue;
         }
         try {
-            const spawnArgs = [
-                "--path", pmRoot,
-                "--json",
-                "create",
-                "--title", title,
-                "--type", type,
-                "--status", status,
-                "--description", description,
-            ];
-            if (priority)
-                spawnArgs.push("--priority", priority);
-            if (tags)
-                spawnArgs.push("--tags", tags);
-            if (item.assignee)
-                spawnArgs.push("--assignee", String(item.assignee));
-            const result = spawnSync("pm", spawnArgs, { encoding: "utf-8" });
-            if (result.status !== 0) {
-                throw new Error(result.stderr || "pm create failed");
+            let pmId;
+            if (existingPmId) {
+                // UPSERT: update the matched item in place.
+                const updArgs = [
+                    "--path", pmRoot, "--json", "update", existingPmId,
+                    "--title", title,
+                    "--type", type,
+                    "--description", description,
+                ];
+                // Only set status when it actually changes. Re-sending a terminal
+                // status (closed/canceled) makes `pm update` require --force; omitting
+                // it keeps re-import idempotent without forcing a spurious re-close.
+                if (status !== existing?.status)
+                    updArgs.push("--status", status);
+                if (priority)
+                    updArgs.push("--priority", priority);
+                if (tags)
+                    updArgs.push("--tags", tags); // --tags replaces; idempotent re-import
+                if (item.assignee)
+                    updArgs.push("--assignee", String(item.assignee));
+                const result = spawnSync("pm", updArgs, { encoding: "utf-8" });
+                if (result.status !== 0)
+                    throw new Error(result.stderr || "pm update failed");
+                pmId = existingPmId;
+                updated++;
             }
-            const pmId = extractCreatedId(result.stdout);
-            if (!pmId)
-                throw new Error("could not determine created pm id");
+            else {
+                const spawnArgs = [
+                    "--path", pmRoot,
+                    "--json",
+                    "create",
+                    "--title", title,
+                    "--type", type,
+                    "--status", status,
+                    "--description", description,
+                ];
+                if (priority)
+                    spawnArgs.push("--priority", priority);
+                if (tags)
+                    spawnArgs.push("--tags", tags);
+                if (item.assignee)
+                    spawnArgs.push("--assignee", String(item.assignee));
+                const result = spawnSync("pm", spawnArgs, { encoding: "utf-8" });
+                if (result.status !== 0) {
+                    throw new Error(result.stderr || "pm create failed");
+                }
+                const created = extractCreatedId(result.stdout);
+                if (!created)
+                    throw new Error("could not determine created pm id");
+                pmId = created;
+                // Record so a later record in the same file can upsert onto it too.
+                if (key)
+                    existingIndex.set(key, { pmId, status });
+                imported++;
+            }
             if (beadId)
                 beadToPm.set(beadId, pmId);
-            created.push({ beadId, pmId, blockers });
-            imported++;
+            touched.push({ beadId, pmId, blockers, upserted: Boolean(existingPmId) });
         }
         catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
-            console.error(`Record ${i + 1}: create failed — ${msg}`);
+            console.error(`Record ${i + 1}: ${existingPmId ? "update" : "create"} failed — ${msg}`);
             skipped++;
         }
     }
-    // Pass 2: wire dependency/blocker edges now that every item exists.
+    // Pass 2: wire dependency/blocker edges now that every item exists. For
+    // upserted items, gather all edges and --replace-deps in one call so a
+    // re-import does not accumulate duplicate edges.
     let edges = 0;
     if (!opts.dryRun) {
-        for (const entry of created) {
-            for (const blockerBeadId of entry.blockers) {
-                const blockerPmId = beadToPm.get(blockerBeadId);
-                if (!blockerPmId) {
-                    console.error(`  dep skipped: ${entry.pmId} blocked_by unknown bead ${blockerBeadId}`);
-                    continue;
+        for (const entry of touched) {
+            const resolvedBlockers = entry.blockers
+                .map((b) => ({ bead: b, pm: beadToPm.get(b) }))
+                .filter((b) => {
+                if (!b.pm)
+                    console.error(`  dep skipped: ${entry.pmId} blocked_by unknown bead ${b.bead}`);
+                return Boolean(b.pm);
+            });
+            if (entry.upserted) {
+                // Atomically replace deps so re-import is idempotent (no duplicates).
+                const depArgs = ["--path", pmRoot, "update", entry.pmId, "--replace-deps"];
+                for (const b of resolvedBlockers)
+                    depArgs.push("--dep", `id=${b.pm},kind=blocked_by`);
+                // With no edges, --replace-deps + no --dep clears them; use --clear-deps.
+                if (resolvedBlockers.length === 0) {
+                    depArgs.splice(depArgs.indexOf("--replace-deps"), 1, "--clear-deps");
                 }
-                const dep = spawnSync("pm", ["--path", pmRoot, "update", entry.pmId, "--dep", `id=${blockerPmId},kind=blocked_by`], { encoding: "utf-8" });
+                const dep = spawnSync("pm", depArgs, { encoding: "utf-8" });
                 if (dep.status === 0)
-                    edges++;
+                    edges += resolvedBlockers.length;
                 else
-                    console.error(`  dep failed: ${entry.pmId} -> ${blockerPmId}: ${dep.stderr?.trim()}`);
+                    console.error(`  dep replace failed: ${entry.pmId}: ${dep.stderr?.trim()}`);
+            }
+            else {
+                for (const b of resolvedBlockers) {
+                    const dep = spawnSync("pm", ["--path", pmRoot, "update", entry.pmId, "--dep", `id=${b.pm},kind=blocked_by`], { encoding: "utf-8" });
+                    if (dep.status === 0)
+                        edges++;
+                    else
+                        console.error(`  dep failed: ${entry.pmId} -> ${b.pm}: ${dep.stderr?.trim()}`);
+                }
             }
         }
     }
     if (opts.dryRun) {
-        console.error(`[dry-run] Would import ${imported}, skip ${skipped}.`);
-        return { dryRun: true, wouldImport: imported, wouldSkip: skipped };
+        console.error(`[dry-run] Would create ${imported}, update ${updated}, skip ${skipped}.`);
+        return { dryRun: true, wouldImport: imported, wouldUpdate: updated, wouldSkip: skipped };
     }
-    if (imported === 0 && skipped > 0) {
+    if (imported === 0 && updated === 0 && skipped > 0) {
         throw new CommandError(`No items imported — all ${skipped} record(s) failed (malformed input?).`);
     }
-    console.error(`Imported ${imported}, skipped ${skipped}, linked ${edges} dependency edge(s).`);
-    return { imported, skipped, dependencies: edges };
+    console.error(`Imported ${imported}, updated ${updated}, skipped ${skipped}, linked ${edges} dependency edge(s).`);
+    return { imported, updated, skipped, dependencies: edges };
 }
 // Pull the created item id out of `pm --json create` output (shape varies a bit
 // across versions: top-level `id` or nested `item.id`).
@@ -399,6 +640,7 @@ function runExport(pmRoot, opts) {
 // ---------------------------------------------------------------------------
 const IMPORT_FLAGS = [
     { long: "--dry-run", description: "Preview without writing" },
+    { long: "--upsert", description: "Update existing items matched by their Beads id instead of creating duplicates" },
     { long: "--no-preserve-ids", description: "Do not persist the original Beads id (default: preserve)" },
     { long: "--type", value_name: "type", description: "Override item type for all imported items" },
     { long: "--priority", value_name: "n", description: "Override priority (0-4) for all items" },
@@ -408,9 +650,13 @@ const EXPORT_FLAGS = [
     { long: "--output", short: "-o", value_name: "file", description: "Write JSONL to a file instead of stdout" },
     { long: "--no-preserve-ids", description: "Emit pm ids instead of the original Beads ids (default: preserve)" },
 ];
+const VALIDATE_FLAGS = [
+    { long: "--json", description: "Emit the validation report as JSON" },
+];
 function parseImportOptions(options) {
     return {
         dryRun: readBoolOption(options, "dry-run", "dryRun"),
+        upsert: readBoolOption(options, "upsert"),
         preserveIds: resolvePreserveIds(options),
         typeOverride: optionString(options, "type"),
         priorityOverride: optionString(options, "priority"),
@@ -457,6 +703,7 @@ export default defineExtension({
             examples: [
                 "pm beads import items.jsonl",
                 "pm beads import data.jsonl --dry-run",
+                "pm beads import data.jsonl --upsert",
                 "pm beads import data.jsonl --type Task --priority 2",
                 "pm beads import data.jsonl --no-preserve-ids",
             ],
@@ -485,6 +732,31 @@ export default defineExtension({
                     preserveIds: resolvePreserveIds(options),
                     output: optionString(options, "output", "o"),
                 });
+            },
+        });
+        // -----------------------------------------------------------------------
+        // command — `pm beads validate <file>` — structural lint of a Beads JSONL
+        // file before import. Reports malformed lines, missing required fields,
+        // unknown statuses, and dangling dependency references. Exits nonzero on
+        // any structural error (warnings alone keep a zero exit).
+        // -----------------------------------------------------------------------
+        api.registerCommand({
+            name: "beads-validate",
+            description: "Validate a Beads JSONL file (alias of `pm beads validate`). Reports invalid JSON, " +
+                "missing titles, unknown statuses, and dangling dependency references; exits nonzero on errors.",
+            intent: "validate a Beads JSONL file before import",
+            examples: [
+                "pm beads validate items.jsonl",
+                "pm beads validate items.jsonl --json",
+            ],
+            flags: VALIDATE_FLAGS,
+            async run(ctx) {
+                const options = ctx.options || {};
+                // `--json` may arrive as a command option or as pm's global flag
+                // (surfaced on ctx.global). Honor either so the structured report is
+                // returned (and rendered by the runtime) instead of the human listing.
+                const json = readBoolOption(options, "json") || readBoolOption(ctx.global || {}, "json");
+                return runValidate(ctx.args?.[0], { json });
             },
         });
     },

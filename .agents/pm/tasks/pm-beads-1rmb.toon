@@ -1,0 +1,15 @@
+id: pm-beads-1rmb
+title: Unit tests for upsert key + validate; functional round-trip with real data
+description: ""
+type: Task
+status: closed
+priority: 2
+tags: []
+created_at: "2026-06-02T21:59:27.562Z"
+updated_at: "2026-06-02T22:09:31.211Z"
+author: codex
+parent: pm-beads-qxdz
+notes[1]{created_at,author,text}:
+  "2026-06-02T22:09:20.905Z",codex,"Added 6 unit tests (normalizeBeadKey, buildBeadIndex+status, validateBeadsText clean/errors/warnings, validate command registration). 15/15 pass via node --test. Full functional round-trip with real 4-record dependency-bearing JSONL executed in /tmp/beads-fn against locally-installed build; evidence pasted in report."
+close_reason: 6 new unit tests (15/15 pass) + full real-data functional round-trip verified.
+body: ""

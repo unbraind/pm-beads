@@ -1,0 +1,15 @@
+id: pm-beads-dxnh
+title: "beads validate <file> command (--json, nonzero exit on structural problems)"
+description: ""
+type: Task
+status: closed
+priority: 1
+tags: []
+created_at: "2026-06-02T21:59:27.316Z"
+updated_at: "2026-06-02T22:09:30.931Z"
+author: codex
+parent: pm-beads-qxdz
+notes[1]{created_at,author,text}:
+  "2026-06-02T22:09:20.418Z",codex,"Implemented 'beads-validate <file>' command (rich-help alias; pm routes 'beads <verb>' only for importer/exporter names, so validate ships as a command). Pure validateBeadsText() covers invalid JSON, non-object lines, missing title, unknown status (warning), duplicate id (warning), dangling dependency refs (error). --json returns structured report on stdout via runtime serialization (read global --json from ctx.global) with process.exitCode for nonzero-without-throw so the report survives; human mode lists issues on stderr + throws CommandError(1). Functionally verified: bad file exit 1 with all classes detected, clean file exit 0."
+close_reason: Implemented + verified beads-validate with --json and correct exit codes.
+body: ""
