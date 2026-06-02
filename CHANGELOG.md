@@ -1,6 +1,12 @@
 # Changelog
 
-## 2026.6.1 - 2026-06-01
+## 2026.6.2 - 2026-06-02
+
+### Added
+
+- Add Beads JSONL exporter + id/dependency round-trip ([pm-beads-yd0o](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/features/pm-beads-yd0o.toon))
+
+## 2026.06.01 - 2026-06-01
 
 ### Fixed
 

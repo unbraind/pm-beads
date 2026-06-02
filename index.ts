@@ -502,7 +502,7 @@ function parseImportOptions(options: Record<string, unknown>): ImportOptions {
 
 export default defineExtension({
   name: "pm-beads",
-  version: "2026.6.1",
+  version: "2026.6.2",
 
   activate(api: any) {
     // -----------------------------------------------------------------------
