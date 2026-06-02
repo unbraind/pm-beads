@@ -67,7 +67,35 @@ export declare function mapPriority(raw: number | string | undefined): string | 
 export declare function encodeBeadId(description: string, beadId: string | undefined): string;
 export declare function decodeBeadId(item: PmItem): string | undefined;
 export declare function stripBeadIdMarker(text: string | undefined): string;
+export declare const KNOWN_BEADS_STATUSES: Set<string>;
+export declare function normalizeBeadKey(id: string | undefined): string | undefined;
 export declare function extractBlockerIds(item: BeadsItem): string[];
+export interface ValidationIssue {
+    line: number;
+    severity: "error" | "warning";
+    code: string;
+    message: string;
+}
+export interface ValidationReport {
+    file?: string;
+    records: number;
+    valid: boolean;
+    issues: ValidationIssue[];
+}
+/**
+ * Structurally validate the raw text of a Beads JSONL file.
+ *
+ * Pure (no I/O) so it can be unit-tested directly. Errors (nonzero exit):
+ * invalid JSON, missing required `title`, dangling dependency references
+ * (an edge that names a bead id not defined in the file). Warnings (exit 0):
+ * unknown status strings, duplicate ids.
+ */
+export declare function validateBeadsText(text: string, file?: string): ValidationReport;
+export interface ExistingBeadItem {
+    pmId: string;
+    status?: string;
+}
+export declare function buildBeadIndex(items: PmItem[]): Map<string, ExistingBeadItem>;
 export declare function extractCreatedId(stdout: string): string | undefined;
 export declare function pmItemToBead(item: PmItem, pmToBead: Map<string, string>, preserveIds: boolean): BeadsItem;
 declare const _default: {

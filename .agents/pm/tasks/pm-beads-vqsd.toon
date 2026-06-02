@@ -1,0 +1,17 @@
+id: pm-beads-vqsd
+title: "Idempotent import: --upsert keyed on bead_id marker"
+description: ""
+type: Task
+status: closed
+priority: 1
+tags: []
+created_at: "2026-06-02T21:59:27.028Z"
+updated_at: "2026-06-02T22:09:30.677Z"
+author: codex
+parent: pm-beads-qxdz
+notes[3]{created_at,author,text}:
+  "2026-06-02T21:59:44.961Z",codex,"DECISION (dedup key): Key upsert on the bead_id provenance marker the round-trip already uses ([bead_id: <id>] in description), NOT on tags. Rationale: SDK case-folds tags on storage (sibling dedup bug), so a tag-based key would mangle mixed-case bead ids. The description marker is case-preserving and is the same mechanism the exporter reads, so import/export/re-import stay consistent. On --upsert: build bead-id->pm-id index from existing items (decodeBeadId over list-all), update matched items, create unmatched. Items without a bead id (no --preserve-ids) cannot be keyed -> always create (documented)."
+  "2026-06-02T21:59:45.202Z",codex,"DECISION (dependency mapping): existing 2-pass import + 'pm update <id> --dep id=<pmId>,kind=blocked_by' verified on pm 2026.5.31 (read-back shows kind=blocked_by; deps tree edge_count=1). Issue #98 does NOT bite this id=..,kind=.. form. Upsert reuses pass-2 wiring but dedups edges via --replace-deps so re-import does not append duplicate deps."
+  "2026-06-02T22:09:20.673Z",codex,"Implemented --upsert: buildBeadIndex() over readPmItems() keys existing items by decoded bead_id marker; matched -> pm update (omit --status when unchanged to avoid terminal re-close --force demand), unmatched -> pm create. Pass-2 deps use --replace-deps for upserted items so re-import is idempotent. --upsert+--no-preserve-ids rejected (USAGE). Verified: import 4 -> export -> upsert x2 keeps count 4, updated 4/0 created, direct edges stay 2 (no dup), dry-run upsert correctly previews 'update'."
+close_reason: Implemented + functionally verified idempotent --upsert keyed on bead_id marker with atomic dep replacement.
+body: ""

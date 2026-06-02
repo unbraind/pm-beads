@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Round-trip deepening: idempotent upsert import + beads validate ([pm-beads-qxdz](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/features/pm-beads-qxdz.toon))
+
+### Other
+
+- Unit tests for upsert key + validate; functional round-trip with real data ([pm-beads-1rmb](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-1rmb.toon))
+- beads validate <file\> command \(--json, nonzero exit on structural problems\) ([pm-beads-dxnh](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-dxnh.toon))
+- Idempotent import: --upsert keyed on bead\_id marker ([pm-beads-vqsd](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-vqsd.toon))
+
 ## 2026.06.02 - 2026-06-02
 
 ### Added

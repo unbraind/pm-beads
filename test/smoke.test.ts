@@ -4,13 +4,16 @@ import test from "node:test";
 import extension, {
   CommandError,
   EXIT_CODE,
+  buildBeadIndex,
   decodeBeadId,
   encodeBeadId,
   extractBlockerIds,
   extractCreatedId,
+  normalizeBeadKey,
   pmItemToBead,
   resolvePreserveIds,
   stripBeadIdMarker,
+  validateBeadsText,
 } from "../dist/index.js";
 
 // Mirror the real ExtensionApi surface so activate() can register every
@@ -125,6 +128,71 @@ test("extractCreatedId reads both top-level and nested id shapes", () => {
   assert.strictEqual(extractCreatedId('{"id":"pm-abcd"}'), "pm-abcd");
   assert.strictEqual(extractCreatedId('{"item":{"id":"pm-wxyz"}}'), "pm-wxyz");
   assert.strictEqual(extractCreatedId("not json"), undefined);
+});
+
+test("extension registers the validate command", () => {
+  const registered: string[] = [];
+  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any> };
+  extension.activate(makeApi(registered, captured) as any);
+  assert.ok(captured.commands["beads-validate"], "should register the beads-validate command");
+});
+
+test("normalizeBeadKey trims and preserves case but drops empties", () => {
+  assert.strictEqual(normalizeBeadKey("  Bd-Mixed-01  "), "Bd-Mixed-01");
+  assert.strictEqual(normalizeBeadKey(""), undefined);
+  assert.strictEqual(normalizeBeadKey("   "), undefined);
+  assert.strictEqual(normalizeBeadKey(undefined), undefined);
+});
+
+test("buildBeadIndex keys existing pm items by their decoded bead id (first wins) and carries status", () => {
+  const index = buildBeadIndex([
+    { id: "pm-1", status: "closed", description: encodeBeadId("a", "bd-1") },
+    { id: "pm-2", status: "open", description: encodeBeadId("b", "bd-2") },
+    { id: "pm-3", description: encodeBeadId("dup", "bd-1") }, // later dup ignored
+    { id: "pm-4", description: "no marker here" },
+  ]);
+  assert.strictEqual(index.get("bd-1")?.pmId, "pm-1");
+  assert.strictEqual(index.get("bd-1")?.status, "closed");
+  assert.strictEqual(index.get("bd-2")?.pmId, "pm-2");
+  assert.strictEqual(index.size, 2, "items without a bead marker are not indexed");
+});
+
+test("validateBeadsText passes a clean file", () => {
+  const text = [
+    JSON.stringify({ id: "a", title: "First" }),
+    JSON.stringify({ id: "b", title: "Second", dependencies: [{ id: "a", kind: "blocked_by" }] }),
+    "", // blank lines allowed
+  ].join("\n");
+  const report = validateBeadsText(text);
+  assert.strictEqual(report.valid, true);
+  assert.strictEqual(report.records, 2);
+  assert.strictEqual(report.issues.length, 0);
+});
+
+test("validateBeadsText flags invalid JSON, missing title and dangling deps as errors", () => {
+  const text = [
+    "{ not json",
+    JSON.stringify({ id: "a" }), // missing title
+    JSON.stringify({ id: "b", title: "Has dep", blocked_by: "ghost" }), // dangling
+  ].join("\n");
+  const report = validateBeadsText(text);
+  assert.strictEqual(report.valid, false);
+  const codes = report.issues.map((i) => i.code).sort();
+  assert.ok(codes.includes("invalid_json"));
+  assert.ok(codes.includes("missing_title"));
+  assert.ok(codes.includes("dangling_dependency"));
+});
+
+test("validateBeadsText warns (does not fail) on unknown status and duplicate ids", () => {
+  const text = [
+    JSON.stringify({ id: "a", title: "One", status: "frobnicated" }),
+    JSON.stringify({ id: "a", title: "Two" }),
+  ].join("\n");
+  const report = validateBeadsText(text);
+  assert.strictEqual(report.valid, true, "warnings alone keep the file valid");
+  const codes = report.issues.map((i) => i.code);
+  assert.ok(codes.includes("unknown_status"));
+  assert.ok(codes.includes("duplicate_id"));
 });
 
 test("pmItemToBead preserves bead id and translates dependency edges", () => {
