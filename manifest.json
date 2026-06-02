@@ -1,7 +1,7 @@
 {
   "name": "pm-beads",
   "version": "2026.6.1",
-  "description": "Beads JSONL importer. Import work items from the Beads JSONL format into pm.",
+  "description": "Beads JSONL importer/exporter. Import work items from the Beads JSONL format into pm and export pm items back to Beads JSONL, preserving ids and dependency edges.",
   "author": "@unbraind",
   "entry": "./dist/index.js",
   "priority": 50,
