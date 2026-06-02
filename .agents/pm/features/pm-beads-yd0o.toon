@@ -1,0 +1,14 @@
+id: pm-beads-yd0o
+title: Add Beads JSONL exporter + id/dependency round-trip
+description: ""
+type: Feature
+status: closed
+priority: 2
+tags: []
+created_at: "2026-06-02T05:24:09.603Z"
+updated_at: "2026-06-02T05:24:41.516Z"
+author: codex
+notes[1]{created_at,author,text}:
+  "2026-06-02T05:24:41.130Z",codex,"Design: added registerExporter(\"beads\") -> pm beads export (stdout or --output), kept registerImporter(\"beads\") -> pm beads import. registerItemFields([bead_id]) (capability schema; manifest already lists commands/schema/importers, importers covers the exporter). Original Beads id persisted via [bead_id: <id>] marker in description (pm create has no generic custom-field setter for standalone extensions) and re-emitted on export. Beads dependencies/blocked_by edges mapped to pm blocked_by deps via two-pass import (create all, then update --dep id=<pmId>,kind=blocked_by); export translates pm ids back to bead ids. Flags: --preserve-ids default on (--no-preserve-ids to disable), --output/-o for export, plus existing --dry-run/--type/--priority/--tags. Renamed legacy rich-help commands to beads-import/beads-export to avoid command_handler_collision with the importer/exporter-auto-created commands. Verification: npm run build clean, npx tsc --noEmit clean, npm test 9/9 pass. Functional: pm init+install, extension doctor active 0 failures 0 collisions; imported 3-record JSONL with ids+2 dep edges, exported back, asserted all ids+deps survived round-trip; --no-preserve-ids emits pm-* ids."
+close_reason: Exporter + schema field + id/dependency round-trip shipped and verified (build/tsc/test/functional all green).
+body: ""
