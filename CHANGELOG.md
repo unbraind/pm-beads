@@ -1,6 +1,12 @@
 # Changelog
 
-## 2026.6.3 - 2026-06-02
+## 2026.6.4 - 2026-06-03
+
+### Added
+
+- Timestamp fidelity, workspace dep validation, and import/export row filters ([pm-beads-vv5z](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/features/pm-beads-vv5z.toon))
+
+## 2026.06.03 - 2026-06-02
 
 ### Added
 

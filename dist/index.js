@@ -18,8 +18,8 @@
 // no generic custom-field setter for standalone extensions, so the original bead
 // id is persisted in the item description behind a parseable marker
 // (`[bead_id: <id>]`); the exporter reads it back and re-emits the native bead id.
-import { readFileSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
+import { resolve, join } from "node:path";
 import { spawnSync } from "node:child_process";
 const defineExtension = ((extension) => extension);
 // ---------------------------------------------------------------------------
@@ -191,6 +191,160 @@ export function extractBlockerIds(item) {
         push(item.blocked_by);
     return [...ids];
 }
+// ---------------------------------------------------------------------------
+// Timestamp fidelity — preserve bead created_at/updated_at on import
+// ---------------------------------------------------------------------------
+// pm's `create`/`update` expose no flag to set the canonical `created_at` /
+// `updated_at` front-matter fields (they are managed by the runtime). To make
+// the import side symmetric with the exporter — which already re-emits both
+// timestamps — we patch the persisted item file in place after create/update.
+// This is additive and degrades gracefully: an unparseable timestamp or an
+// item file we cannot locate is skipped with a warning, never a hard failure.
+// Accept only well-formed ISO-8601 instants so we never write garbage into the
+// front matter. Returns the normalized (round-tripped) ISO string or undefined.
+export function normalizeIsoTimestamp(raw) {
+    if (typeof raw !== "string")
+        return undefined;
+    const trimmed = raw.trim();
+    if (!trimmed)
+        return undefined;
+    const t = Date.parse(trimmed);
+    if (Number.isNaN(t))
+        return undefined;
+    return new Date(t).toISOString();
+}
+// Replace the value of a top-level front-matter timestamp key in a stored item
+// file. Works for both supported formats (`toon` and `json_markdown`): each
+// stores the field as a single `key: "<iso>"` line. Only the first matching
+// line is rewritten and only when the key already exists, so we never invent
+// fields or disturb the body. Returns the patched text, or null if no change.
+export function patchTimestampLines(text, values) {
+    let changed = false;
+    let out = text;
+    for (const key of ["created_at", "updated_at"]) {
+        const value = values[key];
+        if (!value)
+            continue;
+        // Anchor at line start; tolerate quoted or bare existing values.
+        const re = new RegExp(`^(\\s*${key}\\s*:\\s*).*$`, "m");
+        if (re.test(out)) {
+            out = out.replace(re, `$1"${value}"`);
+            changed = true;
+        }
+    }
+    return changed ? out : null;
+}
+// Locate the on-disk file for a pm item id under the pm root. Items live in
+// per-type folders as `<id>.<ext>`; we scan shallowly (one level of type
+// folders) for `<id>.toon` / `<id>.md`, skipping the history/ sidecar logs.
+export function locateItemFile(pmRoot, pmId) {
+    const exts = [".toon", ".md"];
+    let entries;
+    try {
+        entries = readdirSync(pmRoot);
+    }
+    catch {
+        return undefined;
+    }
+    for (const entry of entries) {
+        if (entry === "history" || entry === "locks" || entry === "search")
+            continue;
+        const dir = join(pmRoot, entry);
+        let isDir = false;
+        try {
+            isDir = statSync(dir).isDirectory();
+        }
+        catch {
+            continue;
+        }
+        if (!isDir)
+            continue;
+        for (const ext of exts) {
+            const candidate = join(dir, `${pmId}${ext}`);
+            try {
+                if (statSync(candidate).isFile())
+                    return candidate;
+            }
+            catch {
+                /* not here */
+            }
+        }
+    }
+    return undefined;
+}
+// Apply preserved bead timestamps to the persisted pm item. Returns true when a
+// timestamp was written, false (with a console warning) when it had to degrade.
+function applyTimestamps(pmRoot, pmId, bead) {
+    const created_at = normalizeIsoTimestamp(bead.created_at);
+    const updated_at = normalizeIsoTimestamp(bead.updated_at);
+    if (!created_at && !updated_at)
+        return false;
+    const file = locateItemFile(pmRoot, pmId);
+    if (!file) {
+        console.error(`  timestamp skipped: could not locate item file for ${pmId}`);
+        return false;
+    }
+    let text;
+    try {
+        text = readFileSync(file, "utf-8");
+    }
+    catch (err) {
+        console.error(`  timestamp skipped: cannot read ${file}: ${err instanceof Error ? err.message : String(err)}`);
+        return false;
+    }
+    const patched = patchTimestampLines(text, { created_at, updated_at });
+    if (patched === null)
+        return false;
+    try {
+        writeFileSync(file, patched, "utf-8");
+    }
+    catch (err) {
+        console.error(`  timestamp skipped: cannot write ${file}: ${err instanceof Error ? err.message : String(err)}`);
+        return false;
+    }
+    return true;
+}
+function parseFilterCsv(raw) {
+    if (!raw)
+        return undefined;
+    const parts = raw
+        .split(",")
+        .map((p) => p.trim().toLowerCase())
+        .filter((p) => p.length > 0);
+    return parts.length ? new Set(parts) : undefined;
+}
+// Does a bead pass the import filter? Status is compared against the MAPPED pm
+// status (so `--filter-status closed` matches beads whose `done`/`complete`
+// status maps to `closed`); type is compared case-insensitively against the
+// effective type (override or the bead's own type, default Task).
+export function beadPassesFilter(bead, typeOverride, filter) {
+    if (filter.statuses) {
+        const status = mapStatus(bead.status);
+        if (!filter.statuses.has(status.toLowerCase()))
+            return false;
+    }
+    if (filter.types) {
+        const type = (typeOverride || bead.type || "Task").toLowerCase();
+        if (!filter.types.has(type))
+            return false;
+    }
+    return true;
+}
+// Does a pm item pass the export filter? Status compared against the BEADS form
+// (the value the exporter emits) so the flag is symmetric with import.
+export function pmItemPassesFilter(item, filter) {
+    if (filter.statuses) {
+        const status = pmStatusToBeads(item.status).toLowerCase();
+        if (!filter.statuses.has(status))
+            return false;
+    }
+    if (filter.types) {
+        const type = (item.type || "Task").toLowerCase();
+        if (!filter.types.has(type))
+            return false;
+    }
+    return true;
+}
 /**
  * Structurally validate the raw text of a Beads JSONL file.
  *
@@ -198,8 +352,16 @@ export function extractBlockerIds(item) {
  * invalid JSON, missing required `title`, dangling dependency references
  * (an edge that names a bead id not defined in the file). Warnings (exit 0):
  * unknown status strings, duplicate ids.
+ *
+ * When `workspaceBeadIds` is supplied (the bead ids already present in the
+ * current pm workspace, recovered from each item's `[bead_id: <id>]` marker),
+ * dangling references are cross-checked against the workspace: an edge that is
+ * not defined in the file BUT exists in the workspace is downgraded from an
+ * error to a `cross_workspace_dependency` warning (it resolves at import time),
+ * while an edge present in neither stays a hard `dangling_dependency` error.
+ * Omit the set to keep the original file-only behavior.
  */
-export function validateBeadsText(text, file) {
+export function validateBeadsText(text, file, workspaceBeadIds) {
     const issues = [];
     const lines = text.split("\n");
     const parsed = [];
@@ -256,12 +418,26 @@ export function validateBeadsText(text, file) {
             });
         }
         for (const blockerId of extractBlockerIds(item)) {
-            if (!knownIds.has(blockerId)) {
+            if (knownIds.has(blockerId))
+                continue;
+            if (workspaceBeadIds?.has(blockerId)) {
+                // Not in this file, but the dependency already exists in the workspace
+                // (a prior import). It will resolve — flag informationally, do not fail.
+                issues.push({
+                    line,
+                    severity: "warning",
+                    code: "cross_workspace_dependency",
+                    message: `dependency "${blockerId}" is not in this file but exists in the workspace`,
+                });
+            }
+            else {
                 issues.push({
                     line,
                     severity: "error",
                     code: "dangling_dependency",
-                    message: `dependency references unknown bead id "${blockerId}"`,
+                    message: workspaceBeadIds
+                        ? `dependency references bead id "${blockerId}" not found in file or workspace`
+                        : `dependency references unknown bead id "${blockerId}"`,
                 });
             }
         }
@@ -272,9 +448,45 @@ export function validateBeadsText(text, file) {
         report.file = file;
     return report;
 }
-function runValidate(filePath, opts) {
+// Collect the bead ids already present in the current pm workspace, keyed off
+// the same `[bead_id: <id>]` provenance marker the importer writes. Used by
+// `beads validate` to cross-check dependency references against the workspace.
+//
+// Prefers the SDK item-store (`listAllFrontMatter`) per the SDK contract, loaded
+// via a dynamic import so a standalone install — which bundles only this
+// extension's own dist and cannot resolve `@unbrained/pm-cli` at runtime — falls
+// back to spawning `pm list-all` (the same data path the exporter uses). Either
+// way a failure degrades to "no workspace data" so validation still runs.
+async function readWorkspaceBeadIds(pmRoot) {
+    let items;
+    try {
+        const runtime = await import("@unbrained/pm-cli/sdk/runtime");
+        if (typeof runtime?.listAllFrontMatter === "function") {
+            items = (await runtime.listAllFrontMatter(pmRoot));
+        }
+    }
+    catch {
+        /* SDK not resolvable at runtime (standalone install) — fall back below. */
+    }
+    if (!items) {
+        try {
+            items = readPmItems(pmRoot);
+        }
+        catch {
+            return undefined;
+        }
+    }
+    const ids = new Set();
+    for (const item of items) {
+        const beadId = normalizeBeadKey(decodeBeadId(item));
+        if (beadId)
+            ids.add(beadId);
+    }
+    return ids;
+}
+async function runValidate(filePath, opts) {
     if (!filePath) {
-        throw new CommandError("Usage: pm beads validate <file> [--json]", EXIT_CODE.USAGE);
+        throw new CommandError("Usage: pm beads validate <file> [--json] [--no-workspace]", EXIT_CODE.USAGE);
     }
     const absolutePath = resolve(filePath);
     let raw;
@@ -286,7 +498,8 @@ function runValidate(filePath, opts) {
         const exitCode = /ENOENT|no such file/i.test(msg) ? EXIT_CODE.NOT_FOUND : EXIT_CODE.GENERIC_FAILURE;
         throw new CommandError(`Failed to read file: ${msg}`, exitCode);
     }
-    const report = validateBeadsText(raw, absolutePath);
+    const workspaceBeadIds = opts.workspace && opts.pmRoot ? await readWorkspaceBeadIds(opts.pmRoot) : undefined;
+    const report = validateBeadsText(raw, absolutePath, workspaceBeadIds);
     const errors = report.issues.filter((i) => i.severity === "error").length;
     if (opts.json) {
         // In JSON mode, return the report so the runtime serializes it (and it is
@@ -388,12 +601,19 @@ function runImport(filePath, pmRoot, opts) {
     const touched = [];
     let imported = 0;
     let updated = 0;
+    let timestamped = 0;
+    const hasFilter = Boolean(opts.filter.statuses || opts.filter.types);
+    let filtered = 0;
     for (let i = 0; i < records.length; i++) {
         const item = records[i];
         const title = String(item.title || item.name || "").trim();
         if (!title) {
             console.error(`Record ${i + 1}: missing title — skipping`);
             skipped++;
+            continue;
+        }
+        if (hasFilter && !beadPassesFilter(item, opts.typeOverride, opts.filter)) {
+            filtered++;
             continue;
         }
         const type = opts.typeOverride || item.type || "Task";
@@ -479,7 +699,7 @@ function runImport(filePath, pmRoot, opts) {
             }
             if (beadId)
                 beadToPm.set(beadId, pmId);
-            touched.push({ beadId, pmId, blockers, upserted: Boolean(existingPmId) });
+            touched.push({ beadId, pmId, blockers, upserted: Boolean(existingPmId), bead: item });
         }
         catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
@@ -525,16 +745,42 @@ function runImport(filePath, pmRoot, opts) {
                 }
             }
         }
+        // Pass 3: timestamp fidelity. Mirror the exporter by writing each bead's
+        // created_at/updated_at back onto the persisted item (pm exposes no flag for
+        // these). Run LAST — after dependency wiring, which issues `pm update` and
+        // would otherwise re-bump updated_at — so the bead's own timestamps win and
+        // the round-trip stays lossless.
+        if (opts.preserveTimestamps) {
+            for (const entry of touched) {
+                if (applyTimestamps(pmRoot, entry.pmId, entry.bead))
+                    timestamped++;
+            }
+        }
     }
+    const filteredNote = hasFilter ? `, filtered ${filtered}` : "";
     if (opts.dryRun) {
-        console.error(`[dry-run] Would create ${imported}, update ${updated}, skip ${skipped}.`);
-        return { dryRun: true, wouldImport: imported, wouldUpdate: updated, wouldSkip: skipped };
+        console.error(`[dry-run] Would create ${imported}, update ${updated}, skip ${skipped}${filteredNote}.`);
+        return {
+            dryRun: true,
+            wouldImport: imported,
+            wouldUpdate: updated,
+            wouldSkip: skipped,
+            ...(hasFilter ? { filtered } : {}),
+        };
     }
-    if (imported === 0 && updated === 0 && skipped > 0) {
+    if (imported === 0 && updated === 0 && skipped > 0 && filtered === 0) {
         throw new CommandError(`No items imported — all ${skipped} record(s) failed (malformed input?).`);
     }
-    console.error(`Imported ${imported}, updated ${updated}, skipped ${skipped}, linked ${edges} dependency edge(s).`);
-    return { imported, updated, skipped, dependencies: edges };
+    console.error(`Imported ${imported}, updated ${updated}, skipped ${skipped}${filteredNote}, ` +
+        `linked ${edges} dependency edge(s)${opts.preserveTimestamps ? `, timestamped ${timestamped}` : ""}.`);
+    return {
+        imported,
+        updated,
+        skipped,
+        dependencies: edges,
+        ...(opts.preserveTimestamps ? { timestamped } : {}),
+        ...(hasFilter ? { filtered } : {}),
+    };
 }
 // Pull the created item id out of `pm --json create` output (shape varies a bit
 // across versions: top-level `id` or nested `item.id`).
@@ -605,9 +851,13 @@ export function pmItemToBead(item, pmToBead, preserveIds) {
     return bead;
 }
 function runExport(pmRoot, opts) {
-    const items = readPmItems(pmRoot);
+    const allItems = readPmItems(pmRoot);
+    const hasFilter = Boolean(opts.filter.statuses || opts.filter.types);
+    const items = hasFilter ? allItems.filter((it) => pmItemPassesFilter(it, opts.filter)) : allItems;
     // First build the pm-id -> bead-id translation table so dependency edges that
-    // reference another exported item resolve to its native bead id.
+    // reference another exported item resolve to its native bead id. Built from
+    // the FILTERED set so an edge to an item excluded by the filter falls back to
+    // the upstream id rather than dangling onto a not-emitted record.
     const pmToBead = new Map();
     if (opts.preserveIds) {
         for (const item of items) {
@@ -642,30 +892,57 @@ const IMPORT_FLAGS = [
     { long: "--dry-run", description: "Preview without writing" },
     { long: "--upsert", description: "Update existing items matched by their Beads id instead of creating duplicates" },
     { long: "--no-preserve-ids", description: "Do not persist the original Beads id (default: preserve)" },
+    { long: "--no-preserve-timestamps", description: "Do not carry over bead created_at/updated_at (default: preserve)" },
     { long: "--type", value_name: "type", description: "Override item type for all imported items" },
     { long: "--priority", value_name: "n", description: "Override priority (0-4) for all items" },
     { long: "--tags", value_name: "tags", description: "Comma-separated tags to add to all items" },
+    { long: "--filter-status", value_name: "list", description: "Only import beads whose mapped status is in this comma-separated list" },
+    { long: "--filter-type", value_name: "list", description: "Only import beads whose type is in this comma-separated list" },
 ];
 const EXPORT_FLAGS = [
     { long: "--output", short: "-o", value_name: "file", description: "Write JSONL to a file instead of stdout" },
     { long: "--no-preserve-ids", description: "Emit pm ids instead of the original Beads ids (default: preserve)" },
+    { long: "--filter-status", value_name: "list", description: "Only export items whose Beads status is in this comma-separated list" },
+    { long: "--filter-type", value_name: "list", description: "Only export items whose type is in this comma-separated list" },
 ];
 const VALIDATE_FLAGS = [
     { long: "--json", description: "Emit the validation report as JSON" },
+    { long: "--no-workspace", description: "Skip cross-checking dependency references against the current pm workspace" },
 ];
+// Read the --filter-status / --filter-type pair into a RowFilter, honoring both
+// the kebab-case flag and the camelCase key the runtime normalizes it to.
+export function parseRowFilter(options) {
+    return {
+        statuses: parseFilterCsv(optionString(options, "filter-status", "filterStatus")),
+        types: parseFilterCsv(optionString(options, "filter-type", "filterType")),
+    };
+}
+// Resolve --preserve-timestamps / --no-preserve-timestamps (default ON).
+export function resolvePreserveTimestamps(options) {
+    if (options["no-preserve-timestamps"] === true || options["noPreserveTimestamps"] === true)
+        return false;
+    for (const k of ["preserveTimestamps", "preserve-timestamps"]) {
+        const v = options[k];
+        if (v !== undefined)
+            return v !== false && v !== "false" && v !== "0";
+    }
+    return true;
+}
 function parseImportOptions(options) {
     return {
         dryRun: readBoolOption(options, "dry-run", "dryRun"),
         upsert: readBoolOption(options, "upsert"),
         preserveIds: resolvePreserveIds(options),
+        preserveTimestamps: resolvePreserveTimestamps(options),
         typeOverride: optionString(options, "type"),
         priorityOverride: optionString(options, "priority"),
         tagsOverride: optionString(options, "tags"),
+        filter: parseRowFilter(options),
     };
 }
 export default defineExtension({
     name: "pm-beads",
-    version: "2026.6.3",
+    version: "2026.6.4",
     activate(api) {
         // -----------------------------------------------------------------------
         // schema — declare the bead_id provenance field
@@ -687,6 +964,7 @@ export default defineExtension({
             return runExport(ctx.pm_root, {
                 preserveIds: resolvePreserveIds(options),
                 output: optionString(options, "output", "o"),
+                filter: parseRowFilter(options),
             });
         });
         // -----------------------------------------------------------------------
@@ -705,7 +983,10 @@ export default defineExtension({
                 "pm beads import data.jsonl --dry-run",
                 "pm beads import data.jsonl --upsert",
                 "pm beads import data.jsonl --type Task --priority 2",
+                "pm beads import data.jsonl --filter-status open,in_progress",
+                "pm beads import data.jsonl --filter-type Bug",
                 "pm beads import data.jsonl --no-preserve-ids",
+                "pm beads import data.jsonl --no-preserve-timestamps",
             ],
             flags: IMPORT_FLAGS,
             async run(ctx) {
@@ -723,6 +1004,8 @@ export default defineExtension({
             examples: [
                 "pm beads export",
                 "pm beads export --output items.jsonl",
+                "pm beads export --filter-status open,in_progress",
+                "pm beads export --filter-type Bug",
                 "pm beads export --no-preserve-ids",
             ],
             flags: EXPORT_FLAGS,
@@ -731,6 +1014,7 @@ export default defineExtension({
                 return runExport(ctx.pm_root, {
                     preserveIds: resolvePreserveIds(options),
                     output: optionString(options, "output", "o"),
+                    filter: parseRowFilter(options),
                 });
             },
         });
@@ -748,6 +1032,7 @@ export default defineExtension({
             examples: [
                 "pm beads validate items.jsonl",
                 "pm beads validate items.jsonl --json",
+                "pm beads validate items.jsonl --no-workspace",
             ],
             flags: VALIDATE_FLAGS,
             async run(ctx) {
@@ -756,7 +1041,9 @@ export default defineExtension({
                 // (surfaced on ctx.global). Honor either so the structured report is
                 // returned (and rendered by the runtime) instead of the human listing.
                 const json = readBoolOption(options, "json") || readBoolOption(ctx.global || {}, "json");
-                return runValidate(ctx.args?.[0], { json });
+                // Cross-workspace dependency check is ON by default; --no-workspace opts out.
+                const workspace = !(options["no-workspace"] === true || options["noWorkspace"] === true);
+                return runValidate(ctx.args?.[0], { json, workspace, pmRoot: ctx.pm_root });
             },
         });
     },
