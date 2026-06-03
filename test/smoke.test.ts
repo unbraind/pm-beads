@@ -5,16 +5,27 @@ import extension, {
   CommandError,
   EXIT_CODE,
   buildBeadIndex,
+  beadPassesFilter,
   decodeBeadId,
   encodeBeadId,
   extractBlockerIds,
   extractCreatedId,
+  locateItemFile,
   normalizeBeadKey,
+  normalizeIsoTimestamp,
+  parseRowFilter,
+  patchTimestampLines,
+  pmItemPassesFilter,
   pmItemToBead,
   resolvePreserveIds,
+  resolvePreserveTimestamps,
   stripBeadIdMarker,
   validateBeadsText,
 } from "../dist/index.js";
+
+import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 // Mirror the real ExtensionApi surface so activate() can register every
 // capability the extension uses (commands, importers, exporters, schema fields,
@@ -193,6 +204,123 @@ test("validateBeadsText warns (does not fail) on unknown status and duplicate id
   const codes = report.issues.map((i) => i.code);
   assert.ok(codes.includes("unknown_status"));
   assert.ok(codes.includes("duplicate_id"));
+});
+
+// --- Timestamp fidelity (feature 1) -----------------------------------------
+
+test("normalizeIsoTimestamp accepts valid ISO and rejects garbage", () => {
+  assert.strictEqual(normalizeIsoTimestamp("2026-01-02T03:04:05.000Z"), "2026-01-02T03:04:05.000Z");
+  assert.strictEqual(normalizeIsoTimestamp("2026-01-02"), "2026-01-02T00:00:00.000Z");
+  assert.strictEqual(normalizeIsoTimestamp("not a date"), undefined);
+  assert.strictEqual(normalizeIsoTimestamp(""), undefined);
+  assert.strictEqual(normalizeIsoTimestamp(undefined), undefined);
+  assert.strictEqual(normalizeIsoTimestamp(12345 as unknown), undefined);
+});
+
+test("patchTimestampLines rewrites existing front-matter lines only", () => {
+  const toon = [
+    'id: pm-x',
+    'title: T',
+    'created_at: "2026-06-03T23:00:00.000Z"',
+    'updated_at: "2026-06-03T23:00:00.000Z"',
+    'body: ""',
+  ].join("\n");
+  const out = patchTimestampLines(toon, {
+    created_at: "2025-01-01T00:00:00.000Z",
+    updated_at: "2025-02-02T00:00:00.000Z",
+  });
+  assert.ok(out);
+  assert.match(out!, /created_at: "2025-01-01T00:00:00.000Z"/);
+  assert.match(out!, /updated_at: "2025-02-02T00:00:00.000Z"/);
+  assert.match(out!, /title: T/); // untouched
+  // No matching key -> no change.
+  assert.strictEqual(patchTimestampLines("title: T\n", { created_at: "2025-01-01T00:00:00.000Z" }), null);
+});
+
+test("patchTimestampLines round-trips a created_at through normalize+patch losslessly", () => {
+  const iso = normalizeIsoTimestamp("2024-12-25T08:30:00Z")!;
+  const file = `created_at: "2026-06-03T23:00:00.000Z"\nupdated_at: "2026-06-03T23:00:00.000Z"\n`;
+  const out = patchTimestampLines(file, { created_at: iso, updated_at: iso })!;
+  assert.match(out, new RegExp(`created_at: "${iso.replace(/[.]/g, "\\.")}"`));
+});
+
+test("locateItemFile finds the per-type item file and skips sidecars", () => {
+  const root = mkdtempSync(join(tmpdir(), "pmbeads-loc-"));
+  mkdirSync(join(root, "tasks"), { recursive: true });
+  mkdirSync(join(root, "history"), { recursive: true });
+  writeFileSync(join(root, "tasks", "pm-abc.toon"), "id: pm-abc\n");
+  writeFileSync(join(root, "history", "pm-abc.jsonl"), "{}\n"); // must be ignored
+  assert.strictEqual(locateItemFile(root, "pm-abc"), join(root, "tasks", "pm-abc.toon"));
+  assert.strictEqual(locateItemFile(root, "pm-missing"), undefined);
+});
+
+test("resolvePreserveTimestamps defaults on and honors negation", () => {
+  assert.strictEqual(resolvePreserveTimestamps({}), true);
+  assert.strictEqual(resolvePreserveTimestamps({ "no-preserve-timestamps": true }), false);
+  assert.strictEqual(resolvePreserveTimestamps({ noPreserveTimestamps: true }), false);
+  assert.strictEqual(resolvePreserveTimestamps({ preserveTimestamps: false }), false);
+});
+
+// --- Workspace dependency validation (feature 2) -----------------------------
+
+test("validateBeadsText downgrades a workspace-resolvable dep to a warning", () => {
+  const text = JSON.stringify({ id: "b", title: "Dep on prior import", blocked_by: "bd-external" });
+  // Without workspace info: hard error.
+  const noWs = validateBeadsText(text);
+  assert.strictEqual(noWs.valid, false);
+  assert.ok(noWs.issues.some((i) => i.code === "dangling_dependency"));
+  // With the dep present in the workspace: downgraded to a warning, still valid.
+  const ws = validateBeadsText(text, undefined, new Set(["bd-external"]));
+  assert.strictEqual(ws.valid, true);
+  assert.ok(ws.issues.some((i) => i.code === "cross_workspace_dependency"));
+  assert.ok(!ws.issues.some((i) => i.code === "dangling_dependency"));
+});
+
+test("validateBeadsText keeps an error for a dep absent from both file and workspace", () => {
+  const text = JSON.stringify({ id: "b", title: "Dep on nothing", blocked_by: "ghost" });
+  const ws = validateBeadsText(text, undefined, new Set(["bd-other"]));
+  assert.strictEqual(ws.valid, false);
+  assert.ok(ws.issues.some((i) => i.code === "dangling_dependency"));
+});
+
+test("validateBeadsText prefers in-file resolution over workspace check", () => {
+  const text = [
+    JSON.stringify({ id: "a", title: "Upstream" }),
+    JSON.stringify({ id: "b", title: "Downstream", blocked_by: "a" }),
+  ].join("\n");
+  const ws = validateBeadsText(text, undefined, new Set<string>());
+  assert.strictEqual(ws.valid, true);
+  assert.strictEqual(ws.issues.length, 0);
+});
+
+// --- Row filters (feature 3) -------------------------------------------------
+
+test("parseRowFilter reads both kebab and camel flag spellings", () => {
+  const f = parseRowFilter({ "filter-status": "Open, in_progress", filterType: "Bug,Task" });
+  assert.deepStrictEqual([...f.statuses!].sort(), ["in_progress", "open"]);
+  assert.deepStrictEqual([...f.types!].sort(), ["bug", "task"]);
+  assert.deepStrictEqual(parseRowFilter({}), { statuses: undefined, types: undefined });
+});
+
+test("beadPassesFilter matches on mapped status and effective type", () => {
+  const bead = { title: "x", status: "done", type: "Bug" };
+  // "done" maps to pm "closed".
+  assert.strictEqual(beadPassesFilter(bead, undefined, { statuses: new Set(["closed"]) }), true);
+  assert.strictEqual(beadPassesFilter(bead, undefined, { statuses: new Set(["open"]) }), false);
+  assert.strictEqual(beadPassesFilter(bead, undefined, { types: new Set(["bug"]) }), true);
+  assert.strictEqual(beadPassesFilter(bead, undefined, { types: new Set(["task"]) }), false);
+  // Type override wins over the bead's own type.
+  assert.strictEqual(beadPassesFilter(bead, "Task", { types: new Set(["task"]) }), true);
+  // No filter set -> passes.
+  assert.strictEqual(beadPassesFilter(bead, undefined, {}), true);
+});
+
+test("pmItemPassesFilter matches on the exported Beads status and type", () => {
+  const item = { id: "pm-1", title: "x", status: "in_progress", type: "Feature" };
+  assert.strictEqual(pmItemPassesFilter(item, { statuses: new Set(["in_progress"]) }), true);
+  assert.strictEqual(pmItemPassesFilter(item, { statuses: new Set(["closed"]) }), false);
+  assert.strictEqual(pmItemPassesFilter(item, { types: new Set(["feature"]) }), true);
+  assert.strictEqual(pmItemPassesFilter(item, {}), true);
 });
 
 test("pmItemToBead preserves bead id and translates dependency edges", () => {

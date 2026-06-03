@@ -1,0 +1,14 @@
+id: pm-beads-vv5z
+title: "Timestamp fidelity, workspace dep validation, and import/export row filters"
+description: "Three additive, backward-compatible enhancements: (1) importer preserves bead created_at/updated_at by patching the persisted item front matter after create/update + dep-wiring, making the timestamp round-trip lossless (opt-out --no-preserve-timestamps); (2) beads validate cross-checks dangling deps against the current pm workspace via SDK listAllFrontMatter (fallback pm list-all), downgrading workspace-resolvable deps to a cross_workspace_dependency warning (opt-out --no-workspace); (3) --filter-status/--filter-type on import and export to selectively process a subset."
+type: Feature
+status: closed
+priority: 2
+tags: []
+created_at: "2026-06-03T23:38:59.545Z"
+updated_at: "2026-06-03T23:39:17.326Z"
+author: codex
+comments[1]{created_at,author,text}:
+  "2026-06-03T23:39:07.143Z",codex,"Implemented in index.ts. Timestamps: normalizeIsoTimestamp + patchTimestampLines + locateItemFile + applyTimestamps, run as pass 3 after dependency wiring so the dep-pass updated_at bump does not clobber the bead's own timestamp. Verified lossless round-trip over 5 real beads (incl. 2 dep-linked). Workspace validation: validateBeadsText gains optional workspaceBeadIds; readWorkspaceBeadIds dynamic-imports @unbrained/pm-cli/sdk/runtime listAllFrontMatter with pm list-all fallback. Filters: parseRowFilter + beadPassesFilter (mapped status) + pmItemPassesFilter (beads status), symmetric import/export. 26 unit tests pass; functional-tested live via pm beads import/export + offline harness for the --no-X flags blocked by the pm 2026.5.31 extension-flag quirk."
+close_reason: "Implemented, tested (26 unit + functional + harness), documented."
+body: ""

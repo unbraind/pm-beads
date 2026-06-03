@@ -70,6 +70,18 @@ export declare function stripBeadIdMarker(text: string | undefined): string;
 export declare const KNOWN_BEADS_STATUSES: Set<string>;
 export declare function normalizeBeadKey(id: string | undefined): string | undefined;
 export declare function extractBlockerIds(item: BeadsItem): string[];
+export declare function normalizeIsoTimestamp(raw: unknown): string | undefined;
+export declare function patchTimestampLines(text: string, values: {
+    created_at?: string;
+    updated_at?: string;
+}): string | null;
+export declare function locateItemFile(pmRoot: string, pmId: string): string | undefined;
+export interface RowFilter {
+    statuses?: Set<string>;
+    types?: Set<string>;
+}
+export declare function beadPassesFilter(bead: BeadsItem, typeOverride: string | undefined, filter: RowFilter): boolean;
+export declare function pmItemPassesFilter(item: PmItem, filter: RowFilter): boolean;
 export interface ValidationIssue {
     line: number;
     severity: "error" | "warning";
@@ -89,8 +101,16 @@ export interface ValidationReport {
  * invalid JSON, missing required `title`, dangling dependency references
  * (an edge that names a bead id not defined in the file). Warnings (exit 0):
  * unknown status strings, duplicate ids.
+ *
+ * When `workspaceBeadIds` is supplied (the bead ids already present in the
+ * current pm workspace, recovered from each item's `[bead_id: <id>]` marker),
+ * dangling references are cross-checked against the workspace: an edge that is
+ * not defined in the file BUT exists in the workspace is downgraded from an
+ * error to a `cross_workspace_dependency` warning (it resolves at import time),
+ * while an edge present in neither stays a hard `dangling_dependency` error.
+ * Omit the set to keep the original file-only behavior.
  */
-export declare function validateBeadsText(text: string, file?: string): ValidationReport;
+export declare function validateBeadsText(text: string, file?: string, workspaceBeadIds?: Set<string>): ValidationReport;
 export interface ExistingBeadItem {
     pmId: string;
     status?: string;
@@ -98,6 +118,8 @@ export interface ExistingBeadItem {
 export declare function buildBeadIndex(items: PmItem[]): Map<string, ExistingBeadItem>;
 export declare function extractCreatedId(stdout: string): string | undefined;
 export declare function pmItemToBead(item: PmItem, pmToBead: Map<string, string>, preserveIds: boolean): BeadsItem;
+export declare function parseRowFilter(options: Record<string, unknown>): RowFilter;
+export declare function resolvePreserveTimestamps(options: Record<string, unknown>): boolean;
 declare const _default: {
     name: string;
     version: string;
