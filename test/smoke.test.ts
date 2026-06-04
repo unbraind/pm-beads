@@ -198,6 +198,10 @@ test("extension registers the validate command", () => {
   const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any> };
   extension.activate(makeApi(registered, captured) as any);
   assert.ok(captured.commands["beads-validate"], "should register the beads-validate command");
+  // The README documents `pm beads validate <file>` as the canonical form; it
+  // must exist as a real command (the `beads` group only gets import/export
+  // from the importer/exporter, so validate needs an explicit registerCommand).
+  assert.ok(captured.commands["beads validate"], "should register the canonical 'beads validate' command");
 });
 
 test("normalizeBeadKey trims and preserves case but drops empties", () => {

@@ -1147,6 +1147,32 @@ export default defineExtension({
                 return runValidate(ctx.args?.[0], { json, workspace, pmRoot: ctx.pm_root });
             },
         });
+        // -----------------------------------------------------------------------
+        // command — `pm beads validate <file>` — the canonical, documented form.
+        // The `beads` command group already exposes `import`/`export` (via the
+        // registered importer/exporter), but `validate` had only the hyphenated
+        // `beads-validate` alias, so the README-advertised `pm beads validate`
+        // returned "Unknown command validate". Register it explicitly here (same
+        // handler as `beads-validate`) so both forms work.
+        // -----------------------------------------------------------------------
+        api.registerCommand({
+            name: "beads validate",
+            description: "Validate a Beads JSONL file before import. Reports invalid JSON, missing titles, " +
+                "unknown statuses, and dangling dependency references; exits nonzero on errors.",
+            intent: "validate a Beads JSONL file before import",
+            examples: [
+                "pm beads validate items.jsonl",
+                "pm beads validate items.jsonl --json",
+                "pm beads validate items.jsonl --no-workspace",
+            ],
+            flags: VALIDATE_FLAGS,
+            async run(ctx) {
+                const options = ctx.options || {};
+                const json = readBoolOption(options, "json") || readBoolOption(ctx.global || {}, "json");
+                const workspace = !(options["no-workspace"] === true || options["noWorkspace"] === true);
+                return runValidate(ctx.args?.[0], { json, workspace, pmRoot: ctx.pm_root });
+            },
+        });
     },
 });
 //# sourceMappingURL=index.js.map
