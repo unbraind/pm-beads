@@ -1269,16 +1269,20 @@ export default defineExtension({
     });
 
     // -----------------------------------------------------------------------
-    // command — `pm beads validate <file>` — structural lint of a Beads JSONL
-    // file before import. Reports malformed lines, missing required fields,
-    // unknown statuses, and dangling dependency references. Exits nonzero on
-    // any structural error (warnings alone keep a zero exit).
+    // command — validate a Beads JSONL file before import: structural lint of
+    // malformed lines, missing required fields, unknown statuses, and dangling
+    // dependency references. Exits nonzero on any structural error (warnings
+    // alone keep a zero exit). Registered under BOTH the canonical
+    // `pm beads validate` (the `beads` group only gets import/export from the
+    // importer/exporter, so validate needs an explicit command) and the
+    // hyphenated `pm beads-validate` alias. A single shared definition keeps
+    // the two forms from drifting.
     // -----------------------------------------------------------------------
-    api.registerCommand({
-      name: "beads-validate",
+    const makeValidateCommand = (name: string) => ({
+      name,
       description:
-        "Validate a Beads JSONL file (alias of `pm beads validate`). Reports invalid JSON, " +
-        "missing titles, unknown statuses, and dangling dependency references; exits nonzero on errors.",
+        "Validate a Beads JSONL file before import. Reports invalid JSON, missing titles, " +
+        "unknown statuses, and dangling dependency references; exits nonzero on errors.",
       intent: "validate a Beads JSONL file before import",
       examples: [
         "pm beads validate items.jsonl",
@@ -1297,5 +1301,7 @@ export default defineExtension({
         return runValidate(ctx.args?.[0], { json, workspace, pmRoot: ctx.pm_root });
       },
     });
+    api.registerCommand(makeValidateCommand("beads validate"));
+    api.registerCommand(makeValidateCommand("beads-validate"));
   },
 });
