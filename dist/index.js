@@ -6,6 +6,8 @@
 //   importers — `pm beads import` (native import pipeline, with `--upsert`)
 //   exporters — `pm beads export` (serialize pm items back to Beads JSONL)
 //   schema    — declares the `bead_id` item field
+//   preflight — fail-fast Beads-JSONL schema gate that validates the import
+//               input BEFORE the importer touches the pm store (import path only)
 //
 // Idempotent re-import: `pm beads import <file> --upsert` keys on the original
 // Beads id (recovered from the `[bead_id: <id>]` provenance marker, NOT from
@@ -940,6 +942,93 @@ function parseImportOptions(options) {
         filter: parseRowFilter(options),
     };
 }
+// ---------------------------------------------------------------------------
+// Preflight gate — validate the Beads JSONL schema BEFORE import touches the store
+// ---------------------------------------------------------------------------
+// The two command paths that run the import pipeline. `pm beads import` (the
+// native importer) surfaces to the preflight context as the normalized command
+// "beads import"; the legacy rich-help alias surfaces as "beads-import". Export
+// ("beads export") and validate ("beads validate") are deliberately excluded so
+// the gate never blocks them.
+const IMPORT_PREFLIGHT_COMMANDS = new Set(["beads import", "beads-import"]);
+// Resolve the import input file from the preflight args the same way the import
+// handler does: the first positional (non-flag) argument. Flags (e.g.
+// `--dry-run`, `--type Task`) may trail the path in the raw args array, so we
+// skip anything beginning with "-".
+export function resolveImportInputFile(args) {
+    if (!Array.isArray(args))
+        return undefined;
+    for (const a of args) {
+        if (typeof a !== "string")
+            continue;
+        if (a.startsWith("-"))
+            continue;
+        return a;
+    }
+    return undefined;
+}
+// Fail-fast preflight for the import path. Returns an (empty) preflight delta on
+// success so the runtime proceeds unchanged. On a structurally invalid file it
+// aborts the process with a non-zero exit BEFORE the importer can write anything.
+//
+// NOTE on the abort mechanism: the SDK's preflight runner wraps the override in
+// a try/catch and downgrades any thrown error to a non-fatal warning (it does
+// NOT propagate). A thrown CommandError would therefore be swallowed and import
+// would proceed — defeating the gate. To guarantee a true fail-fast abort with a
+// non-zero exit *before* any pm-store write, we print the actionable error and
+// terminate via process.exit(). We still construct a CommandError to derive the
+// canonical message + exit code, keeping the package's error contract intact.
+async function runImportPreflight(ctx) {
+    const command = typeof ctx?.command === "string" ? ctx.command.trim().toLowerCase() : "";
+    if (!IMPORT_PREFLIGHT_COMMANDS.has(command)) {
+        // Not an import command (export / validate / anything else) — never block.
+        return {};
+    }
+    const filePath = resolveImportInputFile(ctx?.args);
+    if (!filePath) {
+        // No file given. Let the import handler emit its own usage error; the gate
+        // has nothing to validate.
+        return {};
+    }
+    let raw;
+    try {
+        raw = readFileSync(resolve(filePath), "utf-8");
+    }
+    catch {
+        // Unreadable / missing file — defer to the import handler's own NOT_FOUND
+        // error path rather than producing a second, divergent message here.
+        return {};
+    }
+    // Cross-check dependency edges against bead ids already in the workspace so a
+    // dependency that resolves at import time (a prior import) is a warning, not a
+    // hard error — matching the import pipeline's own behavior and `beads validate`.
+    let workspaceBeadIds;
+    try {
+        workspaceBeadIds = ctx?.pm_root ? await readWorkspaceBeadIds(ctx.pm_root) : undefined;
+    }
+    catch {
+        workspaceBeadIds = undefined;
+    }
+    const report = validateBeadsText(raw, resolve(filePath), workspaceBeadIds);
+    const errors = report.issues.filter((i) => i.severity === "error");
+    if (errors.length === 0) {
+        // Valid (warnings alone do not block) — silent pass-through.
+        return {};
+    }
+    // Build an actionable, line-naming summary of the structural errors.
+    const detail = errors
+        .slice(0, 10)
+        .map((iss) => `  - ${iss.line ? `line ${iss.line}` : "file"} [${iss.code}]: ${iss.message}`)
+        .join("\n");
+    const more = errors.length > 10 ? `\n  …and ${errors.length - 10} more error(s)` : "";
+    const err = new CommandError(`Beads JSONL preflight failed for ${resolve(filePath)} — ${errors.length} structural error(s); ` +
+        `nothing was imported. Fix the file (or run \`pm beads validate <file>\`) and retry:\n${detail}${more}`, EXIT_CODE.GENERIC_FAILURE);
+    // The SDK swallows thrown preflight errors, so abort the process directly to
+    // guarantee no pm-store write happens. Print to stderr first for a clean
+    // message instead of an unhandled stack trace.
+    console.error(err.message);
+    process.exit(err.exitCode);
+}
 export default defineExtension({
     name: "pm-beads",
     version: "2026.6.4",
@@ -950,6 +1039,18 @@ export default defineExtension({
         api.registerItemFields([
             { name: "bead_id", type: "string", optional: true },
         ]);
+        // -----------------------------------------------------------------------
+        // preflight — fail-fast Beads-JSONL schema gate BEFORE import
+        // -----------------------------------------------------------------------
+        // Runs the existing structural validator (validateBeadsText) against the
+        // import input file *before* the CLI lets the importer touch the pm store.
+        // On a structurally invalid file it aborts immediately with a clear,
+        // actionable message and a non-zero exit — so no partial/garbage items are
+        // ever created. On a valid file it is a silent pass-through.
+        //
+        // Scope: fires ONLY for the import path (`pm beads import` and its legacy
+        // `pm beads-import` alias). Export and validate are never blocked.
+        api.registerPreflight((ctx) => runImportPreflight(ctx));
         // -----------------------------------------------------------------------
         // importer — `pm beads import <file>` (native import pipeline)
         // -----------------------------------------------------------------------

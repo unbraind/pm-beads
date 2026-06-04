@@ -8,7 +8,8 @@
   "capabilities": [
     "commands",
     "schema",
-    "importers"
+    "importers",
+    "preflight"
   ],
   "pm": {
     "compatibility": "v2"

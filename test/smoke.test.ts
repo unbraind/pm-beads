@@ -17,6 +17,7 @@ import extension, {
   patchTimestampLines,
   pmItemPassesFilter,
   pmItemToBead,
+  resolveImportInputFile,
   resolvePreserveIds,
   resolvePreserveTimestamps,
   stripBeadIdMarker,
@@ -32,7 +33,7 @@ import { join } from "node:path";
 // hooks). A missing method makes activate() throw a TypeError.
 function makeApi(
   registered: string[],
-  captured: { commands: Record<string, any>; importers: Record<string, any>; exporters: Record<string, any> } = {
+  captured: { commands: Record<string, any>; importers: Record<string, any>; exporters: Record<string, any>; preflight?: any } = {
     commands: {},
     importers: {},
     exporters: {},
@@ -45,7 +46,10 @@ function makeApi(
       if (def?.name) captured.commands[def.name] = def;
     },
     registerParser: () => registered.push("parser"),
-    registerPreflight: () => registered.push("preflight"),
+    registerPreflight: (fn: any) => {
+      registered.push("preflight");
+      captured.preflight = fn;
+    },
     registerService: () => registered.push("service"),
     registerFlags: () => registered.push("flags"),
     registerItemFields: () => registered.push("itemFields"),
@@ -80,13 +84,61 @@ test("extension has required shape", () => {
   assert.strictEqual(typeof extension.activate, "function", "activate should be a function");
 });
 
-test("extension registers importer, exporter, schema and commands", () => {
+test("extension registers importer, exporter, schema, preflight and commands", () => {
   const registered: string[] = [];
   extension.activate(makeApi(registered) as any);
   assert.ok(registered.includes("importer:beads"), "should register the beads importer");
   assert.ok(registered.includes("exporter:beads"), "should register the beads exporter");
   assert.ok(registered.includes("itemFields"), "should register the bead_id schema field");
+  assert.ok(registered.includes("preflight"), "should register the import preflight gate");
   assert.ok(registered.includes("command"), "should register at least one command");
+});
+
+test("resolveImportInputFile picks the first non-flag argument", () => {
+  assert.strictEqual(resolveImportInputFile(["items.jsonl", "--dry-run"]), "items.jsonl");
+  assert.strictEqual(resolveImportInputFile(["--upsert", "data.jsonl"]), "data.jsonl");
+  assert.strictEqual(resolveImportInputFile(["--type", "Task", "f.jsonl"]), "Task");
+  // ^ "--type Task" arrives pre-parsed in practice; raw fallback still returns a value.
+  assert.strictEqual(resolveImportInputFile([]), undefined);
+  assert.strictEqual(resolveImportInputFile(["--dry-run"]), undefined);
+  assert.strictEqual(resolveImportInputFile(undefined), undefined);
+});
+
+test("import preflight is a silent pass-through for a valid file", async () => {
+  const registered: string[] = [];
+  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any>, preflight: undefined as any };
+  extension.activate(makeApi(registered, captured) as any);
+  const preflight = captured.preflight;
+  assert.ok(typeof preflight === "function", "preflight should be registered");
+
+  const dir = mkdtempSync(join(tmpdir(), "beads-pf-valid-"));
+  const file = join(dir, "valid.jsonl");
+  writeFileSync(file, '{"id":"bd-1","title":"First","status":"open"}\n', "utf-8");
+  const delta = await preflight({ command: "beads import", args: [file], options: {}, pm_root: dir });
+  assert.deepStrictEqual(delta, {}, "valid file should yield an empty pass-through delta");
+});
+
+test("import preflight ignores non-import commands (export/validate)", async () => {
+  const registered: string[] = [];
+  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any>, preflight: undefined as any };
+  extension.activate(makeApi(registered, captured) as any);
+  const preflight = captured.preflight;
+
+  const dir = mkdtempSync(join(tmpdir(), "beads-pf-scope-"));
+  const bad = join(dir, "bad.jsonl");
+  // A structurally invalid file: if the gate fired here it would abort the
+  // process. For export/validate it must NOT fire (must return pass-through).
+  writeFileSync(bad, "{not json\n", "utf-8");
+  assert.deepStrictEqual(
+    await preflight({ command: "beads export", args: [], options: {}, pm_root: dir }),
+    {},
+    "export must not be gated",
+  );
+  assert.deepStrictEqual(
+    await preflight({ command: "beads validate", args: [bad], options: {}, pm_root: dir }),
+    {},
+    "validate must not be gated",
+  );
 });
 
 test("beads importer rejects a missing file argument with a USAGE exit code", async () => {
