@@ -1,6 +1,12 @@
 # Changelog
 
-## 2026.6.4 - 2026-06-04
+## Unreleased
+
+### Added
+
+- preflight: fail-fast Beads-JSONL schema gate before import ([pm-beads-7mj4](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/features/pm-beads-7mj4.toon))
+
+## 2026.06.04 - 2026-06-04
 
 ### Added
 

@@ -120,6 +120,7 @@ export declare function extractCreatedId(stdout: string): string | undefined;
 export declare function pmItemToBead(item: PmItem, pmToBead: Map<string, string>, preserveIds: boolean): BeadsItem;
 export declare function parseRowFilter(options: Record<string, unknown>): RowFilter;
 export declare function resolvePreserveTimestamps(options: Record<string, unknown>): boolean;
+export declare function resolveImportInputFile(args: unknown): string | undefined;
 declare const _default: {
     name: string;
     version: string;
