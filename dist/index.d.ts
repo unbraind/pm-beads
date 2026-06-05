@@ -110,6 +110,21 @@ export interface ValidationReport {
  * while an edge present in neither stays a hard `dangling_dependency` error.
  * Omit the set to keep the original file-only behavior.
  */
+/**
+ * Detect directed cycles in the in-file "blocked-by" dependency graph.
+ *
+ * `adj` maps a bead id to the ids it is blocked by (each edge points at the
+ * blocker). A directed cycle is a circular dependency — a deadlock that the
+ * real `bd` tooling rejects and that produces an unschedulable graph once
+ * imported into pm. Only in-file ids should be present in `adj` (cross-workspace
+ * / dangling references are handled separately), so this never false-positives
+ * on edges that leave the file.
+ *
+ * Returns one representative ordered path per distinct cycle (deduped by member
+ * set), closed back to its start for readability, e.g. `["a","b","a"]`. A
+ * self-dependency (`a` blocked by `a`) is reported as `["a","a"]`.
+ */
+export declare function detectDependencyCycles(adj: Map<string, string[]>): string[][];
 export declare function validateBeadsText(text: string, file?: string, workspaceBeadIds?: Set<string>): ValidationReport;
 export interface ExistingBeadItem {
     pmId: string;
