@@ -443,6 +443,57 @@ export interface ValidationReport {
  * while an edge present in neither stays a hard `dangling_dependency` error.
  * Omit the set to keep the original file-only behavior.
  */
+/**
+ * Detect directed cycles in the in-file "blocked-by" dependency graph.
+ *
+ * `adj` maps a bead id to the ids it is blocked by (each edge points at the
+ * blocker). A directed cycle is a circular dependency — a deadlock that the
+ * real `bd` tooling rejects and that produces an unschedulable graph once
+ * imported into pm. Only in-file ids should be present in `adj` (cross-workspace
+ * / dangling references are handled separately), so this never false-positives
+ * on edges that leave the file.
+ *
+ * Returns one representative ordered path per distinct cycle (deduped by member
+ * set), closed back to its start for readability, e.g. `["a","b","a"]`. A
+ * self-dependency (`a` blocked by `a`) is reported as `["a","a"]`.
+ */
+export function detectDependencyCycles(adj: Map<string, string[]>): string[][] {
+  const cycles: string[][] = [];
+  const seenCycleKeys = new Set<string>();
+  // 0 = unvisited, 1 = on the current DFS stack (gray), 2 = done (black)
+  const color = new Map<string, 0 | 1 | 2>();
+  const stack: string[] = [];
+
+  const visit = (node: string): void => {
+    color.set(node, 1);
+    stack.push(node);
+    for (const next of adj.get(node) ?? []) {
+      const c = color.get(next) ?? 0;
+      if (c === 1) {
+        // Back-edge: `next` is still on the stack → cycle from `next` to here.
+        const idx = stack.indexOf(next);
+        if (idx >= 0) {
+          const cycle = stack.slice(idx);
+          const key = [...cycle].sort().join(" ");
+          if (!seenCycleKeys.has(key)) {
+            seenCycleKeys.add(key);
+            cycles.push([...cycle, next]); // close the loop for the message
+          }
+        }
+      } else if (c === 0) {
+        visit(next);
+      }
+    }
+    stack.pop();
+    color.set(node, 2);
+  };
+
+  for (const node of adj.keys()) {
+    if ((color.get(node) ?? 0) === 0) visit(node);
+  }
+  return cycles;
+}
+
 export function validateBeadsText(
   text: string,
   file?: string,
@@ -525,6 +576,31 @@ export function validateBeadsText(
         });
       }
     }
+  }
+
+  // Circular-dependency detection over the in-file "blocked-by" graph. Build
+  // adjacency from each item's id to the blockers that are also defined in this
+  // file (cross-workspace / dangling blockers were reported above and are
+  // excluded here, so a cycle can only be a genuine in-file deadlock). Reported
+  // at the line of the cycle's entry id for locality.
+  const idToLine = new Map<string, number>(seenIds);
+  const adjacency = new Map<string, string[]>();
+  for (const { item } of parsed) {
+    const id = normalizeBeadKey(item.id);
+    if (!id) continue;
+    const blockers = extractBlockerIds(item).filter((b) => knownIds.has(b));
+    const existing = adjacency.get(id);
+    if (existing) existing.push(...blockers);
+    else adjacency.set(id, [...blockers]);
+  }
+  for (const cycle of detectDependencyCycles(adjacency)) {
+    const entry = cycle[0];
+    issues.push({
+      line: idToLine.get(entry) ?? 0,
+      severity: "error",
+      code: "dependency_cycle",
+      message: `circular dependency: ${cycle.join(" → ")}`,
+    });
   }
 
   const valid = !issues.some((iss) => iss.severity === "error");
