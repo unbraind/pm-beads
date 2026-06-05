@@ -1031,7 +1031,7 @@ async function runImportPreflight(ctx) {
 }
 export default defineExtension({
     name: "pm-beads",
-    version: "2026.6.4-1",
+    version: "2026.6.5",
     activate(api) {
         // -----------------------------------------------------------------------
         // schema — declare the bead_id provenance field
@@ -1120,15 +1120,19 @@ export default defineExtension({
             },
         });
         // -----------------------------------------------------------------------
-        // command — `pm beads validate <file>` — structural lint of a Beads JSONL
-        // file before import. Reports malformed lines, missing required fields,
-        // unknown statuses, and dangling dependency references. Exits nonzero on
-        // any structural error (warnings alone keep a zero exit).
+        // command — validate a Beads JSONL file before import: structural lint of
+        // malformed lines, missing required fields, unknown statuses, and dangling
+        // dependency references. Exits nonzero on any structural error (warnings
+        // alone keep a zero exit). Registered under BOTH the canonical
+        // `pm beads validate` (the `beads` group only gets import/export from the
+        // importer/exporter, so validate needs an explicit command) and the
+        // hyphenated `pm beads-validate` alias. A single shared definition keeps
+        // the two forms from drifting.
         // -----------------------------------------------------------------------
-        api.registerCommand({
-            name: "beads-validate",
-            description: "Validate a Beads JSONL file (alias of `pm beads validate`). Reports invalid JSON, " +
-                "missing titles, unknown statuses, and dangling dependency references; exits nonzero on errors.",
+        const makeValidateCommand = (name) => ({
+            name,
+            description: "Validate a Beads JSONL file before import. Reports invalid JSON, missing titles, " +
+                "unknown statuses, and dangling dependency references; exits nonzero on errors.",
             intent: "validate a Beads JSONL file before import",
             examples: [
                 "pm beads validate items.jsonl",
@@ -1147,32 +1151,8 @@ export default defineExtension({
                 return runValidate(ctx.args?.[0], { json, workspace, pmRoot: ctx.pm_root });
             },
         });
-        // -----------------------------------------------------------------------
-        // command — `pm beads validate <file>` — the canonical, documented form.
-        // The `beads` command group already exposes `import`/`export` (via the
-        // registered importer/exporter), but `validate` had only the hyphenated
-        // `beads-validate` alias, so the README-advertised `pm beads validate`
-        // returned "Unknown command validate". Register it explicitly here (same
-        // handler as `beads-validate`) so both forms work.
-        // -----------------------------------------------------------------------
-        api.registerCommand({
-            name: "beads validate",
-            description: "Validate a Beads JSONL file before import. Reports invalid JSON, missing titles, " +
-                "unknown statuses, and dangling dependency references; exits nonzero on errors.",
-            intent: "validate a Beads JSONL file before import",
-            examples: [
-                "pm beads validate items.jsonl",
-                "pm beads validate items.jsonl --json",
-                "pm beads validate items.jsonl --no-workspace",
-            ],
-            flags: VALIDATE_FLAGS,
-            async run(ctx) {
-                const options = ctx.options || {};
-                const json = readBoolOption(options, "json") || readBoolOption(ctx.global || {}, "json");
-                const workspace = !(options["no-workspace"] === true || options["noWorkspace"] === true);
-                return runValidate(ctx.args?.[0], { json, workspace, pmRoot: ctx.pm_root });
-            },
-        });
+        api.registerCommand(makeValidateCommand("beads validate"));
+        api.registerCommand(makeValidateCommand("beads-validate"));
     },
 });
 //# sourceMappingURL=index.js.map
