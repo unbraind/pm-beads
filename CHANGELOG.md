@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- beads validate does not detect dependency cycles ([pm-beads-27rw](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/features/pm-beads-27rw.toon))
+
 ## 2026.06.04-1 - 2026-06-04
 
 ### Added
