@@ -22,6 +22,7 @@ import extension, {
   resolvePreserveTimestamps,
   stripBeadIdMarker,
   validateBeadsText,
+  detectDependencyCycles,
 } from "../dist/index.js";
 
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
@@ -260,6 +261,57 @@ test("validateBeadsText warns (does not fail) on unknown status and duplicate id
   const codes = report.issues.map((i) => i.code);
   assert.ok(codes.includes("unknown_status"));
   assert.ok(codes.includes("duplicate_id"));
+});
+
+test("validateBeadsText flags a direct dependency cycle as an error", () => {
+  const text = [
+    JSON.stringify({ id: "a", title: "A", dependencies: [{ id: "b", kind: "blocked_by" }] }),
+    JSON.stringify({ id: "b", title: "B", dependencies: [{ id: "a", kind: "blocked_by" }] }),
+  ].join("\n");
+  const report = validateBeadsText(text);
+  assert.strictEqual(report.valid, false, "a circular dependency must fail validation");
+  const cyc = report.issues.find((i) => i.code === "dependency_cycle");
+  assert.ok(cyc, "expected a dependency_cycle issue");
+  assert.strictEqual(cyc!.severity, "error");
+});
+
+test("validateBeadsText flags a self-dependency as a cycle", () => {
+  const text = JSON.stringify({ id: "a", title: "A", blocked_by: "a" });
+  const report = validateBeadsText(text);
+  assert.strictEqual(report.valid, false);
+  assert.ok(report.issues.some((i) => i.code === "dependency_cycle"));
+});
+
+test("validateBeadsText does NOT report a cycle for an acyclic chain", () => {
+  const text = [
+    JSON.stringify({ id: "a", title: "A" }),
+    JSON.stringify({ id: "b", title: "B", dependencies: [{ id: "a", kind: "blocked_by" }] }),
+    JSON.stringify({ id: "c", title: "C", dependencies: [{ id: "b", kind: "blocked_by" }] }),
+  ].join("\n");
+  const report = validateBeadsText(text);
+  assert.strictEqual(report.valid, true);
+  assert.ok(!report.issues.some((i) => i.code === "dependency_cycle"));
+});
+
+test("detectDependencyCycles finds a multi-node cycle once and ignores acyclic edges", () => {
+  // a→b→c→a is a cycle; d→a is acyclic and must not add a second cycle.
+  const adj = new Map<string, string[]>([
+    ["a", ["b"]],
+    ["b", ["c"]],
+    ["c", ["a"]],
+    ["d", ["a"]],
+  ]);
+  const cycles = detectDependencyCycles(adj);
+  assert.strictEqual(cycles.length, 1, "exactly one distinct cycle");
+  // closed path: starts and ends on the same id, covers all three members
+  const members = new Set(cycles[0]);
+  assert.ok(members.has("a") && members.has("b") && members.has("c"));
+  assert.strictEqual(cycles[0][0], cycles[0][cycles[0].length - 1], "path is closed");
+});
+
+test("detectDependencyCycles returns nothing for a DAG", () => {
+  const adj = new Map<string, string[]>([["a", ["b", "c"]], ["b", ["c"]], ["c", []]]);
+  assert.deepStrictEqual(detectDependencyCycles(adj), []);
 });
 
 // --- Timestamp fidelity (feature 1) -----------------------------------------
