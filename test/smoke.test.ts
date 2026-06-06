@@ -432,7 +432,7 @@ test("pmItemPassesFilter matches on the exported Beads status and type", () => {
 });
 
 test("pmItemToBead preserves bead id and translates dependency edges", () => {
-  const pmToBead = new Map<string, string>([["pm-up", "bd-up"]]);
+  const pmToBead = new Map<string, string>([["pm-up", "bd-up"], ["pm-parent", "bd-parent"]]);
   const bead = pmItemToBead(
     {
       id: "pm-down",
@@ -440,6 +440,11 @@ test("pmItemToBead preserves bead id and translates dependency edges", () => {
       description: encodeBeadId("body", "bd-down"),
       status: "in_progress",
       type: "Task",
+      assignee: "alice",
+      parent: "pm-parent",
+      deadline: "2026-07-01",
+      sprint: "S17",
+      release: "2026.7",
       dependencies: [{ id: "pm-up", kind: "blocked_by" }],
     },
     pmToBead,
@@ -448,5 +453,10 @@ test("pmItemToBead preserves bead id and translates dependency edges", () => {
   assert.strictEqual(bead.id, "bd-down");
   assert.strictEqual(bead.status, "in_progress");
   assert.strictEqual(bead.description, "body");
+  assert.strictEqual(bead.assignee, "alice");
+  assert.strictEqual(bead.parent, "bd-parent");
+  assert.strictEqual(bead.deadline, "2026-07-01");
+  assert.strictEqual(bead.sprint, "S17");
+  assert.strictEqual(bead.release, "2026.7");
   assert.deepStrictEqual(bead.dependencies, [{ id: "bd-up", kind: "blocked_by" }]);
 });
