@@ -1,0 +1,21 @@
+id: pm-beads-t5s9
+title: Preserve Beads planning fields across import and export
+description: ""
+type: Feature
+status: closed
+priority: 1
+tags[2]: context-management,enhancement
+created_at: "2026-06-06T19:31:56.941Z"
+updated_at: "2026-06-06T19:31:58.176Z"
+author: codex
+files[4]{path,scope,note}:
+  dist/index.d.ts,project,implementation
+  dist/index.js,project,implementation
+  index.ts,project,implementation
+  test/smoke.test.ts,project,implementation
+tests[1]{command,path,scope,timeout_seconds,pm_context_mode,env_set,env_clear,shared_host_safe,assert_stdout_contains,assert_stdout_regex,assert_stderr_contains,assert_stderr_regex,assert_stdout_min_lines,assert_json_field_equals,assert_json_field_gte,note}:
+  PM_PATH=.agents/pm PM_GLOBAL_PATH=.agents/pm Beads import/export now preserves planning context and parent links with tests.,null,project,240,null,null,null,null,null,null,null,null,null,null,null,package verification
+docs[1]{path,scope,note}:
+  README.md,project,Beads docs cover planning-field fidelity and parent resolution
+close_reason: npm test
+body: "Preserve assignee, parent, deadline/due_date, sprint, and release fields in Beads JSONL import/export and resolve parent links after all records are created."
