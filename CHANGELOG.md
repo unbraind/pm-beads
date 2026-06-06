@@ -1,6 +1,12 @@
 # Changelog
 
-## 2026.6.5-1 - 2026-06-05
+## Unreleased
+
+### Other
+
+- Align package dependencies to pm CLI/SDK 2026.6.6 ([pm-beads-j930](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-j930.toon))
+
+## 2026.06.05-1 - 2026-06-05
 
 ### Added
 
