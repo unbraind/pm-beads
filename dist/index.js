@@ -306,6 +306,31 @@ function applyTimestamps(pmRoot, pmId, bead) {
     }
     return true;
 }
+function beadDeadline(item) {
+    const raw = typeof item.deadline === "string" && item.deadline.trim()
+        ? item.deadline
+        : typeof item.due_date === "string" && item.due_date.trim()
+            ? item.due_date
+            : undefined;
+    return raw?.trim();
+}
+function appendPlanningArgs(args, item) {
+    const deadline = beadDeadline(item);
+    if (deadline)
+        args.push("--deadline", deadline);
+    if (item.assignee)
+        args.push("--assignee", String(item.assignee));
+    if (item.sprint)
+        args.push("--sprint", String(item.sprint));
+    if (item.release)
+        args.push("--release", String(item.release));
+}
+function resolveParentId(parent, beadToPm) {
+    if (typeof parent !== "string" || !parent.trim())
+        return undefined;
+    const raw = parent.trim();
+    return beadToPm.get(raw) ?? raw;
+}
 function parseFilterCsv(raw) {
     if (!raw)
         return undefined;
@@ -393,7 +418,7 @@ export function detectDependencyCycles(adj) {
                 const idx = stack.indexOf(next);
                 if (idx >= 0) {
                     const cycle = stack.slice(idx);
-                    const key = [...cycle].sort().join(" ");
+                    const key = [...cycle].sort().join("\u001f");
                     if (!seenCycleKeys.has(key)) {
                         seenCycleKeys.add(key);
                         cycles.push([...cycle, next]); // close the loop for the message
@@ -739,8 +764,7 @@ function runImport(filePath, pmRoot, opts) {
                     updArgs.push("--priority", priority);
                 if (tags)
                     updArgs.push("--tags", tags); // --tags replaces; idempotent re-import
-                if (item.assignee)
-                    updArgs.push("--assignee", String(item.assignee));
+                appendPlanningArgs(updArgs, item);
                 const result = spawnSync("pm", updArgs, { encoding: "utf-8" });
                 if (result.status !== 0)
                     throw new Error(result.stderr || "pm update failed");
@@ -761,8 +785,7 @@ function runImport(filePath, pmRoot, opts) {
                     spawnArgs.push("--priority", priority);
                 if (tags)
                     spawnArgs.push("--tags", tags);
-                if (item.assignee)
-                    spawnArgs.push("--assignee", String(item.assignee));
+                appendPlanningArgs(spawnArgs, item);
                 const result = spawnSync("pm", spawnArgs, { encoding: "utf-8" });
                 if (result.status !== 0) {
                     throw new Error(result.stderr || "pm create failed");
@@ -790,6 +813,7 @@ function runImport(filePath, pmRoot, opts) {
     // upserted items, gather all edges and --replace-deps in one call so a
     // re-import does not accumulate duplicate edges.
     let edges = 0;
+    let parents = 0;
     if (!opts.dryRun) {
         for (const entry of touched) {
             const resolvedBlockers = entry.blockers
@@ -823,6 +847,14 @@ function runImport(filePath, pmRoot, opts) {
                         console.error(`  dep failed: ${entry.pmId} -> ${b.pm}: ${dep.stderr?.trim()}`);
                 }
             }
+            const parentId = resolveParentId(entry.bead.parent, beadToPm);
+            if (parentId) {
+                const parent = spawnSync("pm", ["--path", pmRoot, "update", entry.pmId, "--parent", parentId], { encoding: "utf-8" });
+                if (parent.status === 0)
+                    parents++;
+                else
+                    console.error(`  parent failed: ${entry.pmId} -> ${parentId}: ${parent.stderr?.trim()}`);
+            }
         }
         // Pass 3: timestamp fidelity. Mirror the exporter by writing each bead's
         // created_at/updated_at back onto the persisted item (pm exposes no flag for
@@ -851,12 +883,14 @@ function runImport(filePath, pmRoot, opts) {
         throw new CommandError(`No items imported — all ${skipped} record(s) failed (malformed input?).`);
     }
     console.error(`Imported ${imported}, updated ${updated}, skipped ${skipped}${filteredNote}, ` +
-        `linked ${edges} dependency edge(s)${opts.preserveTimestamps ? `, timestamped ${timestamped}` : ""}.`);
+        `linked ${edges} dependency edge(s), set ${parents} parent link(s)` +
+        `${opts.preserveTimestamps ? `, timestamped ${timestamped}` : ""}.`);
     return {
         imported,
         updated,
         skipped,
         dependencies: edges,
+        parents,
         ...(opts.preserveTimestamps ? { timestamped } : {}),
         ...(hasFilter ? { filtered } : {}),
     };
@@ -921,6 +955,14 @@ export function pmItemToBead(item, pmToBead, preserveIds) {
         bead.tags = item.tags;
     if (item.assignee)
         bead.assignee = item.assignee;
+    if (item.parent)
+        bead.parent = pmToBead.get(item.parent) ?? item.parent;
+    if (item.deadline ?? item.due_date)
+        bead.deadline = item.deadline ?? item.due_date;
+    if (item.sprint)
+        bead.sprint = item.sprint;
+    if (item.release)
+        bead.release = item.release;
     if (item.created_at)
         bead.created_at = item.created_at;
     if (item.updated_at)

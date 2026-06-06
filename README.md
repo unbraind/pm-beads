@@ -80,6 +80,14 @@ defined later in the same file, and finally — unless `--no-preserve-timestamps
 is given — the bead's original `created_at`/`updated_at` are written back onto
 the persisted item (the dependency pass would otherwise re-stamp `updated_at`).
 
+### Planning-field fidelity
+
+The importer and exporter preserve common pm planning fields in addition to the
+core Beads fields: `assignee`, `parent`, `deadline` (or legacy `due_date` on
+import), `sprint`, and `release`. Parent links are resolved after all records in
+the file are created, so `parent` can name either an existing pm id or another
+Beads id from the same file.
+
 ### Timestamp fidelity
 
 `pm create`/`update` expose no flag for the canonical `created_at`/`updated_at`
@@ -176,7 +184,8 @@ export, with upstream ids resolved to their original Beads ids.
 ## JSONL Format
 
 Each line is a JSON object. Required: `title`. Optional: `id`, `description`,
-`status`, `type`, `priority`, `tags`, `assignee`, and blocker edges via either
+`status`, `type`, `priority`, `tags`, `assignee`, `parent`, `deadline`,
+`due_date`, `sprint`, `release`, and blocker edges via either
 `dependencies: [{ "id": "...", "kind": "blocked_by" }]` or `blocked_by: "..."`.
 
 ```jsonl
