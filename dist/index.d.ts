@@ -17,6 +17,11 @@ interface BeadsItem {
     priority?: number | string;
     tags?: string[];
     assignee?: string;
+    parent?: string;
+    deadline?: string;
+    due_date?: string;
+    sprint?: string;
+    release?: string;
     created_at?: string;
     updated_at?: string;
     dependencies?: Array<string | {
@@ -41,6 +46,11 @@ interface PmItem {
     description?: string;
     tags?: string[];
     assignee?: string;
+    parent?: string;
+    deadline?: string;
+    due_date?: string;
+    sprint?: string;
+    release?: string;
     created_at?: string;
     updated_at?: string;
     dependencies?: PmDependency[];
