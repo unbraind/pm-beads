@@ -1298,7 +1298,7 @@ async function runImportPreflight(ctx: any): Promise<Record<string, never>> {
 
 export default defineExtension({
   name: "pm-beads",
-  version: "2026.6.7",
+  version: "2026.6.8",
 
   activate(api: any) {
     // -----------------------------------------------------------------------
