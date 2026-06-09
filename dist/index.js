@@ -211,6 +211,15 @@ function beadLabels(item) {
     const values = Array.isArray(item.labels) ? item.labels : Array.isArray(item.tags) ? item.tags : [];
     return values.map((tag) => String(tag).trim()).filter(Boolean);
 }
+function scalarString(raw) {
+    if (raw === undefined || raw === null)
+        return undefined;
+    const value = String(raw).trim();
+    return value ? value : undefined;
+}
+function beadAssignee(item) {
+    return scalarString(item.assignee) ?? scalarString(item.owner);
+}
 // ---------------------------------------------------------------------------
 // Timestamp fidelity — preserve bead created_at/updated_at on import
 // ---------------------------------------------------------------------------
@@ -338,11 +347,7 @@ function appendPlanningArgs(args, item) {
     const deadline = beadDeadline(item);
     if (deadline)
         args.push("--deadline", deadline);
-    const assignee = typeof item.assignee === "string" && item.assignee.trim()
-        ? item.assignee
-        : typeof item.owner === "string" && item.owner.trim()
-            ? item.owner
-            : undefined;
+    const assignee = beadAssignee(item);
     if (assignee)
         args.push("--assignee", assignee);
     if (item.sprint)
@@ -1084,7 +1089,7 @@ export function normalizeDiffField(bead, field) {
             return [...new Set(tags)].sort().join(",");
         }
         case "assignee":
-            return String(bead.assignee ?? bead.owner ?? "").trim();
+            return beadAssignee(bead) ?? "";
         case "parent":
             return String(bead.parent ?? "").trim();
         case "deadline":

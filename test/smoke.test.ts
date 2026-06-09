@@ -578,6 +578,14 @@ test("diffBeads treats legacy and current bd shapes as equivalent", () => {
   assert.strictEqual(d.unchanged, 1);
 });
 
+test("diffBeads treats numeric owner and string assignee as equivalent", () => {
+  const a = [{ id: "bd-1", title: "A", status: "open", issue_type: "task", owner: 42 as unknown as string }];
+  const b = [{ id: "bd-1", title: "A", status: "open", issue_type: "task", assignee: "42" }];
+  const d = diffBeads(a, b);
+  assert.strictEqual(d.drift, false);
+  assert.strictEqual(d.unchanged, 1);
+});
+
 test("diffBeads treats semantically-equal status/tag-order/priority-form as unchanged", () => {
   const a = [{ id: "bd-1", title: "A", status: "done", type: "Task", priority: 2, tags: ["x", "y"] }];
   const b = [{ id: "bd-1", title: "A", status: "closed", type: "task", priority: "2", tags: ["y", "x"] }];

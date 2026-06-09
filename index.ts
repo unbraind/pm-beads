@@ -73,8 +73,8 @@ interface BeadsItem {
   priority?: number | string;
   tags?: string[];
   labels?: string[];
-  assignee?: string;
-  owner?: string;
+  assignee?: unknown;
+  owner?: unknown;
   parent?: string;
   deadline?: string;
   due_date?: string;
@@ -284,6 +284,16 @@ function beadLabels(item: BeadsItem): string[] {
   return values.map((tag) => String(tag).trim()).filter(Boolean);
 }
 
+function scalarString(raw: unknown): string | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  const value = String(raw).trim();
+  return value ? value : undefined;
+}
+
+function beadAssignee(item: BeadsItem): string | undefined {
+  return scalarString(item.assignee) ?? scalarString(item.owner);
+}
+
 // ---------------------------------------------------------------------------
 // Timestamp fidelity — preserve bead created_at/updated_at on import
 // ---------------------------------------------------------------------------
@@ -410,11 +420,7 @@ function beadDeadline(item: BeadsItem): string | undefined {
 function appendPlanningArgs(args: string[], item: BeadsItem): void {
   const deadline = beadDeadline(item);
   if (deadline) args.push("--deadline", deadline);
-  const assignee = typeof item.assignee === "string" && item.assignee.trim()
-    ? item.assignee
-    : typeof item.owner === "string" && item.owner.trim()
-      ? item.owner
-      : undefined;
+  const assignee = beadAssignee(item);
   if (assignee) args.push("--assignee", assignee);
   if (item.sprint) args.push("--sprint", String(item.sprint));
   if (item.release) args.push("--release", String(item.release));
@@ -1255,7 +1261,7 @@ export function normalizeDiffField(bead: BeadsItem, field: DiffField): string {
       return [...new Set(tags)].sort().join(",");
     }
     case "assignee":
-      return String(bead.assignee ?? bead.owner ?? "").trim();
+      return beadAssignee(bead) ?? "";
     case "parent":
       return String(bead.parent ?? "").trim();
     case "deadline":
