@@ -23,6 +23,12 @@ import extension, {
   stripBeadIdMarker,
   validateBeadsText,
   detectDependencyCycles,
+  DIFF_FIELDS,
+  normalizeDiffField,
+  changedFields,
+  indexBeadsById,
+  diffBeads,
+  parseDiffOptions,
 } from "../dist/index.js";
 
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
@@ -460,3 +466,256 @@ test("pmItemToBead preserves bead id and translates dependency edges", () => {
   assert.strictEqual(bead.release, "2026.7");
   assert.deepStrictEqual(bead.dependencies, [{ id: "bd-up", kind: "blocked_by" }]);
 });
+
+// --- Diff core (feature: round-trip fidelity audit) --------------------------
+
+import { spawnSync } from "node:child_process";
+
+test("indexBeadsById keys on bead id, first wins, skips id-less records", () => {
+  const idx = indexBeadsById([
+    { id: "bd-1", title: "First" },
+    { id: "bd-2", title: "Second" },
+    { id: "bd-1", title: "Dup ignored" },
+    { title: "No id" },
+  ]);
+  assert.strictEqual(idx.size, 2);
+  assert.strictEqual(idx.get("bd-1")?.title, "First");
+  assert.strictEqual(idx.get("bd-2")?.title, "Second");
+});
+
+test("diffBeads reports zero drift for identical lists", () => {
+  const beads = [
+    { id: "bd-1", title: "A", status: "open", type: "Task" },
+    { id: "bd-2", title: "B", status: "closed", type: "Bug", dependencies: [{ id: "bd-1", kind: "blocked_by" }] },
+  ];
+  const d = diffBeads(beads, beads.map((b) => ({ ...b })));
+  assert.strictEqual(d.drift, false);
+  assert.strictEqual(d.unchanged, 2);
+  assert.deepStrictEqual(d.added, []);
+  assert.deepStrictEqual(d.removed, []);
+  assert.deepStrictEqual(d.changed, []);
+  assert.strictEqual(d.countA, 2);
+  assert.strictEqual(d.countB, 2);
+});
+
+test("diffBeads treats semantically-equal status/tag-order/priority-form as unchanged", () => {
+  const a = [{ id: "bd-1", title: "A", status: "done", type: "Task", priority: 2, tags: ["x", "y"] }];
+  const b = [{ id: "bd-1", title: "A", status: "closed", type: "task", priority: "2", tags: ["y", "x"] }];
+  const d = diffBeads(a, b);
+  assert.strictEqual(d.drift, false, "done==closed, tag order and 2=='2' must not be drift");
+  assert.strictEqual(d.unchanged, 1);
+});
+
+test("diffBeads detects added and removed beads", () => {
+  const a = [{ id: "bd-1", title: "Stays" }, { id: "bd-2", title: "Goes away" }];
+  const b = [{ id: "bd-1", title: "Stays" }, { id: "bd-3", title: "New" }];
+  const d = diffBeads(a, b);
+  assert.deepStrictEqual(d.added, ["bd-3"]);
+  assert.deepStrictEqual(d.removed, ["bd-2"]);
+  assert.strictEqual(d.unchanged, 1);
+  assert.strictEqual(d.drift, true);
+});
+
+test("diffBeads detects per-field changes for matched beads", () => {
+  const a = [{ id: "bd-1", title: "Old title", status: "open", type: "Task", priority: 1, assignee: "alice", parent: "bd-9", deadline: "2026-01-01", tags: ["a"] }];
+  const b = [{ id: "bd-1", title: "New title", status: "in_progress", type: "Bug", priority: 3, assignee: "bob", parent: "bd-8", deadline: "2026-02-02", tags: ["a", "b"] }];
+  const d = diffBeads(a, b);
+  assert.strictEqual(d.changed.length, 1);
+  assert.strictEqual(d.changed[0].id, "bd-1");
+  assert.deepStrictEqual(
+    d.changed[0].fields.sort(),
+    ["assignee", "deadline", "parent", "priority", "status", "tags", "title", "type"].sort(),
+  );
+  assert.strictEqual(d.unchanged, 0);
+});
+
+test("diffBeads detects dependency edge changes", () => {
+  const a = [{ id: "bd-2", title: "T", dependencies: [{ id: "bd-1", kind: "blocked_by" }] }];
+  const b = [{ id: "bd-2", title: "T", dependencies: [{ id: "bd-1", kind: "blocked_by" }, { id: "bd-3", kind: "blocked_by" }] }];
+  const d = diffBeads(a, b);
+  assert.strictEqual(d.changed.length, 1);
+  assert.deepStrictEqual(d.changed[0].fields, ["dependencies"]);
+  // Same edges spelled differently (blocked_by string vs dependencies array) are equal.
+  const c = diffBeads(
+    [{ id: "bd-2", title: "T", blocked_by: "bd-1" }],
+    [{ id: "bd-2", title: "T", dependencies: [{ id: "bd-1", kind: "blocked_by" }] }],
+  );
+  assert.strictEqual(c.drift, false, "blocked_by:'bd-1' == dependencies:[{id:bd-1}]");
+});
+
+test("normalizeDiffField and changedFields cover all DIFF_FIELDS", () => {
+  assert.deepStrictEqual([...DIFF_FIELDS], ["title", "status", "type", "priority", "tags", "assignee", "parent", "deadline", "dependencies"]);
+  // beadDeadline alias: due_date is honored when deadline is absent.
+  assert.strictEqual(normalizeDiffField({ due_date: "2026-03-03" } as any, "deadline"), "2026-03-03");
+  assert.deepStrictEqual(changedFields({ id: "x", title: "Same" }, { id: "x", title: "Same" }), []);
+  assert.deepStrictEqual(changedFields({ id: "x", title: "A" }, { id: "x", title: "B" }), ["title"]);
+});
+
+test("diffBeads honors a status/type row filter on both sides", () => {
+  const a = [
+    { id: "bd-1", title: "Open task", status: "open", type: "Task" },
+    { id: "bd-2", title: "Closed bug", status: "closed", type: "Bug" },
+  ];
+  const b = [
+    { id: "bd-1", title: "Open task", status: "open", type: "Task" },
+    { id: "bd-2", title: "Closed bug CHANGED", status: "closed", type: "Bug" },
+  ];
+  // Filtering to open-only excludes bd-2, so the changed title is invisible.
+  const d = diffBeads(a, b, { statuses: new Set(["open"]) });
+  assert.strictEqual(d.drift, false);
+  assert.strictEqual(d.countA, 1);
+  assert.strictEqual(d.countB, 1);
+  // Without the filter, the change surfaces.
+  const all = diffBeads(a, b);
+  assert.strictEqual(all.changed.length, 1);
+});
+
+test("parseDiffOptions reads flags from options and the global --json", () => {
+  const o = parseDiffOptions({ "against-workspace": true, strict: true, "filter-status": "open" }, {}, "/pm");
+  assert.strictEqual(o.againstWorkspace, true);
+  assert.strictEqual(o.strict, true);
+  assert.strictEqual(o.preserveIds, true);
+  assert.deepStrictEqual([...o.filter.statuses!], ["open"]);
+  assert.strictEqual(o.pmRoot, "/pm");
+  // --json may arrive on the global flag bag instead of the command options.
+  assert.strictEqual(parseDiffOptions({}, { json: true }).json, true);
+  assert.strictEqual(parseDiffOptions({ json: true }, {}).json, true);
+  assert.strictEqual(parseDiffOptions({}, {}).json, false);
+});
+
+test("extension registers the diff command and its hyphenated alias", () => {
+  const registered: string[] = [];
+  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any> };
+  extension.activate(makeApi(registered, captured) as any);
+  assert.ok(captured.commands["beads diff"], "should register the canonical 'beads diff' command");
+  assert.ok(captured.commands["beads-diff"], "should register the 'beads-diff' rich-help alias");
+});
+
+// --against-workspace path: build a real fixture pm workspace via the `pm` CLI,
+// export it through the shared export core, then diff a Beads file against the
+// live workspace through the registered `beads diff` command handler. This
+// exercises buildBeadsFromWorkspace -> spawnSync("pm", ...) end to end.
+test("beads diff --against-workspace compares a file against the live workspace", { skip: !hasPmCli() }, async () => {
+  const root = mkdtempSync(join(tmpdir(), "beads-diff-ws-"));
+  const pmRoot = join(root, ".agents", "pm");
+  mkdirSync(pmRoot, { recursive: true });
+
+  // Initialize the tracker so create/list-all work against this fixture root.
+  const init = spawnSync("pm", ["--path", pmRoot, "init"], { encoding: "utf-8" });
+  assert.strictEqual(init.status, 0, `pm init failed: ${init.stderr}`);
+
+  // Seed one item carrying a bead_id provenance marker so the workspace export
+  // re-emits that native bead id (the stable diff key).
+  const create = spawnSync(
+    "pm",
+    ["--path", pmRoot, "--json", "create", "--title", "Workspace task", "--type", "Task",
+     "--status", "open", "--description", encodeBeadId("body", "bd-ws-1")],
+    { encoding: "utf-8" },
+  );
+  assert.strictEqual(create.status, 0, `pm create failed: ${create.stderr}`);
+
+  const registered: string[] = [];
+  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any> };
+  extension.activate(makeApi(registered, captured) as any);
+  const diffCmd = captured.commands["beads diff"];
+  assert.ok(diffCmd, "beads diff command should be registered");
+
+  // File A matches the workspace bead exactly (same id + title) -> no drift,
+  // plus an extra bead only in the file -> classified as "removed" (only in A).
+  const fileA = join(root, "a.jsonl");
+  writeFileSync(
+    fileA,
+    [
+      // priority 2 matches pm's default so this bead is byte-identical to the
+      // workspace export (otherwise the priority default would read as drift).
+      JSON.stringify({ id: "bd-ws-1", title: "Workspace task", status: "open", type: "Task", priority: 2 }),
+      JSON.stringify({ id: "bd-extra", title: "Only in file", status: "open", type: "Task", priority: 2 }),
+    ].join("\n") + "\n",
+    "utf-8",
+  );
+
+  // Pass args the way the real CLI does: the boolean flag token rides along in
+  // ctx.args next to the positional file. runDiff must extract the positional
+  // file and not mistake the flag for a second file.
+  const result = await diffCmd.run({
+    args: [fileA, "--against-workspace"],
+    options: { "against-workspace": true, json: true },
+    global: {},
+    pm_root: pmRoot,
+  });
+  // bd-ws-1 is in both (unchanged); bd-extra is only in the file (A) -> removed.
+  assert.strictEqual(result.b, "workspace");
+  assert.ok(result.removed.includes("bd-extra"), "file-only bead is 'removed' (only in A)");
+  assert.ok(!result.added.includes("bd-ws-1"));
+  assert.strictEqual(result.unchanged, 1, "the matching bead is unchanged");
+  assert.strictEqual(result.drift, true);
+});
+
+test("beads diff requires a second file without --against-workspace (USAGE)", async () => {
+  const registered: string[] = [];
+  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any> };
+  extension.activate(makeApi(registered, captured) as any);
+  const diffCmd = captured.commands["beads diff"];
+  const dir = mkdtempSync(join(tmpdir(), "beads-diff-usage-"));
+  const fileA = join(dir, "a.jsonl");
+  writeFileSync(fileA, JSON.stringify({ id: "bd-1", title: "T" }) + "\n", "utf-8");
+  await assert.rejects(
+    async () => diffCmd.run({ args: [fileA], options: {}, global: {}, pm_root: dir }),
+    (err: unknown) => {
+      assert.strictEqual((err as CommandError).exitCode, EXIT_CODE.USAGE);
+      return true;
+    },
+  );
+});
+
+test("beads diff --strict exits nonzero (throws) on drift, zero otherwise", async () => {
+  const registered: string[] = [];
+  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any> };
+  extension.activate(makeApi(registered, captured) as any);
+  const diffCmd = captured.commands["beads diff"];
+  const dir = mkdtempSync(join(tmpdir(), "beads-diff-strict-"));
+  const a = join(dir, "a.jsonl");
+  const b = join(dir, "b.jsonl");
+  writeFileSync(a, JSON.stringify({ id: "bd-1", title: "One" }) + "\n", "utf-8");
+  writeFileSync(b, JSON.stringify({ id: "bd-2", title: "Two" }) + "\n", "utf-8");
+  // Drift + --strict -> throws a CommandError with a nonzero exit code.
+  await assert.rejects(
+    async () => diffCmd.run({ args: [a, b], options: { strict: true }, global: {}, pm_root: dir }),
+    (err: unknown) => {
+      assert.strictEqual((err as CommandError).exitCode, EXIT_CODE.GENERIC_FAILURE);
+      assert.match((err as Error).message, /Drift detected/);
+      return true;
+    },
+  );
+  // Identical files + --strict -> no throw, returns a no-drift result.
+  const same = await diffCmd.run({ args: [a, a], options: { strict: true }, global: {}, pm_root: dir });
+  assert.strictEqual(same.drift, false);
+});
+
+test("beads diff hard-fails on a malformed JSONL line", async () => {
+  const registered: string[] = [];
+  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any> };
+  extension.activate(makeApi(registered, captured) as any);
+  const diffCmd = captured.commands["beads diff"];
+  const dir = mkdtempSync(join(tmpdir(), "beads-diff-bad-"));
+  const a = join(dir, "a.jsonl");
+  const b = join(dir, "b.jsonl");
+  writeFileSync(a, "{not json\n", "utf-8");
+  writeFileSync(b, JSON.stringify({ id: "bd-1", title: "T" }) + "\n", "utf-8");
+  await assert.rejects(
+    async () => diffCmd.run({ args: [a, b], options: {}, global: {}, pm_root: dir }),
+    (err: unknown) => {
+      assert.match((err as Error).message, /invalid JSON/);
+      return true;
+    },
+  );
+});
+
+function hasPmCli(): boolean {
+  try {
+    const r = spawnSync("pm", ["--version"], { encoding: "utf-8" });
+    return r.status === 0;
+  } catch {
+    return false;
+  }
+}
