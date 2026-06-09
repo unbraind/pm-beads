@@ -250,17 +250,19 @@ export function normalizeBeadKey(id: unknown): string | undefined {
 export function extractBlockerIds(item: BeadsItem): string[] {
   const ids = new Set<string>();
   const push = (v: unknown) => {
-    if (typeof v === "string" && v.trim()) ids.add(v.trim());
+    const value = scalarString(v);
+    if (value) ids.add(value);
   };
   if (Array.isArray(item.dependencies)) {
     for (const dep of item.dependencies) {
       if (typeof dep === "string") push(dep);
       else if (dep && typeof dep === "object") {
-        if (typeof dep.depends_on_id === "string" && dep.depends_on_id.trim()) {
-          push(dep.depends_on_id);
+        const dependsOn = scalarString(dep.depends_on_id);
+        if (dependsOn) {
+          push(dependsOn);
           continue;
         }
-        const kind = (dep.kind || dep.type || "blocked_by").toLowerCase();
+        const kind = (scalarString(dep.kind) ?? scalarString(dep.type) ?? "blocked_by").toLowerCase();
         if (kind === "blocked_by" || kind === "depends_on" || kind === "blocks_me") push(dep.id);
       }
     }
@@ -460,7 +462,7 @@ export function beadPassesFilter(
   filter: RowFilter,
 ): boolean {
   if (filter.statuses) {
-    const status = mapStatus(bead.status as string);
+    const status = mapStatus(bead.status);
     if (!filter.statuses.has(status.toLowerCase())) return false;
   }
   if (filter.types) {
@@ -897,7 +899,7 @@ function runImport(filePath: string | undefined, pmRoot: string, opts: ImportOpt
     }
 
     const type = opts.typeOverride || beadType(item) || "Task";
-    const status = mapStatus(item.status as string);
+    const status = mapStatus(item.status);
     const priority = opts.priorityOverride || mapPriority(item.priority);
     const labels = beadLabels(item);
     const tags = opts.tagsOverride
@@ -905,7 +907,7 @@ function runImport(filePath: string | undefined, pmRoot: string, opts: ImportOpt
       : labels.length
         ? labels.join(",")
         : undefined;
-    const beadId = opts.preserveIds && typeof item.id === "string" ? item.id.trim() : undefined;
+    const beadId = opts.preserveIds ? normalizeBeadKey(item.id) : undefined;
     const baseDescription = (item.description as string) || title;
     const description = encodeBeadId(baseDescription, beadId);
     const blockers = extractBlockerIds(item);
@@ -1248,7 +1250,7 @@ export function normalizeDiffField(bead: BeadsItem, field: DiffField): string {
     case "status":
       // Compare on the canonical mapped Beads status so `done` vs `closed`
       // (same meaning) is NOT reported as drift — symmetric with import/export.
-      return pmStatusToBeads(mapStatus(bead.status as string | undefined));
+      return pmStatusToBeads(mapStatus(bead.status));
     case "type":
       return String(beadType(bead) ?? "Task").trim().toLowerCase();
     case "priority": {
