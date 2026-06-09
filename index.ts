@@ -161,9 +161,10 @@ export function resolvePreserveIds(options: Record<string, unknown>): boolean {
   return true;
 }
 
-export function mapStatus(raw: string | undefined): string {
-  if (!raw) return "open";
-  const s = raw.trim().toLowerCase();
+export function mapStatus(raw: unknown): string {
+  if (raw === undefined || raw === null) return "open";
+  const s = String(raw).trim().toLowerCase();
+  if (!s) return "open";
   const map: Record<string, string> = {
     open: "open", todo: "open", new: "open",
     "in_progress": "in_progress", wip: "in_progress", doing: "in_progress",
@@ -238,9 +239,9 @@ export const KNOWN_BEADS_STATUSES = new Set<string>([
 // case-sensitive identifiers; we trim but DO NOT lowercase them (unlike tags,
 // which pm case-folds on storage). Keying off the case-preserving description
 // marker — not tags — is what keeps re-import idempotent. See decision note.
-export function normalizeBeadKey(id: string | undefined): string | undefined {
-  if (typeof id !== "string") return undefined;
-  const t = id.trim();
+export function normalizeBeadKey(id: unknown): string | undefined {
+  if (id === undefined || id === null) return undefined;
+  const t = String(id).trim();
   return t.length ? t : undefined;
 }
 
@@ -1246,7 +1247,7 @@ export function normalizeDiffField(bead: BeadsItem, field: DiffField): string {
       return String(beadType(bead) ?? "Task").trim().toLowerCase();
     case "priority": {
       const p = mapPriority(bead.priority);
-      return p === undefined ? "" : p;
+      return p === undefined ? "2" : p;
     }
     case "tags": {
       const tags = beadLabels(bead);
@@ -1264,6 +1265,10 @@ export function normalizeDiffField(bead: BeadsItem, field: DiffField): string {
       // the same edge-normalizer the importer/validator use, so the many Beads
       // edge spellings collapse to one canonical form.
       return [...new Set(extractBlockerIds(bead))].sort().join(",");
+    }
+    default: {
+      const exhaustive: never = field;
+      return exhaustive;
     }
   }
 }

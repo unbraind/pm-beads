@@ -78,14 +78,14 @@ export declare function optionString(options: Record<string, unknown>, ...keys: 
  * `no-preserve-ids: true`. Default is ON (preserve) when nothing was passed.
  */
 export declare function resolvePreserveIds(options: Record<string, unknown>): boolean;
-export declare function mapStatus(raw: string | undefined): string;
+export declare function mapStatus(raw: unknown): string;
 export declare function pmStatusToBeads(raw: string | undefined): string;
 export declare function mapPriority(raw: number | string | undefined): string | undefined;
 export declare function encodeBeadId(description: string, beadId: string | undefined): string;
 export declare function decodeBeadId(item: PmItem): string | undefined;
 export declare function stripBeadIdMarker(text: string | undefined): string;
 export declare const KNOWN_BEADS_STATUSES: Set<string>;
-export declare function normalizeBeadKey(id: string | undefined): string | undefined;
+export declare function normalizeBeadKey(id: unknown): string | undefined;
 export declare function extractBlockerIds(item: BeadsItem): string[];
 export declare function normalizeIsoTimestamp(raw: unknown): string | undefined;
 export declare function patchTimestampLines(text: string, values: {
