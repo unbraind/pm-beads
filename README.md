@@ -242,20 +242,24 @@ on import the original Beads `id` is persisted in the item description behind a
 parseable marker (`[bead_id: <id>]`). On export the marker is read back and the
 native Beads id is re-emitted (and stripped from the description). Beads
 `dependencies` / `blocked_by` edges are mapped to pm `blocked_by` dependencies on
-import and translated back to Beads `dependencies` (`kind: "blocked_by"`) on
-export, with upstream ids resolved to their original Beads ids.
+import and translated back to current Beads `dependencies`
+(`issue_id` / `depends_on_id`, `type: "blocks"`) on export, with upstream ids
+resolved to their original Beads ids.
 
 ## JSONL Format
 
-Each line is a JSON object. Required: `title`. Optional: `id`, `description`,
-`status`, `type`, `priority`, `tags`, `assignee`, `parent`, `deadline`,
-`due_date`, `sprint`, `release`, and blocker edges via either
-`dependencies: [{ "id": "...", "kind": "blocked_by" }]` or `blocked_by: "..."`.
+Each line is a JSON object. Required: `title`. Current `bd export` fields are
+supported, including `id`, `description`, `status`, `issue_type`, `priority`,
+`labels`, `owner`, `created_at`, `updated_at`, and dependency rows such as
+`dependencies: [{ "issue_id": "...", "depends_on_id": "...", "type": "blocks" }]`.
+Legacy aliases are also accepted: `type`, `tags`, `assignee`, `deadline`,
+`due_date`, `due_at`, `sprint`, `release`,
+`dependencies: [{ "id": "...", "kind": "blocked_by" }]`, and `blocked_by: "..."`.
 
 ```jsonl
-{"id":"bd-001","title":"Design schema","type":"Feature","status":"closed","priority":1}
-{"id":"bd-002","title":"Implement API","type":"Task","status":"in_progress","dependencies":[{"id":"bd-001","kind":"blocked_by"}]}
-{"id":"bd-003","title":"Write docs","type":"Task","status":"open","blocked_by":"bd-002"}
+{"id":"bd-001","title":"Design schema","issue_type":"feature","status":"closed","priority":1}
+{"id":"bd-002","title":"Implement API","issue_type":"task","status":"in_progress","dependencies":[{"issue_id":"bd-002","depends_on_id":"bd-001","type":"blocks"}]}
+{"id":"bd-003","title":"Write docs","issue_type":"task","status":"open","blocked_by":"bd-002"}
 ```
 
 ## License

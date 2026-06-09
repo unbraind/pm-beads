@@ -1,7 +1,7 @@
 {
   "name": "pm-beads",
   "version": "2026.6.8",
-  "description": "Beads JSONL importer extension for pm-cli",
+  "description": "Beads JSONL import/export extension for pm-cli",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/unbraind/pm-beads.git"
@@ -34,11 +34,11 @@
     "release:check": "npm run typecheck && npm run build && npm test && npm run audit:prod && npm run pack:dry-run && npm run changelog:check"
   },
   "peerDependencies": {
-    "@unbrained/pm-cli": ">=2026.6.7"
+    "@unbrained/pm-cli": ">=2026.6.9"
   },
   "devDependencies": {
     "@types/node": "^25.9.2",
-    "@unbrained/pm-cli": "^2026.6.7",
+    "@unbrained/pm-cli": "^2026.6.9",
     "pm-changelog": "^2026.6.7",
     "typescript": "^6.0.3"
   },
@@ -63,13 +63,14 @@
       "."
     ],
     "catalog": {
-      "display_name": "Beads Importer",
+      "display_name": "Beads Import/Export",
       "category": "import-export",
-      "summary": "Beads JSONL importer extension for pm-cli",
+      "summary": "Beads JSONL import/export extension for pm-cli",
       "tags": [
         "beads",
         "jsonl",
-        "import"
+        "import",
+        "export"
       ],
       "links": {
         "docs": "https://github.com/unbraind/pm-beads#readme",

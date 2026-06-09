@@ -14,12 +14,16 @@ interface BeadsItem {
     description?: string;
     status?: string;
     type?: string;
+    issue_type?: string;
     priority?: number | string;
     tags?: string[];
+    labels?: string[];
     assignee?: string;
+    owner?: string;
     parent?: string;
     deadline?: string;
     due_date?: string;
+    due_at?: string;
     sprint?: string;
     release?: string;
     created_at?: string;
@@ -27,6 +31,9 @@ interface BeadsItem {
     dependencies?: Array<string | {
         id?: string;
         kind?: string;
+        issue_id?: string;
+        depends_on_id?: string;
+        type?: string;
     }>;
     blocked_by?: string | string[];
     blocks?: string | string[];

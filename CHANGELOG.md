@@ -73,7 +73,6 @@
 ### Other
 
 - Production-readiness audit 2026-05-28 ([pm-beads-xwv6](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-xwv6.toon))
-- Production-readiness audit 2026-05-28 ([pm-beads-tsm5](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-tsm5.toon))
 
 ## 2026.05.27 - 2026-05-27
 
