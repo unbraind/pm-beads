@@ -18,8 +18,8 @@ interface BeadsItem {
     priority?: number | string;
     tags?: string[];
     labels?: string[];
-    assignee?: string;
-    owner?: string;
+    assignee?: unknown;
+    owner?: unknown;
     parent?: string;
     deadline?: string;
     due_date?: string;
