@@ -18,7 +18,7 @@ pm install github.com/unbraind/pm-beads --global
 |---|---|
 | `importers` | `pm beads import <file>` — read a Beads JSONL file and create (or, with `--upsert`, update) pm items |
 | `importers` (exporter) | `pm beads export` — serialize pm items back to Beads JSONL |
-| `commands` | `pm beads-import` / `pm beads-export` / `pm beads-validate` — rich-help aliases of the import/export/validate pipelines |
+| `commands` | `pm beads-import` / `pm beads-export` / `pm beads-validate` / `pm beads-diff` — rich-help aliases of the import/export/validate/diff pipelines |
 | `schema` | declares the `bead_id` item field |
 | `preflight` | fail-fast Beads-JSONL schema gate that runs **before** `pm beads import` touches the pm store — aborts on a structurally invalid file so no partial items are ever created |
 
@@ -171,6 +171,70 @@ import compares against the **mapped pm** status (so `--filter-status closed`
 matches a bead with `done`/`complete`), export compares against the **Beads**
 status the exporter emits.
 
+## Diff (round-trip fidelity audit)
+
+### `pm beads diff <fileA> <fileB>` / `pm beads diff <file> --against-workspace`
+
+Compare two Beads sources and report per-bead drift, so you can **audit
+round-trip fidelity** before or after an import. Beads are matched on their
+stable bead `id`; each matched pair is classified, and the unmatched ids on each
+side are reported as added/removed.
+
+```bash
+pm beads diff before.jsonl after.jsonl          # compare two files
+pm beads export --output now.jsonl              # snapshot, then…
+pm beads diff before.jsonl --against-workspace  # …compare a file to the live workspace
+pm beads diff a.jsonl b.jsonl --json            # structured diff object
+pm beads diff a.jsonl b.jsonl --strict          # exit nonzero on any drift (CI gate)
+pm beads diff a.jsonl b.jsonl --filter-status open,in_progress
+pm beads diff a.jsonl b.jsonl --filter-type Bug
+```
+
+With `--against-workspace`, the **current pm workspace** is serialized to Beads
+in memory using the same exporter core (`pm beads export`) — preserving the
+original bead ids and translating dependency edges — and compared against the
+single file you pass. Provide exactly one file in that mode.
+
+**Classification** (keyed on bead `id`):
+
+| Class | Meaning |
+|---|---|
+| `added` | bead present only in B (the second file, or the workspace) |
+| `removed` | bead present only in A (the first file) |
+| `changed` | id present in both, but one or more compared fields differ |
+| `unchanged` | id present in both with all compared fields equal (count) |
+
+The compared field set is exactly what a round-trip is meant to preserve:
+`title`, `status`, `type`, `priority`, `tags`, `assignee`, `parent`, `deadline`,
+`dependencies`. Comparison is semantic, not byte-level — status is compared on
+the canonical mapped value (so `done` vs `closed` is **not** drift), priority
+`2` equals `"2"`, and tag/dependency ordering is ignored.
+
+**Flags**
+
+| Flag | Type | Description |
+|---|---|---|
+| `--against-workspace` | boolean | Diff `<file>` against the current pm workspace instead of a second file |
+| `--json` | boolean | Emit the structured diff object as JSON |
+| `--strict` | boolean | Exit nonzero when any drift is found (for CI fidelity gates) |
+| `--no-preserve-ids` | boolean | When diffing against the workspace, key on pm ids instead of the original Beads ids (default: preserve) |
+| `--filter-status <list>` | string | Only compare beads whose **mapped** status is in this comma-separated list |
+| `--filter-type <list>` | string | Only compare beads whose type is in this comma-separated list |
+
+The command is strictly **read-only** — it never mutates the workspace or any
+file. Without `--strict` it always exits 0 (drift is reported, not fatal), which
+makes it safe to run as an informational pre/post-import check; add `--strict`
+in CI to fail the build on any fidelity loss.
+
+```text
+$ pm beads diff before.jsonl --against-workspace
+Beads diff: /abs/before.jsonl (A) → workspace (B)
+  A: 12 bead(s), B: 12 bead(s)
+  Changed: 1
+    ~ bd-007 (status, tags)
+  Unchanged: 11
+```
+
 ## Round-trip: ids and dependencies
 
 `pm create` exposes no generic custom-field setter to standalone extensions, so
@@ -178,20 +242,24 @@ on import the original Beads `id` is persisted in the item description behind a
 parseable marker (`[bead_id: <id>]`). On export the marker is read back and the
 native Beads id is re-emitted (and stripped from the description). Beads
 `dependencies` / `blocked_by` edges are mapped to pm `blocked_by` dependencies on
-import and translated back to Beads `dependencies` (`kind: "blocked_by"`) on
-export, with upstream ids resolved to their original Beads ids.
+import and translated back to current Beads `dependencies`
+(`issue_id` / `depends_on_id`, `type: "blocks"`) on export, with upstream ids
+resolved to their original Beads ids.
 
 ## JSONL Format
 
-Each line is a JSON object. Required: `title`. Optional: `id`, `description`,
-`status`, `type`, `priority`, `tags`, `assignee`, `parent`, `deadline`,
-`due_date`, `sprint`, `release`, and blocker edges via either
-`dependencies: [{ "id": "...", "kind": "blocked_by" }]` or `blocked_by: "..."`.
+Each line is a JSON object. Required: `title`. Current `bd export` fields are
+supported, including `id`, `description`, `status`, `issue_type`, `priority`,
+`labels`, `owner`, `created_at`, `updated_at`, and dependency rows such as
+`dependencies: [{ "issue_id": "...", "depends_on_id": "...", "type": "blocks" }]`.
+Legacy aliases are also accepted: `type`, `tags`, `assignee`, `deadline`,
+`due_date`, `due_at`, `sprint`, `release`,
+`dependencies: [{ "id": "...", "kind": "blocked_by" }]`, and `blocked_by: "..."`.
 
 ```jsonl
-{"id":"bd-001","title":"Design schema","type":"Feature","status":"closed","priority":1}
-{"id":"bd-002","title":"Implement API","type":"Task","status":"in_progress","dependencies":[{"id":"bd-001","kind":"blocked_by"}]}
-{"id":"bd-003","title":"Write docs","type":"Task","status":"open","blocked_by":"bd-002"}
+{"id":"bd-001","title":"Design schema","issue_type":"feature","status":"closed","priority":1}
+{"id":"bd-002","title":"Implement API","issue_type":"task","status":"in_progress","dependencies":[{"issue_id":"bd-002","depends_on_id":"bd-001","type":"blocks"}]}
+{"id":"bd-003","title":"Write docs","issue_type":"task","status":"open","blocked_by":"bd-002"}
 ```
 
 ## License
