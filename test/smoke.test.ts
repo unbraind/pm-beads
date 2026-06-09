@@ -594,6 +594,14 @@ test("diffBeads treats semantically-equal status/tag-order/priority-form as unch
   assert.strictEqual(d.unchanged, 1);
 });
 
+test("diffBeads filters nullish label values instead of stringifying them", () => {
+  const a = [{ id: "bd-1", title: "A", status: "open", issue_type: "task", labels: ["x", null, undefined] as unknown as string[] }];
+  const b = [{ id: "bd-1", title: "A", status: "open", issue_type: "task", tags: ["x"] }];
+  const d = diffBeads(a, b);
+  assert.strictEqual(d.drift, false);
+  assert.strictEqual(d.unchanged, 1);
+});
+
 test("diffBeads handles non-string status and missing default priority defensively", () => {
   const a = [{ id: 101 as unknown as string, title: "A", status: 7 as unknown as string, issue_type: "task" }];
   const b = [{ id: "101", title: "A", status: "open", issue_type: "task", priority: 2 }];
