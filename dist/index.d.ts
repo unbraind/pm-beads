@@ -14,12 +14,16 @@ interface BeadsItem {
     description?: string;
     status?: string;
     type?: string;
+    issue_type?: string;
     priority?: number | string;
     tags?: string[];
-    assignee?: string;
+    labels?: string[];
+    assignee?: unknown;
+    owner?: unknown;
     parent?: string;
     deadline?: string;
     due_date?: string;
+    due_at?: string;
     sprint?: string;
     release?: string;
     created_at?: string;
@@ -27,6 +31,9 @@ interface BeadsItem {
     dependencies?: Array<string | {
         id?: string;
         kind?: string;
+        issue_id?: string;
+        depends_on_id?: string;
+        type?: string;
     }>;
     blocked_by?: string | string[];
     blocks?: string | string[];
@@ -71,14 +78,14 @@ export declare function optionString(options: Record<string, unknown>, ...keys: 
  * `no-preserve-ids: true`. Default is ON (preserve) when nothing was passed.
  */
 export declare function resolvePreserveIds(options: Record<string, unknown>): boolean;
-export declare function mapStatus(raw: string | undefined): string;
+export declare function mapStatus(raw: unknown): string;
 export declare function pmStatusToBeads(raw: string | undefined): string;
 export declare function mapPriority(raw: number | string | undefined): string | undefined;
 export declare function encodeBeadId(description: string, beadId: string | undefined): string;
 export declare function decodeBeadId(item: PmItem): string | undefined;
 export declare function stripBeadIdMarker(text: string | undefined): string;
 export declare const KNOWN_BEADS_STATUSES: Set<string>;
-export declare function normalizeBeadKey(id: string | undefined): string | undefined;
+export declare function normalizeBeadKey(id: unknown): string | undefined;
 export declare function extractBlockerIds(item: BeadsItem): string[];
 export declare function normalizeIsoTimestamp(raw: unknown): string | undefined;
 export declare function patchTimestampLines(text: string, values: {
@@ -143,8 +150,40 @@ export interface ExistingBeadItem {
 export declare function buildBeadIndex(items: PmItem[]): Map<string, ExistingBeadItem>;
 export declare function extractCreatedId(stdout: string): string | undefined;
 export declare function pmItemToBead(item: PmItem, pmToBead: Map<string, string>, preserveIds: boolean): BeadsItem;
+export declare function buildBeadsFromWorkspace(pmRoot: string, opts: {
+    preserveIds: boolean;
+    filter: RowFilter;
+}): BeadsItem[];
+export declare const DIFF_FIELDS: readonly ["title", "status", "type", "priority", "tags", "assignee", "parent", "deadline", "dependencies"];
+export type DiffField = (typeof DIFF_FIELDS)[number];
+export interface ChangedBead {
+    id: string;
+    fields: DiffField[];
+}
+export interface BeadsDiff {
+    added: string[];
+    removed: string[];
+    changed: ChangedBead[];
+    unchanged: number;
+    countA: number;
+    countB: number;
+    drift: boolean;
+}
+export declare function normalizeDiffField(bead: BeadsItem, field: DiffField): string;
+export declare function changedFields(a: BeadsItem, b: BeadsItem): DiffField[];
+export declare function indexBeadsById(beads: BeadsItem[]): Map<string, BeadsItem>;
+export declare function diffBeads(a: BeadsItem[], b: BeadsItem[], filter?: RowFilter): BeadsDiff;
+interface DiffOptions {
+    json: boolean;
+    strict: boolean;
+    againstWorkspace: boolean;
+    preserveIds: boolean;
+    filter: RowFilter;
+    pmRoot?: string;
+}
 export declare function parseRowFilter(options: Record<string, unknown>): RowFilter;
 export declare function resolvePreserveTimestamps(options: Record<string, unknown>): boolean;
+export declare function parseDiffOptions(options: Record<string, unknown>, global?: Record<string, unknown>, pmRoot?: string): DiffOptions;
 export declare function resolveImportInputFile(args: unknown): string | undefined;
 declare const _default: {
     name: string;
