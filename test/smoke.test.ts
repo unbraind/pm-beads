@@ -219,6 +219,7 @@ test("extension registers the validate command", () => {
 
 test("normalizeBeadKey trims and preserves case but drops empties", () => {
   assert.strictEqual(normalizeBeadKey("  Bd-Mixed-01  "), "Bd-Mixed-01");
+  assert.strictEqual(normalizeBeadKey(123 as unknown), "123");
   assert.strictEqual(normalizeBeadKey(""), undefined);
   assert.strictEqual(normalizeBeadKey("   "), undefined);
   assert.strictEqual(normalizeBeadKey(undefined), undefined);
@@ -577,6 +578,14 @@ test("diffBeads treats semantically-equal status/tag-order/priority-form as unch
   const b = [{ id: "bd-1", title: "A", status: "closed", type: "task", priority: "2", tags: ["y", "x"] }];
   const d = diffBeads(a, b);
   assert.strictEqual(d.drift, false, "done==closed, tag order and 2=='2' must not be drift");
+  assert.strictEqual(d.unchanged, 1);
+});
+
+test("diffBeads handles non-string status and missing default priority defensively", () => {
+  const a = [{ id: 101 as unknown as string, title: "A", status: 7 as unknown as string, issue_type: "task" }];
+  const b = [{ id: "101", title: "A", status: "open", issue_type: "task", priority: 2 }];
+  const d = diffBeads(a, b);
+  assert.strictEqual(d.drift, false, "numeric ids, non-string statuses, and missing default priority should not crash or drift");
   assert.strictEqual(d.unchanged, 1);
 });
 
