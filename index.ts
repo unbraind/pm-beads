@@ -1104,7 +1104,15 @@ export function pmItemToBead(item: PmItem, pmToBead: Map<string, string>, preser
   return bead;
 }
 
-function runExport(pmRoot: string, opts: { preserveIds: boolean; output?: string; filter: RowFilter }) {
+// Serialize the current pm workspace into Beads records IN MEMORY, applying the
+// same id-preservation, dependency translation and row filtering the on-disk
+// exporter uses. Extracted from `runExport` so the diff command can compare a
+// file against the live workspace without writing to stdout/a file or
+// duplicating any mapping logic.
+export function buildBeadsFromWorkspace(
+  pmRoot: string,
+  opts: { preserveIds: boolean; filter: RowFilter },
+): BeadsItem[] {
   const allItems = readPmItems(pmRoot);
   const hasFilter = Boolean(opts.filter.statuses || opts.filter.types);
   const items = hasFilter ? allItems.filter((it) => pmItemPassesFilter(it, opts.filter)) : allItems;
@@ -1121,7 +1129,11 @@ function runExport(pmRoot: string, opts: { preserveIds: boolean; output?: string
     }
   }
 
-  const beads = items.map((item) => pmItemToBead(item, pmToBead, opts.preserveIds));
+  return items.map((item) => pmItemToBead(item, pmToBead, opts.preserveIds));
+}
+
+function runExport(pmRoot: string, opts: { preserveIds: boolean; output?: string; filter: RowFilter }) {
+  const beads = buildBeadsFromWorkspace(pmRoot, { preserveIds: opts.preserveIds, filter: opts.filter });
   const jsonl = beads.map((b) => JSON.stringify(b)).join("\n") + (beads.length ? "\n" : "");
 
   if (opts.output) {
@@ -1139,6 +1151,294 @@ function runExport(pmRoot: string, opts: { preserveIds: boolean; output?: string
   if (jsonl) process.stdout.write(jsonl);
   console.error(`Exported ${beads.length} item(s) as Beads JSONL.`);
   return { exported: beads.length };
+}
+
+// ---------------------------------------------------------------------------
+// Diff core — audit round-trip fidelity between two Beads sources
+// ---------------------------------------------------------------------------
+
+// The set of bead fields the diff classifier compares, in display order. These
+// are exactly the fields a `pm beads import` → `pm beads export` cycle is meant
+// to preserve, so a drift in any of them flags a round-trip fidelity loss.
+export const DIFF_FIELDS = [
+  "title",
+  "status",
+  "type",
+  "priority",
+  "tags",
+  "assignee",
+  "parent",
+  "deadline",
+  "dependencies",
+] as const;
+
+export type DiffField = (typeof DIFF_FIELDS)[number];
+
+export interface ChangedBead {
+  id: string;
+  fields: DiffField[]; // which compared fields differ between A and B
+}
+
+export interface BeadsDiff {
+  added: string[];     // bead ids present only in B
+  removed: string[];   // bead ids present only in A
+  changed: ChangedBead[]; // ids in both whose compared fields differ
+  unchanged: number;   // count of ids in both that are byte-for-byte equal (per compared fields)
+  // Totals for the human summary / CI consumers.
+  countA: number;
+  countB: number;
+  // True when ANY drift (added/removed/changed) was detected.
+  drift: boolean;
+}
+
+// Normalize a single comparable field of a bead into a stable, order-insensitive
+// scalar/string so two semantically equal values compare equal regardless of
+// incidental formatting (e.g. tag/dependency ordering, numeric vs. string
+// priority, the deadline/due_date alias).
+export function normalizeDiffField(bead: BeadsItem, field: DiffField): string {
+  switch (field) {
+    case "title":
+      return String(bead.title ?? bead.name ?? "").trim();
+    case "status":
+      // Compare on the canonical mapped Beads status so `done` vs `closed`
+      // (same meaning) is NOT reported as drift — symmetric with import/export.
+      return pmStatusToBeads(mapStatus(bead.status as string | undefined));
+    case "type":
+      return String(bead.type ?? "Task").trim().toLowerCase();
+    case "priority": {
+      const p = mapPriority(bead.priority);
+      return p === undefined ? "" : p;
+    }
+    case "tags": {
+      const tags = Array.isArray(bead.tags)
+        ? bead.tags.map((t) => String(t).trim()).filter(Boolean)
+        : [];
+      // Order-insensitive: tag order is not semantically meaningful.
+      return [...new Set(tags)].sort().join(",");
+    }
+    case "assignee":
+      return String(bead.assignee ?? "").trim();
+    case "parent":
+      return String(bead.parent ?? "").trim();
+    case "deadline":
+      return beadDeadline(bead) ?? "";
+    case "dependencies": {
+      // Compare on the set of upstream blocker ids (order-insensitive). Reuses
+      // the same edge-normalizer the importer/validator use, so the many Beads
+      // edge spellings collapse to one canonical form.
+      return [...new Set(extractBlockerIds(bead))].sort().join(",");
+    }
+  }
+}
+
+// Which of the compared fields differ between two beads?
+export function changedFields(a: BeadsItem, b: BeadsItem): DiffField[] {
+  const out: DiffField[] = [];
+  for (const field of DIFF_FIELDS) {
+    if (normalizeDiffField(a, field) !== normalizeDiffField(b, field)) out.push(field);
+  }
+  return out;
+}
+
+// Index a list of bead records by their stable bead id (first occurrence wins,
+// mirroring the dedup convention buildBeadIndex uses). Records without an id are
+// skipped — they cannot be matched across sources.
+export function indexBeadsById(beads: BeadsItem[]): Map<string, BeadsItem> {
+  const index = new Map<string, BeadsItem>();
+  for (const bead of beads) {
+    const id = normalizeBeadKey(bead.id);
+    if (id && !index.has(id)) index.set(id, bead);
+  }
+  return index;
+}
+
+// Pure diff over two Beads record lists, keyed on bead id. Optionally pre-filter
+// each side by the same RowFilter the import/export paths use, so a diff can be
+// scoped to a status/type subset.
+export function diffBeads(a: BeadsItem[], b: BeadsItem[], filter?: RowFilter): BeadsDiff {
+  const apply = (list: BeadsItem[]): BeadsItem[] => {
+    if (!filter || (!filter.statuses && !filter.types)) return list;
+    return list.filter((bead) => beadPassesFilter(bead, undefined, filter));
+  };
+  const aFiltered = apply(a);
+  const bFiltered = apply(b);
+
+  const aIndex = indexBeadsById(aFiltered);
+  const bIndex = indexBeadsById(bFiltered);
+
+  const added: string[] = [];
+  const removed: string[] = [];
+  const changed: ChangedBead[] = [];
+  let unchanged = 0;
+
+  for (const [id, beadA] of aIndex) {
+    const beadB = bIndex.get(id);
+    if (!beadB) {
+      removed.push(id);
+      continue;
+    }
+    const fields = changedFields(beadA, beadB);
+    if (fields.length) changed.push({ id, fields });
+    else unchanged++;
+  }
+  for (const id of bIndex.keys()) {
+    if (!aIndex.has(id)) added.push(id);
+  }
+
+  added.sort();
+  removed.sort();
+  changed.sort((x, y) => x.id.localeCompare(y.id));
+
+  const drift = added.length > 0 || removed.length > 0 || changed.length > 0;
+  return {
+    added,
+    removed,
+    changed,
+    unchanged,
+    countA: aIndex.size,
+    countB: bIndex.size,
+    drift,
+  };
+}
+
+// Parse a Beads JSONL file into bead records for diffing. Unlike the importer's
+// parseBeadsFile (which substitutes a sentinel for bad lines so import can keep
+// going), a diff over a malformed file is meaningless, so we hard-fail with a
+// line-naming error.
+function parseBeadsFileForDiff(filePath: string): BeadsItem[] {
+  const absolutePath = resolve(filePath);
+  let raw: string;
+  try {
+    raw = readFileSync(absolutePath, "utf-8");
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const exitCode = /ENOENT|no such file/i.test(msg) ? EXIT_CODE.NOT_FOUND : EXIT_CODE.GENERIC_FAILURE;
+    throw new CommandError(`Failed to read file: ${msg}`, exitCode);
+  }
+  const lines = raw.split("\n");
+  const beads: BeadsItem[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (!lines[i].trim()) continue;
+    let obj: unknown;
+    try {
+      obj = JSON.parse(lines[i]);
+    } catch {
+      throw new CommandError(`Line ${i + 1}: invalid JSON in ${absolutePath}`, EXIT_CODE.GENERIC_FAILURE);
+    }
+    if (obj === null || typeof obj !== "object" || Array.isArray(obj)) {
+      throw new CommandError(`Line ${i + 1}: not a JSON object in ${absolutePath}`, EXIT_CODE.GENERIC_FAILURE);
+    }
+    beads.push(obj as BeadsItem);
+  }
+  return beads;
+}
+
+interface DiffOptions {
+  json: boolean;
+  strict: boolean;
+  againstWorkspace: boolean;
+  preserveIds: boolean;
+  filter: RowFilter;
+  pmRoot?: string;
+}
+
+// Format the diff as a human-readable summary written to stderr (so stdout stays
+// clean for piping). Lists each changed bead with the specific fields that drift.
+function printDiffSummary(diff: BeadsDiff, labelA: string, labelB: string): void {
+  console.error(`Beads diff: ${labelA} (A) → ${labelB} (B)`);
+  console.error(`  A: ${diff.countA} bead(s), B: ${diff.countB} bead(s)`);
+  if (!diff.drift) {
+    console.error(`  No drift: all ${diff.unchanged} matched bead(s) are identical.`);
+    return;
+  }
+  if (diff.added.length) {
+    console.error(`  Added (only in B): ${diff.added.length}`);
+    for (const id of diff.added) console.error(`    + ${id}`);
+  }
+  if (diff.removed.length) {
+    console.error(`  Removed (only in A): ${diff.removed.length}`);
+    for (const id of diff.removed) console.error(`    - ${id}`);
+  }
+  if (diff.changed.length) {
+    console.error(`  Changed: ${diff.changed.length}`);
+    for (const c of diff.changed) console.error(`    ~ ${c.id} (${c.fields.join(", ")})`);
+  }
+  console.error(`  Unchanged: ${diff.unchanged}`);
+}
+
+// Run the `beads diff` command. Two modes:
+//   - two files:        compare <fileA> against <fileB>
+//   - --against-workspace: compare <fileA> against the live pm workspace
+//     (serialized to beads in memory via the shared export core).
+// Pure read-only — never mutates the workspace or any file. Exits nonzero only
+// under --strict when drift is found; otherwise always exits 0.
+function runDiff(args: string[] | undefined, opts: DiffOptions) {
+  // ctx.args can carry flag tokens (e.g. boolean flags like --against-workspace)
+  // alongside the positional file paths, so extract the positionals explicitly
+  // rather than indexing raw args — mirrors resolveImportInputFile.
+  const files = (Array.isArray(args) ? args : []).filter(
+    (a): a is string => typeof a === "string" && a.length > 0 && !a.startsWith("-"),
+  );
+  const fileA = files[0];
+  if (!fileA) {
+    throw new CommandError(
+      "Usage: pm beads diff <fileA> <fileB> | pm beads diff <file> --against-workspace [--json] [--strict] [--filter-status <list>] [--filter-type <list>]",
+      EXIT_CODE.USAGE,
+    );
+  }
+
+  let beadsA: BeadsItem[];
+  let beadsB: BeadsItem[];
+  let labelA: string;
+  let labelB: string;
+
+  if (opts.againstWorkspace) {
+    if (files[1]) {
+      throw new CommandError(
+        "Provide exactly one file with --against-workspace (the second source is the current workspace).",
+        EXIT_CODE.USAGE,
+      );
+    }
+    if (!opts.pmRoot) {
+      throw new CommandError("Cannot resolve the pm workspace root for --against-workspace.", EXIT_CODE.GENERIC_FAILURE);
+    }
+    beadsA = parseBeadsFileForDiff(fileA);
+    beadsB = buildBeadsFromWorkspace(opts.pmRoot, { preserveIds: opts.preserveIds, filter: opts.filter });
+    labelA = resolve(fileA);
+    labelB = "workspace";
+  } else {
+    const fileB = files[1];
+    if (!fileB) {
+      throw new CommandError(
+        "Provide two files, or one file with --against-workspace. Usage: pm beads diff <fileA> <fileB>",
+        EXIT_CODE.USAGE,
+      );
+    }
+    beadsA = parseBeadsFileForDiff(fileA);
+    beadsB = parseBeadsFileForDiff(fileB);
+    labelA = resolve(fileA);
+    labelB = resolve(fileB);
+  }
+
+  // The workspace side is already filtered by buildBeadsFromWorkspace; passing
+  // the filter into diffBeads additionally scopes the FILE side(s) by the same
+  // criteria so both sides are compared on equal footing.
+  const diff = diffBeads(beadsA, beadsB, opts.filter);
+
+  if (opts.json) {
+    if (opts.strict && diff.drift) process.exitCode = EXIT_CODE.GENERIC_FAILURE;
+    return { a: labelA, b: labelB, ...diff };
+  }
+
+  printDiffSummary(diff, labelA, labelB);
+
+  if (opts.strict && diff.drift) {
+    throw new CommandError(
+      `Drift detected: ${diff.added.length} added, ${diff.removed.length} removed, ${diff.changed.length} changed.`,
+      EXIT_CODE.GENERIC_FAILURE,
+    );
+  }
+  return { a: labelA, b: labelB, ...diff };
 }
 
 // ---------------------------------------------------------------------------
@@ -1167,6 +1467,15 @@ const EXPORT_FLAGS = [
 const VALIDATE_FLAGS = [
   { long: "--json", description: "Emit the validation report as JSON" },
   { long: "--no-workspace", description: "Skip cross-checking dependency references against the current pm workspace" },
+];
+
+const DIFF_FLAGS = [
+  { long: "--against-workspace", description: "Diff <file> against the current pm workspace (exported to Beads in-memory) instead of a second file" },
+  { long: "--json", description: "Emit the structured diff object as JSON" },
+  { long: "--strict", description: "Exit nonzero when any drift (added/removed/changed) is found — for CI fidelity gates" },
+  { long: "--no-preserve-ids", description: "When diffing against the workspace, key on pm ids instead of the original Beads ids (default: preserve)" },
+  { long: "--filter-status", value_name: "list", description: "Only compare beads whose mapped status is in this comma-separated list" },
+  { long: "--filter-type", value_name: "list", description: "Only compare beads whose type is in this comma-separated list" },
 ];
 
 // Read the --filter-status / --filter-type pair into a RowFilter, honoring both
@@ -1198,6 +1507,22 @@ function parseImportOptions(options: Record<string, unknown>): ImportOptions {
     priorityOverride: optionString(options, "priority"),
     tagsOverride: optionString(options, "tags"),
     filter: parseRowFilter(options),
+  };
+}
+
+export function parseDiffOptions(
+  options: Record<string, unknown>,
+  global: Record<string, unknown> = {},
+  pmRoot?: string,
+): DiffOptions {
+  return {
+    // `--json` may surface as a command option OR pm's global flag.
+    json: readBoolOption(options, "json") || readBoolOption(global, "json"),
+    strict: readBoolOption(options, "strict"),
+    againstWorkspace: readBoolOption(options, "against-workspace", "againstWorkspace"),
+    preserveIds: resolvePreserveIds(options),
+    filter: parseRowFilter(options),
+    pmRoot,
   };
 }
 
@@ -1430,5 +1755,38 @@ export default defineExtension({
     });
     api.registerCommand(makeValidateCommand("beads validate"));
     api.registerCommand(makeValidateCommand("beads-validate"));
+
+    // -----------------------------------------------------------------------
+    // command — `pm beads diff` (and the `pm beads-diff` rich-help alias):
+    // audit round-trip fidelity by comparing two Beads JSONL files, or a file
+    // against the current pm workspace (`--against-workspace`, serialized to
+    // beads in-memory via the shared export core). Pure read-only. Per-bead
+    // classification (added/removed/changed-fields/unchanged) keyed on bead id;
+    // human summary by default, structured object under `--json`. Exits nonzero
+    // only under `--strict` when drift is found (a CI fidelity gate). A single
+    // shared definition keeps the canonical and hyphenated forms from drifting
+    // (`beads` group commands need an explicit registerCommand to exist).
+    // -----------------------------------------------------------------------
+    const makeDiffCommand = (name: string) => ({
+      name,
+      description:
+        "Compare two Beads JSONL files (or a file against the current pm workspace) and report per-bead " +
+        "drift — added, removed, changed (which fields), unchanged — to audit round-trip fidelity.",
+      intent: "diff two Beads sources to audit round-trip fidelity",
+      examples: [
+        "pm beads diff before.jsonl after.jsonl",
+        "pm beads diff exported.jsonl --against-workspace",
+        "pm beads diff a.jsonl b.jsonl --json",
+        "pm beads diff a.jsonl b.jsonl --strict",
+        "pm beads diff a.jsonl b.jsonl --filter-status open,in_progress",
+        "pm beads diff a.jsonl b.jsonl --filter-type Bug",
+      ],
+      flags: DIFF_FLAGS,
+      async run(ctx: any) {
+        return runDiff(ctx.args, parseDiffOptions(ctx.options || {}, ctx.global || {}, ctx.pm_root));
+      },
+    });
+    api.registerCommand(makeDiffCommand("beads diff"));
+    api.registerCommand(makeDiffCommand("beads-diff"));
   },
 });
