@@ -175,19 +175,21 @@ export function normalizeBeadKey(id) {
 export function extractBlockerIds(item) {
     const ids = new Set();
     const push = (v) => {
-        if (typeof v === "string" && v.trim())
-            ids.add(v.trim());
+        const value = scalarString(v);
+        if (value)
+            ids.add(value);
     };
     if (Array.isArray(item.dependencies)) {
         for (const dep of item.dependencies) {
             if (typeof dep === "string")
                 push(dep);
             else if (dep && typeof dep === "object") {
-                if (typeof dep.depends_on_id === "string" && dep.depends_on_id.trim()) {
-                    push(dep.depends_on_id);
+                const dependsOn = scalarString(dep.depends_on_id);
+                if (dependsOn) {
+                    push(dependsOn);
                     continue;
                 }
-                const kind = (dep.kind || dep.type || "blocked_by").toLowerCase();
+                const kind = (scalarString(dep.kind) ?? scalarString(dep.type) ?? "blocked_by").toLowerCase();
                 if (kind === "blocked_by" || kind === "depends_on" || kind === "blocks_me")
                     push(dep.id);
             }
@@ -759,7 +761,7 @@ function runImport(filePath, pmRoot, opts) {
             : labels.length
                 ? labels.join(",")
                 : undefined;
-        const beadId = opts.preserveIds && typeof item.id === "string" ? item.id.trim() : undefined;
+        const beadId = opts.preserveIds ? normalizeBeadKey(item.id) : undefined;
         const baseDescription = item.description || title;
         const description = encodeBeadId(baseDescription, beadId);
         const blockers = extractBlockerIds(item);

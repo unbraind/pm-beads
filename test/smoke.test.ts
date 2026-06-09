@@ -190,6 +190,12 @@ test("extractBlockerIds normalizes the various Beads edge shapes", () => {
     ["upstream"],
   );
   assert.deepStrictEqual(
+    extractBlockerIds({
+      dependencies: [{ issue_id: 2 as unknown as string, depends_on_id: 1 as unknown as string, type: "blocks" }],
+    }),
+    ["1"],
+  );
+  assert.deepStrictEqual(
     extractBlockerIds({ dependencies: [{ id: "downstream", kind: "blocks" }] }),
     [],
     "legacy kind=blocks points downstream and must not be imported as an upstream blocker",
@@ -265,6 +271,21 @@ test("validateBeadsText accepts current bd export dependency rows", () => {
       issue_type: "task",
       owner: "alice",
       dependencies: [{ issue_id: "bd-b", depends_on_id: "bd-a", type: "blocks" }],
+    }),
+  ].join("\n");
+  const report = validateBeadsText(text);
+  assert.strictEqual(report.valid, true);
+  assert.strictEqual(report.records, 2);
+  assert.strictEqual(report.issues.length, 0);
+});
+
+test("validateBeadsText coerces numeric bead ids and dependency ids", () => {
+  const text = [
+    JSON.stringify({ id: 1, title: "First" }),
+    JSON.stringify({
+      id: 2,
+      title: "Second",
+      dependencies: [{ issue_id: 2, depends_on_id: 1, type: "blocks" }],
     }),
   ].join("\n");
   const report = validateBeadsText(text);
