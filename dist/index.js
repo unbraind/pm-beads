@@ -188,7 +188,7 @@ export function extractBlockerIds(item) {
                     continue;
                 }
                 const kind = (dep.kind || dep.type || "blocked_by").toLowerCase();
-                if (kind === "blocked_by" || kind === "depends_on" || kind === "blocks_me" || kind === "blocks")
+                if (kind === "blocked_by" || kind === "depends_on" || kind === "blocks_me")
                     push(dep.id);
             }
         }

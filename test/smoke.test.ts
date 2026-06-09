@@ -181,13 +181,18 @@ test("encodeBeadId does not duplicate an existing marker and tolerates empty bod
 test("extractBlockerIds normalizes the various Beads edge shapes", () => {
   assert.deepStrictEqual(
     extractBlockerIds({ dependencies: ["a", { id: "b", kind: "blocked_by" }, { id: "c", kind: "blocks" }] }),
-    ["a", "b", "c"],
+    ["a", "b"],
   );
   assert.deepStrictEqual(
     extractBlockerIds({
       dependencies: [{ issue_id: "current", depends_on_id: "upstream", type: "blocks" }],
     }),
     ["upstream"],
+  );
+  assert.deepStrictEqual(
+    extractBlockerIds({ dependencies: [{ id: "downstream", kind: "blocks" }] }),
+    [],
+    "legacy kind=blocks points downstream and must not be imported as an upstream blocker",
   );
   assert.deepStrictEqual(extractBlockerIds({ blocked_by: "z" }), ["z"]);
   assert.deepStrictEqual(extractBlockerIds({ blocked_by: ["z", "y"] }), ["z", "y"]);
