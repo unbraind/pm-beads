@@ -69,17 +69,27 @@ interface BeadsItem {
   description?: string;
   status?: string;
   type?: string;
+  issue_type?: string;
   priority?: number | string;
   tags?: string[];
+  labels?: string[];
   assignee?: string;
+  owner?: string;
   parent?: string;
   deadline?: string;
   due_date?: string;
+  due_at?: string;
   sprint?: string;
   release?: string;
   created_at?: string;
   updated_at?: string;
-  dependencies?: Array<string | { id?: string; kind?: string }>;
+  dependencies?: Array<string | {
+    id?: string;
+    kind?: string;
+    issue_id?: string;
+    depends_on_id?: string;
+    type?: string;
+  }>;
   blocked_by?: string | string[];
   blocks?: string | string[];
   [key: string]: unknown;
@@ -245,14 +255,32 @@ export function extractBlockerIds(item: BeadsItem): string[] {
     for (const dep of item.dependencies) {
       if (typeof dep === "string") push(dep);
       else if (dep && typeof dep === "object") {
-        const kind = (dep.kind || "blocked_by").toLowerCase();
-        if (kind === "blocked_by" || kind === "depends_on" || kind === "blocks_me") push(dep.id);
+        if (typeof dep.depends_on_id === "string" && dep.depends_on_id.trim()) {
+          push(dep.depends_on_id);
+          continue;
+        }
+        const kind = (dep.kind || dep.type || "blocked_by").toLowerCase();
+        if (kind === "blocked_by" || kind === "depends_on" || kind === "blocks_me" || kind === "blocks") push(dep.id);
       }
     }
   }
   if (Array.isArray(item.blocked_by)) item.blocked_by.forEach(push);
   else push(item.blocked_by);
   return [...ids];
+}
+
+function beadType(item: BeadsItem): string | undefined {
+  const raw = typeof item.issue_type === "string" && item.issue_type.trim()
+    ? item.issue_type
+    : typeof item.type === "string" && item.type.trim()
+      ? item.type
+      : undefined;
+  return raw?.trim();
+}
+
+function beadLabels(item: BeadsItem): string[] {
+  const values = Array.isArray(item.labels) ? item.labels : Array.isArray(item.tags) ? item.tags : [];
+  return values.map((tag) => String(tag).trim()).filter(Boolean);
 }
 
 // ---------------------------------------------------------------------------
@@ -372,14 +400,21 @@ function beadDeadline(item: BeadsItem): string | undefined {
     ? item.deadline
     : typeof item.due_date === "string" && item.due_date.trim()
       ? item.due_date
-      : undefined;
+      : typeof item.due_at === "string" && item.due_at.trim()
+        ? item.due_at
+        : undefined;
   return raw?.trim();
 }
 
 function appendPlanningArgs(args: string[], item: BeadsItem): void {
   const deadline = beadDeadline(item);
   if (deadline) args.push("--deadline", deadline);
-  if (item.assignee) args.push("--assignee", String(item.assignee));
+  const assignee = typeof item.assignee === "string" && item.assignee.trim()
+    ? item.assignee
+    : typeof item.owner === "string" && item.owner.trim()
+      ? item.owner
+      : undefined;
+  if (assignee) args.push("--assignee", assignee);
   if (item.sprint) args.push("--sprint", String(item.sprint));
   if (item.release) args.push("--release", String(item.release));
 }
@@ -422,7 +457,7 @@ export function beadPassesFilter(
     if (!filter.statuses.has(status.toLowerCase())) return false;
   }
   if (filter.types) {
-    const type = (typeOverride || (bead.type as string) || "Task").toLowerCase();
+    const type = (typeOverride || beadType(bead) || "Task").toLowerCase();
     if (!filter.types.has(type)) return false;
   }
   return true;
@@ -854,13 +889,14 @@ function runImport(filePath: string | undefined, pmRoot: string, opts: ImportOpt
       continue;
     }
 
-    const type = opts.typeOverride || (item.type as string) || "Task";
+    const type = opts.typeOverride || beadType(item) || "Task";
     const status = mapStatus(item.status as string);
     const priority = opts.priorityOverride || mapPriority(item.priority);
+    const labels = beadLabels(item);
     const tags = opts.tagsOverride
       ? opts.tagsOverride
-      : Array.isArray(item.tags)
-        ? item.tags.join(",")
+      : labels.length
+        ? labels.join(",")
         : undefined;
     const beadId = opts.preserveIds && typeof item.id === "string" ? item.id.trim() : undefined;
     const baseDescription = (item.description as string) || title;
@@ -1073,14 +1109,14 @@ export function pmItemToBead(item: PmItem, pmToBead: Map<string, string>, preser
   const beadId = preserveIds ? decodeBeadId(item) : undefined;
   const id = beadId || item.id;
 
-  const blockers: Array<{ id: string; kind: string }> = [];
+  const blockers: Array<{ issue_id: string; depends_on_id: string; type: string }> = [];
   if (Array.isArray(item.dependencies)) {
     for (const dep of item.dependencies) {
       if (!dep?.id) continue;
       if ((dep.kind || "blocked_by").toLowerCase() !== "blocked_by") continue;
       // Translate the upstream pm id back to its bead id when we know it.
       const upstream = pmToBead.get(dep.id) || dep.id;
-      blockers.push({ id: upstream, kind: "blocked_by" });
+      if (id) blockers.push({ issue_id: id, depends_on_id: upstream, type: "blocks" });
     }
   }
 
@@ -1089,11 +1125,14 @@ export function pmItemToBead(item: PmItem, pmToBead: Map<string, string>, preser
     title: item.title ?? "(untitled)",
     description: stripBeadIdMarker(item.description),
     status: pmStatusToBeads(item.status),
-    type: item.type ?? "Task",
+    issue_type: String(item.type ?? "Task").trim().toLowerCase(),
   };
   if (item.priority !== undefined && item.priority !== null) bead.priority = Number(item.priority);
-  if (Array.isArray(item.tags) && item.tags.length) bead.tags = item.tags;
-  if (item.assignee) bead.assignee = item.assignee;
+  if (Array.isArray(item.tags) && item.tags.length) bead.labels = item.tags;
+  if (item.assignee) {
+    bead.assignee = item.assignee;
+    bead.owner = item.assignee;
+  }
   if (item.parent) bead.parent = pmToBead.get(item.parent) ?? item.parent;
   if (item.deadline ?? item.due_date) bead.deadline = item.deadline ?? item.due_date;
   if (item.sprint) bead.sprint = item.sprint;
@@ -1204,20 +1243,18 @@ export function normalizeDiffField(bead: BeadsItem, field: DiffField): string {
       // (same meaning) is NOT reported as drift — symmetric with import/export.
       return pmStatusToBeads(mapStatus(bead.status as string | undefined));
     case "type":
-      return String(bead.type ?? "Task").trim().toLowerCase();
+      return String(beadType(bead) ?? "Task").trim().toLowerCase();
     case "priority": {
       const p = mapPriority(bead.priority);
       return p === undefined ? "" : p;
     }
     case "tags": {
-      const tags = Array.isArray(bead.tags)
-        ? bead.tags.map((t) => String(t).trim()).filter(Boolean)
-        : [];
+      const tags = beadLabels(bead);
       // Order-insensitive: tag order is not semantically meaningful.
       return [...new Set(tags)].sort().join(",");
     }
     case "assignee":
-      return String(bead.assignee ?? "").trim();
+      return String(bead.assignee ?? bead.owner ?? "").trim();
     case "parent":
       return String(bead.parent ?? "").trim();
     case "deadline":

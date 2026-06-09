@@ -181,7 +181,13 @@ test("encodeBeadId does not duplicate an existing marker and tolerates empty bod
 test("extractBlockerIds normalizes the various Beads edge shapes", () => {
   assert.deepStrictEqual(
     extractBlockerIds({ dependencies: ["a", { id: "b", kind: "blocked_by" }, { id: "c", kind: "blocks" }] }),
-    ["a", "b"],
+    ["a", "b", "c"],
+  );
+  assert.deepStrictEqual(
+    extractBlockerIds({
+      dependencies: [{ issue_id: "current", depends_on_id: "upstream", type: "blocks" }],
+    }),
+    ["upstream"],
   );
   assert.deepStrictEqual(extractBlockerIds({ blocked_by: "z" }), ["z"]);
   assert.deepStrictEqual(extractBlockerIds({ blocked_by: ["z", "y"] }), ["z", "y"]);
@@ -236,6 +242,24 @@ test("validateBeadsText passes a clean file", () => {
     JSON.stringify({ id: "a", title: "First" }),
     JSON.stringify({ id: "b", title: "Second", dependencies: [{ id: "a", kind: "blocked_by" }] }),
     "", // blank lines allowed
+  ].join("\n");
+  const report = validateBeadsText(text);
+  assert.strictEqual(report.valid, true);
+  assert.strictEqual(report.records, 2);
+  assert.strictEqual(report.issues.length, 0);
+});
+
+test("validateBeadsText accepts current bd export dependency rows", () => {
+  const text = [
+    JSON.stringify({ _type: "issue", id: "bd-a", title: "First", issue_type: "feature", labels: ["import"] }),
+    JSON.stringify({
+      _type: "issue",
+      id: "bd-b",
+      title: "Second",
+      issue_type: "task",
+      owner: "alice",
+      dependencies: [{ issue_id: "bd-b", depends_on_id: "bd-a", type: "blocks" }],
+    }),
   ].join("\n");
   const report = validateBeadsText(text);
   assert.strictEqual(report.valid, true);
@@ -429,6 +453,12 @@ test("beadPassesFilter matches on mapped status and effective type", () => {
   assert.strictEqual(beadPassesFilter(bead, undefined, {}), true);
 });
 
+test("beadPassesFilter reads current bd issue_type", () => {
+  const bead = { title: "x", status: "open", issue_type: "feature" };
+  assert.strictEqual(beadPassesFilter(bead, undefined, { types: new Set(["feature"]) }), true);
+  assert.strictEqual(beadPassesFilter(bead, undefined, { types: new Set(["task"]) }), false);
+});
+
 test("pmItemPassesFilter matches on the exported Beads status and type", () => {
   const item = { id: "pm-1", title: "x", status: "in_progress", type: "Feature" };
   assert.strictEqual(pmItemPassesFilter(item, { statuses: new Set(["in_progress"]) }), true);
@@ -464,7 +494,26 @@ test("pmItemToBead preserves bead id and translates dependency edges", () => {
   assert.strictEqual(bead.deadline, "2026-07-01");
   assert.strictEqual(bead.sprint, "S17");
   assert.strictEqual(bead.release, "2026.7");
-  assert.deepStrictEqual(bead.dependencies, [{ id: "bd-up", kind: "blocked_by" }]);
+  assert.strictEqual(bead.issue_type, "task");
+  assert.deepStrictEqual(bead.dependencies, [{ issue_id: "bd-down", depends_on_id: "bd-up", type: "blocks" }]);
+});
+
+test("pmItemToBead emits current bd labels and owner fields", () => {
+  const bead = pmItemToBead(
+    {
+      id: "pm-1",
+      title: "Current shape",
+      description: encodeBeadId("body", "bd-1"),
+      type: "Feature",
+      tags: ["ctx", "sync"],
+      assignee: "alice",
+    },
+    new Map(),
+    true,
+  );
+  assert.strictEqual(bead.issue_type, "feature");
+  assert.deepStrictEqual(bead.labels, ["ctx", "sync"]);
+  assert.strictEqual(bead.owner, "alice");
 });
 
 // --- Diff core (feature: round-trip fidelity audit) --------------------------
@@ -496,6 +545,31 @@ test("diffBeads reports zero drift for identical lists", () => {
   assert.deepStrictEqual(d.changed, []);
   assert.strictEqual(d.countA, 2);
   assert.strictEqual(d.countB, 2);
+});
+
+test("diffBeads treats legacy and current bd shapes as equivalent", () => {
+  const legacy = [{
+    id: "bd-2",
+    title: "B",
+    status: "open",
+    type: "Task",
+    tags: ["x", "y"],
+    assignee: "alice",
+    dependencies: [{ id: "bd-1", kind: "blocked_by" }],
+  }];
+  const current = [{
+    _type: "issue",
+    id: "bd-2",
+    title: "B",
+    status: "open",
+    issue_type: "task",
+    labels: ["y", "x"],
+    owner: "alice",
+    dependencies: [{ issue_id: "bd-2", depends_on_id: "bd-1", type: "blocks" }],
+  }];
+  const d = diffBeads(legacy, current);
+  assert.strictEqual(d.drift, false);
+  assert.strictEqual(d.unchanged, 1);
 });
 
 test("diffBeads treats semantically-equal status/tag-order/priority-form as unchanged", () => {
