@@ -1455,7 +1455,7 @@ async function runImportPreflight(ctx) {
 }
 export default defineExtension({
     name: "pm-beads",
-    version: "2026.6.9",
+    version: "2026.6.10",
     activate(api) {
         // -----------------------------------------------------------------------
         // schema — declare the bead_id provenance field
