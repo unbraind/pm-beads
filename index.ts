@@ -281,7 +281,7 @@ function beadType(item: BeadsItem): string | undefined {
 
 function beadLabels(item: BeadsItem): string[] {
   const values = Array.isArray(item.labels) ? item.labels : Array.isArray(item.tags) ? item.tags : [];
-  return values.map((tag) => String(tag).trim()).filter(Boolean);
+  return values.map((tag) => scalarString(tag)).filter((tag): tag is string => Boolean(tag));
 }
 
 function scalarString(raw: unknown): string | undefined {
