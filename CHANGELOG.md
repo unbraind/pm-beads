@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Add beads diff for round-trip fidelity auditing ([pm-beads-tjrz](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/features/pm-beads-tjrz.toon))
+
 ## 2026.06.07 - 2026-06-07
 
 ### Added
