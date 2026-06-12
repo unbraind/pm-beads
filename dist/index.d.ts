@@ -148,6 +148,7 @@ export interface ExistingBeadItem {
     status?: string;
 }
 export declare function buildBeadIndex(items: PmItem[]): Map<string, ExistingBeadItem>;
+export declare function assertBeadsImportable(filePath: string, pmRoot?: string): Promise<void>;
 export declare function extractCreatedId(stdout: string): string | undefined;
 export declare function pmItemToBead(item: PmItem, pmToBead: Map<string, string>, preserveIds: boolean): BeadsItem;
 export declare function buildBeadsFromWorkspace(pmRoot: string, opts: {

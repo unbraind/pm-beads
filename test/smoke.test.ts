@@ -4,6 +4,7 @@ import test from "node:test";
 import extension, {
   CommandError,
   EXIT_CODE,
+  assertBeadsImportable,
   buildBeadIndex,
   beadPassesFilter,
   decodeBeadId,
@@ -40,7 +41,14 @@ import { join } from "node:path";
 // hooks). A missing method makes activate() throw a TypeError.
 function makeApi(
   registered: string[],
-  captured: { commands: Record<string, any>; importers: Record<string, any>; exporters: Record<string, any>; preflight?: any } = {
+  captured: {
+    commands: Record<string, any>;
+    importers: Record<string, any>;
+    exporters: Record<string, any>;
+    importerOptions?: Record<string, any>;
+    exporterOptions?: Record<string, any>;
+    preflight?: any;
+  } = {
     commands: {},
     importers: {},
     exporters: {},
@@ -63,13 +71,15 @@ function makeApi(
     registerItemTypes: () => registered.push("itemTypes"),
     registerMigration: () => registered.push("migration"),
     registerRenderer: () => registered.push("renderer"),
-    registerImporter: (name: string, fn: any) => {
+    registerImporter: (name: string, fn: any, options?: any) => {
       registered.push(`importer:${name}`);
       captured.importers[name] = fn;
+      if (captured.importerOptions && options) captured.importerOptions[name] = options;
     },
-    registerExporter: (name: string, fn: any) => {
+    registerExporter: (name: string, fn: any, options?: any) => {
       registered.push(`exporter:${name}`);
       captured.exporters[name] = fn;
+      if (captured.exporterOptions && options) captured.exporterOptions[name] = options;
     },
     registerSearchProvider: () => registered.push("search"),
     registerVectorStoreAdapter: () => registered.push("vectorStore"),
@@ -91,60 +101,106 @@ test("extension has required shape", () => {
   assert.strictEqual(typeof extension.activate, "function", "activate should be a function");
 });
 
-test("extension registers importer, exporter, schema, preflight and commands", () => {
+test("extension registers importer, exporter, schema and commands — but NOT preflight", () => {
   const registered: string[] = [];
   extension.activate(makeApi(registered) as any);
   assert.ok(registered.includes("importer:beads"), "should register the beads importer");
   assert.ok(registered.includes("exporter:beads"), "should register the beads exporter");
   assert.ok(registered.includes("itemFields"), "should register the bead_id schema field");
-  assert.ok(registered.includes("preflight"), "should register the import preflight gate");
   assert.ok(registered.includes("command"), "should register at least one command");
+  // The fail-fast import gate must NOT depend on the single-winner preflight
+  // override surface: a co-installed package (e.g. pm-todos) shadows it
+  // (extension_preflight_override_collision) and a malformed file would then
+  // partially import. The gate lives inside the import core instead.
+  assert.ok(!registered.includes("preflight"), "must not occupy the single-winner preflight slot");
+});
+
+test("importer/exporter registrations carry first-class command metadata (options arg)", () => {
+  const registered: string[] = [];
+  const captured = {
+    commands: {} as Record<string, any>,
+    importers: {} as Record<string, any>,
+    exporters: {} as Record<string, any>,
+    importerOptions: {} as Record<string, any>,
+    exporterOptions: {} as Record<string, any>,
+  };
+  extension.activate(makeApi(registered, captured) as any);
+  const imp = captured.importerOptions["beads"];
+  assert.ok(imp, "importer should pass the ImportExportRegistrationOptions third argument");
+  assert.ok(typeof imp.description === "string" && imp.description.length > 0);
+  assert.ok(Array.isArray(imp.flags) && imp.flags.some((f: any) => f.long === "--upsert"));
+  assert.ok(imp.flags.every((f: any) => f.value_type === "string" || f.value_type === "boolean"));
+  const exp = captured.exporterOptions["beads"];
+  assert.ok(exp, "exporter should pass the ImportExportRegistrationOptions third argument");
+  assert.ok(Array.isArray(exp.flags) && exp.flags.some((f: any) => f.long === "--output"));
 });
 
 test("resolveImportInputFile picks the first non-flag argument", () => {
   assert.strictEqual(resolveImportInputFile(["items.jsonl", "--dry-run"]), "items.jsonl");
   assert.strictEqual(resolveImportInputFile(["--upsert", "data.jsonl"]), "data.jsonl");
-  assert.strictEqual(resolveImportInputFile(["--type", "Task", "f.jsonl"]), "Task");
-  // ^ "--type Task" arrives pre-parsed in practice; raw fallback still returns a value.
+  assert.strictEqual(resolveImportInputFile(["--type", "Task", "f.jsonl"]), "f.jsonl");
+  assert.strictEqual(resolveImportInputFile(["--priority", "2", "--tags", "a,b", "f.jsonl"]), "f.jsonl");
   assert.strictEqual(resolveImportInputFile([]), undefined);
   assert.strictEqual(resolveImportInputFile(["--dry-run"]), undefined);
   assert.strictEqual(resolveImportInputFile(undefined), undefined);
 });
 
-test("import preflight is a silent pass-through for a valid file", async () => {
-  const registered: string[] = [];
-  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any>, preflight: undefined as any };
-  extension.activate(makeApi(registered, captured) as any);
-  const preflight = captured.preflight;
-  assert.ok(typeof preflight === "function", "preflight should be registered");
-
-  const dir = mkdtempSync(join(tmpdir(), "beads-pf-valid-"));
+test("assertBeadsImportable passes a valid file silently", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "beads-gate-valid-"));
   const file = join(dir, "valid.jsonl");
   writeFileSync(file, '{"id":"bd-1","title":"First","status":"open"}\n', "utf-8");
-  const delta = await preflight({ command: "beads import", args: [file], options: {}, pm_root: dir });
-  assert.deepStrictEqual(delta, {}, "valid file should yield an empty pass-through delta");
+  await assert.doesNotReject(() => assertBeadsImportable(file));
 });
 
-test("import preflight ignores non-import commands (export/validate)", async () => {
-  const registered: string[] = [];
-  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any>, preflight: undefined as any };
-  extension.activate(makeApi(registered, captured) as any);
-  const preflight = captured.preflight;
-
-  const dir = mkdtempSync(join(tmpdir(), "beads-pf-scope-"));
-  const bad = join(dir, "bad.jsonl");
-  // A structurally invalid file: if the gate fired here it would abort the
-  // process. For export/validate it must NOT fire (must return pass-through).
-  writeFileSync(bad, "{not json\n", "utf-8");
-  assert.deepStrictEqual(
-    await preflight({ command: "beads export", args: [], options: {}, pm_root: dir }),
-    {},
-    "export must not be gated",
+test("assertBeadsImportable rejects a malformed file with a line-naming CommandError", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "beads-gate-bad-"));
+  const file = join(dir, "bad.jsonl");
+  writeFileSync(
+    file,
+    ['{"id":"b-1","title":"First"}', '{"id":"b-2","title":"Second"', '{"id":"b-3"}'].join("\n") + "\n",
+    "utf-8",
   );
-  assert.deepStrictEqual(
-    await preflight({ command: "beads validate", args: [bad], options: {}, pm_root: dir }),
-    {},
-    "validate must not be gated",
+  await assert.rejects(
+    () => assertBeadsImportable(file),
+    (err: unknown) => {
+      assert.ok(err instanceof Error);
+      assert.strictEqual((err as CommandError).exitCode, EXIT_CODE.GENERIC_FAILURE);
+      assert.match((err as Error).message, /nothing was imported/);
+      assert.match((err as Error).message, /line 2 \[invalid_json\]/);
+      assert.match((err as Error).message, /line 3 \[missing_title\]/);
+      return true;
+    },
+  );
+});
+
+test("assertBeadsImportable maps a missing file to NOT_FOUND", async () => {
+  await assert.rejects(
+    () => assertBeadsImportable("/nonexistent/definitely-missing.jsonl"),
+    (err: unknown) => {
+      assert.strictEqual((err as CommandError).exitCode, EXIT_CODE.NOT_FOUND);
+      return true;
+    },
+  );
+});
+
+test("beads importer fail-fast: a malformed file aborts BEFORE any pm write", async () => {
+  // The gate is part of runImport itself (not the shadowable preflight slot),
+  // so invoking the registered importer with a malformed file must reject with
+  // the validation error — proving no create/update spawn can ever happen.
+  const registered: string[] = [];
+  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any> };
+  extension.activate(makeApi(registered, captured) as any);
+  const importer = captured.importers["beads"];
+  const dir = mkdtempSync(join(tmpdir(), "beads-gate-imp-"));
+  const file = join(dir, "bad.jsonl");
+  writeFileSync(file, '{"id":"x","title":"ok"}\n{broken\n', "utf-8");
+  await assert.rejects(
+    async () => importer({ args: [file], options: {}, pm_root: undefined }),
+    (err: unknown) => {
+      assert.match((err as Error).message, /Beads JSONL validation failed/);
+      assert.strictEqual((err as CommandError).exitCode, EXIT_CODE.GENERIC_FAILURE);
+      return true;
+    },
   );
 });
 
