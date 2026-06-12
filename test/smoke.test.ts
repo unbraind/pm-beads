@@ -21,6 +21,7 @@ import extension, {
   resolveImportInputFile,
   resolvePreserveIds,
   resolvePreserveTimestamps,
+  resolveWorkspaceCheck,
   stripBeadIdMarker,
   validateBeadsText,
   detectDependencyCycles,
@@ -265,6 +266,17 @@ test("resolvePreserveIds defaults on and honors negation", () => {
   assert.strictEqual(resolvePreserveIds({ preserveIds: false }), false);
   assert.strictEqual(resolvePreserveIds({ "preserve-ids": false }), false);
   assert.strictEqual(resolvePreserveIds({ "no-preserve-ids": true }), false);
+});
+
+test("resolveWorkspaceCheck defaults on and honors every --no-workspace shape", () => {
+  assert.strictEqual(resolveWorkspaceCheck({}), true);
+  // Runtime normalizes --no-workspace to { workspace: false } — the shape the
+  // validate handler previously ignored, making the flag a silent no-op.
+  assert.strictEqual(resolveWorkspaceCheck({ workspace: false }), false);
+  assert.strictEqual(resolveWorkspaceCheck({ workspace: "false" }), false);
+  assert.strictEqual(resolveWorkspaceCheck({ noWorkspace: true }), false);
+  assert.strictEqual(resolveWorkspaceCheck({ "no-workspace": true }), false);
+  assert.strictEqual(resolveWorkspaceCheck({ workspace: true }), true);
 });
 
 test("extractCreatedId reads both top-level and nested id shapes", () => {

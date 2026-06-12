@@ -8,6 +8,7 @@
 
 ### Fixed
 
+- beads validate --no-workspace is a silent no-op \(runtime normalizes flag to workspace:false\) ([pm-beads-u440](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-u440.toon))
 - Promote pm beads validate to first-class command registration ([pm-beads-azv0](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-azv0.toon))
 
 ## 2026.06.09 - 2026-06-09
