@@ -20,27 +20,33 @@ pm install github.com/unbraind/pm-beads --global
 | `importers` (exporter) | `pm beads export` — serialize pm items back to Beads JSONL |
 | `commands` | `pm beads-import` / `pm beads-export` / `pm beads-validate` / `pm beads-diff` — rich-help aliases of the import/export/validate/diff pipelines |
 | `schema` | declares the `bead_id` item field |
-| `preflight` | fail-fast Beads-JSONL schema gate that runs **before** `pm beads import` touches the pm store — aborts on a structurally invalid file so no partial items are ever created |
 
-## Preflight schema gate
+## Fail-fast import gate
 
-Before `pm beads import` (and its `pm beads-import` alias) creates anything, a
-preflight gate runs the same structural validator used by `pm beads validate`
-against the input file. If the file has any structural **error** (invalid JSON
-line, a record that is not a JSON object, a missing `title`, or a dangling
-dependency that resolves neither in the file nor in the workspace), the import
-**aborts immediately** with a clear, line-naming message and a non-zero exit —
-*before* a single pm item is written. Warnings alone (e.g. an unknown status,
-a duplicate id) do not block.
+Before `pm beads import` (and its `pm beads-import` alias) creates anything,
+the import pipeline itself runs the same structural validator used by
+`pm beads validate` against the input file. If the file has any structural
+**error** (invalid JSON line, a record that is not a JSON object, a missing
+`title`, or a dangling dependency that resolves neither in the file nor in the
+workspace), the import **aborts immediately** with a clear, line-naming message
+and a non-zero exit — *before* a single pm item is written. Warnings alone
+(e.g. an unknown status, a duplicate id) do not block.
 
 ```text
 $ pm beads import broken.jsonl
-Beads JSONL preflight failed for /abs/path/broken.jsonl — 2 structural error(s); nothing was imported. Fix the file (or run `pm beads validate <file>`) and retry:
+Beads JSONL validation failed for /abs/path/broken.jsonl — 2 structural error(s); nothing was imported. Fix the file (or run `pm beads validate <file>`) and retry:
   - line 2 [invalid_json]: line is not valid JSON
   - line 3 [missing_title]: missing required field: title
 $ echo $?
 1
 ```
+
+The gate is part of the import command itself — it deliberately does **not**
+use pm's preflight-override surface, which is single-winner: when another
+package (e.g. `pm-todos`) is co-installed and owns the preflight slot
+(`extension_preflight_override_collision`), a gate registered there silently
+stops running. Embedding the validation in the import path guarantees fail-fast
+behavior in every installation combination.
 
 The gate is scoped strictly to the import path: `pm beads export` and
 `pm beads-validate` are never blocked by it.

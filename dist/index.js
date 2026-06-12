@@ -6,8 +6,14 @@
 //   importers — `pm beads import` (native import pipeline, with `--upsert`)
 //   exporters — `pm beads export` (serialize pm items back to Beads JSONL)
 //   schema    — declares the `bead_id` item field
-//   preflight — fail-fast Beads-JSONL schema gate that validates the import
-//               input BEFORE the importer touches the pm store (import path only)
+//
+// Fail-fast import gate: the import core itself validates the whole JSONL file
+// (same structural rules as `pm beads validate`) BEFORE any pm-store write and
+// aborts with a nonzero exit on structural errors. The gate deliberately does
+// NOT live on the preflight override surface: preflight overrides are
+// single-winner, so a co-installed package (e.g. pm-todos) silently shadows
+// them (`extension_preflight_override_collision`) and a gate registered there
+// stops running entirely — letting a malformed file partially import.
 //
 // Idempotent re-import: `pm beads import <file> --upsert` keys on the original
 // Beads id (recovered from the `[bead_id: <id>]` provenance marker, NOT from
@@ -231,6 +237,15 @@ function beadAssignee(item) {
 // timestamps — we patch the persisted item file in place after create/update.
 // This is additive and degrades gracefully: an unparseable timestamp or an
 // item file we cannot locate is skipped with a warning, never a hard failure.
+//
+// History consistency: a raw file patch desynchronizes the item's history
+// chain (`pm health` flags it as history_drift / hash_mismatches → ok:false).
+// After every successful patch we therefore run the CLI's own sanctioned
+// re-anchor, `pm history-repair <id>`, which recomputes the hashes and records
+// an audit marker so the store stays history-consistent. If the repair cannot
+// run (e.g. an older CLI without `history-repair`), the patch is REVERTED and
+// the timestamp is skipped with a warning — keeping `pm health` green is the
+// default behavior; raw drift is never left behind.
 // Accept only well-formed ISO-8601 instants so we never write garbage into the
 // front matter. Returns the normalized (round-tripped) ISO string or undefined.
 export function normalizeIsoTimestamp(raw) {
@@ -331,6 +346,28 @@ function applyTimestamps(pmRoot, pmId, bead) {
     }
     catch (err) {
         console.error(`  timestamp skipped: cannot write ${file}: ${err instanceof Error ? err.message : String(err)}`);
+        return false;
+    }
+    // Re-anchor the item's history chain so the raw patch does not surface as
+    // history_drift in `pm health`. On failure, revert the patch entirely — a
+    // missing timestamp is recoverable, a drifted history chain is not.
+    const repair = spawnSync("pm", [
+        "--path", pmRoot,
+        "history-repair", pmId,
+        "--message", "pm-beads import: preserved source bead created_at/updated_at",
+    ], { encoding: "utf-8" });
+    if (repair.error || repair.status !== 0) {
+        const why = repair.error?.message || repair.stderr?.trim() || `exit ${repair.status}`;
+        try {
+            writeFileSync(file, text, "utf-8");
+            console.error(`  timestamp skipped: pm history-repair failed for ${pmId} (${why}); ` +
+                `patch reverted to keep pm health history-consistent`);
+        }
+        catch (revertErr) {
+            console.error(`  timestamp warning: pm history-repair failed for ${pmId} (${why}) and the patch could not be ` +
+                `reverted (${revertErr instanceof Error ? revertErr.message : String(revertErr)}); ` +
+                `run \`pm history-repair ${pmId}\` manually`);
+        }
         return false;
     }
     return true;
@@ -705,18 +742,58 @@ export function buildBeadIndex(items) {
     }
     return index;
 }
+// Fail-fast import gate: structurally validate the whole file (same rules as
+// `pm beads validate`, including the workspace cross-check for dependency
+// edges) and throw a CommandError BEFORE the import core writes anything.
+// Lives in the import path itself — NOT on the single-winner preflight
+// override surface — so it holds even when another package owns preflight.
+export async function assertBeadsImportable(filePath, pmRoot) {
+    const absolutePath = resolve(filePath);
+    let raw;
+    try {
+        raw = readFileSync(absolutePath, "utf-8");
+    }
+    catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        const exitCode = /ENOENT|no such file/i.test(msg) ? EXIT_CODE.NOT_FOUND : EXIT_CODE.GENERIC_FAILURE;
+        throw new CommandError(`Failed to read file: ${msg}`, exitCode);
+    }
+    // Cross-check dependency edges against bead ids already in the workspace so
+    // a reference that resolves at import time (a prior import) stays a warning,
+    // not a hard error — same semantics as `pm beads validate`.
+    let workspaceBeadIds;
+    try {
+        workspaceBeadIds = pmRoot ? await readWorkspaceBeadIds(pmRoot) : undefined;
+    }
+    catch {
+        workspaceBeadIds = undefined;
+    }
+    const report = validateBeadsText(raw, absolutePath, workspaceBeadIds);
+    const errors = report.issues.filter((i) => i.severity === "error");
+    if (errors.length === 0)
+        return;
+    const detail = errors
+        .slice(0, 10)
+        .map((iss) => `  - ${iss.line ? `line ${iss.line}` : "file"} [${iss.code}]: ${iss.message}`)
+        .join("\n");
+    const more = errors.length > 10 ? `\n  …and ${errors.length - 10} more error(s)` : "";
+    throw new CommandError(`Beads JSONL validation failed for ${absolutePath} — ${errors.length} structural error(s); ` +
+        `nothing was imported. Fix the file (or run \`pm beads validate <file>\`) and retry:\n${detail}${more}`, EXIT_CODE.GENERIC_FAILURE);
+}
 // Run the import. Two passes so dependency edges can reference items created
 // earlier in the same file: pass 1 creates (or, with --upsert, updates) every
 // item and records bead-id → pm-id; pass 2 wires up the blocker edges via
 // `pm update --dep` (with --replace-deps when upserting, so re-import does not
 // accumulate duplicate edges).
-function runImport(filePath, pmRoot, opts) {
+async function runImport(filePath, pmRoot, opts) {
     if (!filePath) {
         throw new CommandError("Usage: pm beads import <file> [--dry-run] [--upsert] [--no-preserve-ids] [--type <type>] [--priority <n>] [--tags <tags>]", EXIT_CODE.USAGE);
     }
     if (opts.upsert && !opts.preserveIds) {
         throw new CommandError("--upsert requires preserved Beads ids (it keys on them); do not combine with --no-preserve-ids.", EXIT_CODE.USAGE);
     }
+    // Authoritative fail-fast gate: abort on structural errors before ANY write.
+    await assertBeadsImportable(filePath, pmRoot);
     const absolutePath = resolve(filePath);
     console.error(`Parsing Beads JSONL from: ${absolutePath}`);
     const parsed = parseBeadsFile(filePath);
@@ -1295,34 +1372,38 @@ function runDiff(args, opts) {
 // ---------------------------------------------------------------------------
 // Extension
 // ---------------------------------------------------------------------------
+// Flag contracts. `value_type` is the canonical FlagDefinition coercion kind
+// (SDK 2026.6.10 unified `type`/`value_type`; older hosts read either).
+// `--priority` deliberately stays a string flag: the override is forwarded
+// verbatim to `pm create/update --priority`, which does its own validation.
 const IMPORT_FLAGS = [
-    { long: "--dry-run", description: "Preview without writing" },
-    { long: "--upsert", description: "Update existing items matched by their Beads id instead of creating duplicates" },
-    { long: "--no-preserve-ids", description: "Do not persist the original Beads id (default: preserve)" },
-    { long: "--no-preserve-timestamps", description: "Do not carry over bead created_at/updated_at (default: preserve)" },
-    { long: "--type", value_name: "type", description: "Override item type for all imported items" },
-    { long: "--priority", value_name: "n", description: "Override priority (0-4) for all items" },
-    { long: "--tags", value_name: "tags", description: "Comma-separated tags to add to all items" },
-    { long: "--filter-status", value_name: "list", description: "Only import beads whose mapped status is in this comma-separated list" },
-    { long: "--filter-type", value_name: "list", description: "Only import beads whose type is in this comma-separated list" },
+    { long: "--dry-run", value_type: "boolean", description: "Preview without writing" },
+    { long: "--upsert", value_type: "boolean", description: "Update existing items matched by their Beads id instead of creating duplicates" },
+    { long: "--no-preserve-ids", value_type: "boolean", description: "Do not persist the original Beads id (default: preserve)" },
+    { long: "--no-preserve-timestamps", value_type: "boolean", description: "Do not carry over bead created_at/updated_at (default: preserve)" },
+    { long: "--type", value_name: "type", value_type: "string", description: "Override item type for all imported items" },
+    { long: "--priority", value_name: "n", value_type: "string", description: "Override priority (0-4) for all items" },
+    { long: "--tags", value_name: "tags", value_type: "string", description: "Comma-separated tags to add to all items" },
+    { long: "--filter-status", value_name: "list", value_type: "string", description: "Only import beads whose mapped status is in this comma-separated list" },
+    { long: "--filter-type", value_name: "list", value_type: "string", description: "Only import beads whose type is in this comma-separated list" },
 ];
 const EXPORT_FLAGS = [
-    { long: "--output", short: "-o", value_name: "file", description: "Write JSONL to a file instead of stdout" },
-    { long: "--no-preserve-ids", description: "Emit pm ids instead of the original Beads ids (default: preserve)" },
-    { long: "--filter-status", value_name: "list", description: "Only export items whose Beads status is in this comma-separated list" },
-    { long: "--filter-type", value_name: "list", description: "Only export items whose type is in this comma-separated list" },
+    { long: "--output", short: "-o", value_name: "file", value_type: "string", description: "Write JSONL to a file instead of stdout" },
+    { long: "--no-preserve-ids", value_type: "boolean", description: "Emit pm ids instead of the original Beads ids (default: preserve)" },
+    { long: "--filter-status", value_name: "list", value_type: "string", description: "Only export items whose Beads status is in this comma-separated list" },
+    { long: "--filter-type", value_name: "list", value_type: "string", description: "Only export items whose type is in this comma-separated list" },
 ];
 const VALIDATE_FLAGS = [
-    { long: "--json", description: "Emit the validation report as JSON" },
-    { long: "--no-workspace", description: "Skip cross-checking dependency references against the current pm workspace" },
+    { long: "--json", value_type: "boolean", description: "Emit the validation report as JSON" },
+    { long: "--no-workspace", value_type: "boolean", description: "Skip cross-checking dependency references against the current pm workspace" },
 ];
 const DIFF_FLAGS = [
-    { long: "--against-workspace", description: "Diff <file> against the current pm workspace (exported to Beads in-memory) instead of a second file" },
-    { long: "--json", description: "Emit the structured diff object as JSON" },
-    { long: "--strict", description: "Exit nonzero when any drift (added/removed/changed) is found — for CI fidelity gates" },
-    { long: "--no-preserve-ids", description: "When diffing against the workspace, key on pm ids instead of the original Beads ids (default: preserve)" },
-    { long: "--filter-status", value_name: "list", description: "Only compare beads whose mapped status is in this comma-separated list" },
-    { long: "--filter-type", value_name: "list", description: "Only compare beads whose type is in this comma-separated list" },
+    { long: "--against-workspace", value_type: "boolean", description: "Diff <file> against the current pm workspace (exported to Beads in-memory) instead of a second file" },
+    { long: "--json", value_type: "boolean", description: "Emit the structured diff object as JSON" },
+    { long: "--strict", value_type: "boolean", description: "Exit nonzero when any drift (added/removed/changed) is found — for CI fidelity gates" },
+    { long: "--no-preserve-ids", value_type: "boolean", description: "When diffing against the workspace, key on pm ids instead of the original Beads ids (default: preserve)" },
+    { long: "--filter-status", value_name: "list", value_type: "string", description: "Only compare beads whose mapped status is in this comma-separated list" },
+    { long: "--filter-type", value_name: "list", value_type: "string", description: "Only compare beads whose type is in this comma-separated list" },
 ];
 // Read the --filter-status / --filter-type pair into a RowFilter, honoring both
 // the kebab-case flag and the camelCase key the runtime normalizes it to.
@@ -1367,18 +1448,11 @@ export function parseDiffOptions(options, global = {}, pmRoot) {
     };
 }
 // ---------------------------------------------------------------------------
-// Preflight gate — validate the Beads JSONL schema BEFORE import touches the store
+// Argument helpers
 // ---------------------------------------------------------------------------
-// The two command paths that run the import pipeline. `pm beads import` (the
-// native importer) surfaces to the preflight context as the normalized command
-// "beads import"; the legacy rich-help alias surfaces as "beads-import". Export
-// ("beads export") and validate ("beads validate") are deliberately excluded so
-// the gate never blocks them.
-const IMPORT_PREFLIGHT_COMMANDS = new Set(["beads import", "beads-import"]);
-// Resolve the import input file from the preflight args the same way the import
-// handler does: the first positional (non-flag) argument. Flags (e.g.
-// `--dry-run`, `--type Task`) may trail the path in the raw args array, so we
-// skip anything beginning with "-".
+// Resolve the import input file from the raw command args: the first positional
+// (non-flag) argument. Flags (e.g. `--dry-run`, `--type Task`) may trail the
+// path in the raw args array, so we skip anything beginning with "-".
 export function resolveImportInputFile(args) {
     if (!Array.isArray(args))
         return undefined;
@@ -1391,68 +1465,6 @@ export function resolveImportInputFile(args) {
     }
     return undefined;
 }
-// Fail-fast preflight for the import path. Returns an (empty) preflight delta on
-// success so the runtime proceeds unchanged. On a structurally invalid file it
-// aborts the process with a non-zero exit BEFORE the importer can write anything.
-//
-// NOTE on the abort mechanism: the SDK's preflight runner wraps the override in
-// a try/catch and downgrades any thrown error to a non-fatal warning (it does
-// NOT propagate). A thrown CommandError would therefore be swallowed and import
-// would proceed — defeating the gate. To guarantee a true fail-fast abort with a
-// non-zero exit *before* any pm-store write, we print the actionable error and
-// terminate via process.exit(). We still construct a CommandError to derive the
-// canonical message + exit code, keeping the package's error contract intact.
-async function runImportPreflight(ctx) {
-    const command = typeof ctx?.command === "string" ? ctx.command.trim().toLowerCase() : "";
-    if (!IMPORT_PREFLIGHT_COMMANDS.has(command)) {
-        // Not an import command (export / validate / anything else) — never block.
-        return {};
-    }
-    const filePath = resolveImportInputFile(ctx?.args);
-    if (!filePath) {
-        // No file given. Let the import handler emit its own usage error; the gate
-        // has nothing to validate.
-        return {};
-    }
-    let raw;
-    try {
-        raw = readFileSync(resolve(filePath), "utf-8");
-    }
-    catch {
-        // Unreadable / missing file — defer to the import handler's own NOT_FOUND
-        // error path rather than producing a second, divergent message here.
-        return {};
-    }
-    // Cross-check dependency edges against bead ids already in the workspace so a
-    // dependency that resolves at import time (a prior import) is a warning, not a
-    // hard error — matching the import pipeline's own behavior and `beads validate`.
-    let workspaceBeadIds;
-    try {
-        workspaceBeadIds = ctx?.pm_root ? await readWorkspaceBeadIds(ctx.pm_root) : undefined;
-    }
-    catch {
-        workspaceBeadIds = undefined;
-    }
-    const report = validateBeadsText(raw, resolve(filePath), workspaceBeadIds);
-    const errors = report.issues.filter((i) => i.severity === "error");
-    if (errors.length === 0) {
-        // Valid (warnings alone do not block) — silent pass-through.
-        return {};
-    }
-    // Build an actionable, line-naming summary of the structural errors.
-    const detail = errors
-        .slice(0, 10)
-        .map((iss) => `  - ${iss.line ? `line ${iss.line}` : "file"} [${iss.code}]: ${iss.message}`)
-        .join("\n");
-    const more = errors.length > 10 ? `\n  …and ${errors.length - 10} more error(s)` : "";
-    const err = new CommandError(`Beads JSONL preflight failed for ${resolve(filePath)} — ${errors.length} structural error(s); ` +
-        `nothing was imported. Fix the file (or run \`pm beads validate <file>\`) and retry:\n${detail}${more}`, EXIT_CODE.GENERIC_FAILURE);
-    // The SDK swallows thrown preflight errors, so abort the process directly to
-    // guarantee no pm-store write happens. Print to stderr first for a clean
-    // message instead of an unhandled stack trace.
-    console.error(err.message);
-    process.exit(err.exitCode);
-}
 export default defineExtension({
     name: "pm-beads",
     version: "2026.6.10-1",
@@ -1464,22 +1476,35 @@ export default defineExtension({
             { name: "bead_id", type: "string", optional: true },
         ]);
         // -----------------------------------------------------------------------
-        // preflight — fail-fast Beads-JSONL schema gate BEFORE import
-        // -----------------------------------------------------------------------
-        // Runs the existing structural validator (validateBeadsText) against the
-        // import input file *before* the CLI lets the importer touch the pm store.
-        // On a structurally invalid file it aborts immediately with a clear,
-        // actionable message and a non-zero exit — so no partial/garbage items are
-        // ever created. On a valid file it is a silent pass-through.
-        //
-        // Scope: fires ONLY for the import path (`pm beads import` and its legacy
-        // `pm beads-import` alias). Export and validate are never blocked.
-        api.registerPreflight((ctx) => runImportPreflight(ctx));
-        // -----------------------------------------------------------------------
         // importer — `pm beads import <file>` (native import pipeline)
+        //
+        // The fail-fast malformed-input gate runs INSIDE runImport (see
+        // assertBeadsImportable), not on the single-winner preflight surface, so
+        // it holds even when a co-installed package owns the preflight slot.
+        //
+        // The third ImportExportRegistrationOptions argument (SDK 2026.6.10+) makes
+        // the auto-created `beads import` command a first-class one: description,
+        // flags, examples and failure hints surface in `--help` and in runtime
+        // contracts. Older hosts simply ignore the extra argument.
         // -----------------------------------------------------------------------
         api.registerImporter("beads", async (ctx) => {
-            return runImport(ctx.args?.[0], ctx.pm_root, parseImportOptions(ctx.options || {}));
+            const file = resolveImportInputFile(ctx.args) ?? optionString(ctx.options || {}, "file");
+            return runImport(file, ctx.pm_root, parseImportOptions(ctx.options || {}));
+        }, {
+            description: "Import work items from a Beads JSONL file into pm. Each JSON line becomes a pm item; " +
+                "the original Beads id, blocker edges, parent links and timestamps are preserved. " +
+                "The file is structurally validated up front — a malformed file aborts before any item is written.",
+            intent: "import Beads JSONL work items as pm items",
+            examples: [
+                "pm beads import items.jsonl",
+                "pm beads import data.jsonl --dry-run",
+                "pm beads import data.jsonl --upsert",
+                "pm beads import data.jsonl --filter-status open,in_progress",
+            ],
+            failure_hints: [
+                "Run `pm beads validate <file>` to see the structural errors that blocked the import.",
+            ],
+            flags: IMPORT_FLAGS,
         });
         // -----------------------------------------------------------------------
         // exporter — `pm beads export` (serialize pm items back to Beads JSONL)
@@ -1491,6 +1516,16 @@ export default defineExtension({
                 output: optionString(options, "output", "o"),
                 filter: parseRowFilter(options),
             });
+        }, {
+            description: "Serialize pm items back to Beads JSONL, preserving the original Beads id (when present) " +
+                "and emitting dependency/blocker edges.",
+            intent: "export pm items as Beads JSONL",
+            examples: [
+                "pm beads export",
+                "pm beads export --output items.jsonl",
+                "pm beads export --filter-type Bug",
+            ],
+            flags: EXPORT_FLAGS,
         });
         // -----------------------------------------------------------------------
         // command — legacy `pm beads-import <file>` alias (rich flag help).
@@ -1515,7 +1550,8 @@ export default defineExtension({
             ],
             flags: IMPORT_FLAGS,
             async run(ctx) {
-                return runImport(ctx.args[0], ctx.pm_root, parseImportOptions(ctx.options));
+                const file = resolveImportInputFile(ctx.args) ?? ctx.args?.[0];
+                return runImport(file, ctx.pm_root, parseImportOptions(ctx.options));
             },
         });
         // -----------------------------------------------------------------------
