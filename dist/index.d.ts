@@ -78,6 +78,13 @@ export declare function optionString(options: Record<string, unknown>, ...keys: 
  * `no-preserve-ids: true`. Default is ON (preserve) when nothing was passed.
  */
 export declare function resolvePreserveIds(options: Record<string, unknown>): boolean;
+/**
+ * Resolve the tri-state of `--workspace` / `--no-workspace` for validate.
+ * Same normalization rules as resolvePreserveIds: the runtime may surface
+ * `--no-workspace` as `{ workspace: false }`, `noWorkspace: true`, or a
+ * literal `no-workspace: true`. Default is ON (cross-check the workspace).
+ */
+export declare function resolveWorkspaceCheck(options: Record<string, unknown>): boolean;
 export declare function mapStatus(raw: unknown): string;
 export declare function pmStatusToBeads(raw: string | undefined): string;
 export declare function mapPriority(raw: number | string | undefined): string | undefined;
