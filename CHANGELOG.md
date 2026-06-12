@@ -4,8 +4,11 @@
 
 ### Added
 
-- Promote `pm beads validate` to first-class command registration (previously unregistered) ([pm-beads-azv0](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-azv0.toon))
 - Hard import gate, history-consistent timestamps, first-class import/export contracts ([pm-beads-q3t0](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/features/pm-beads-q3t0.toon))
+
+### Fixed
+
+- Promote pm beads validate to first-class command registration ([pm-beads-azv0](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-azv0.toon))
 
 ## 2026.06.09 - 2026-06-09
 
