@@ -668,7 +668,8 @@ async function runValidate(filePath, opts) {
     }
     catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        const exitCode = /ENOENT|no such file/i.test(msg) ? EXIT_CODE.NOT_FOUND : EXIT_CODE.GENERIC_FAILURE;
+        const code = typeof err?.code === "string" ? err.code : "";
+        const exitCode = code === "ENOENT" ? EXIT_CODE.NOT_FOUND : EXIT_CODE.GENERIC_FAILURE;
         throw new CommandError(`Failed to read file: ${msg}`, exitCode);
     }
     const workspaceBeadIds = opts.workspace && opts.pmRoot ? await readWorkspaceBeadIds(opts.pmRoot) : undefined;
@@ -709,7 +710,8 @@ function parseBeadsFile(filePath) {
     }
     catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        const exitCode = /ENOENT|no such file/i.test(msg) ? EXIT_CODE.NOT_FOUND : EXIT_CODE.GENERIC_FAILURE;
+        const code = typeof err?.code === "string" ? err.code : "";
+        const exitCode = code === "ENOENT" ? EXIT_CODE.NOT_FOUND : EXIT_CODE.GENERIC_FAILURE;
         throw new CommandError(`Failed to read file: ${msg}`, exitCode);
     }
     const lines = raw.split("\n").filter((l) => l.trim());
@@ -755,7 +757,8 @@ export async function assertBeadsImportable(filePath, pmRoot) {
     }
     catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        const exitCode = /ENOENT|no such file/i.test(msg) ? EXIT_CODE.NOT_FOUND : EXIT_CODE.GENERIC_FAILURE;
+        const code = typeof err?.code === "string" ? err.code : "";
+        const exitCode = code === "ENOENT" ? EXIT_CODE.NOT_FOUND : EXIT_CODE.GENERIC_FAILURE;
         throw new CommandError(`Failed to read file: ${msg}`, exitCode);
     }
     // Cross-check dependency edges against bead ids already in the workspace so

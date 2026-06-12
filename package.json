@@ -35,13 +35,9 @@
     "prepublishOnly": "npm run release:check",
     "release:notes": "pm-changelog --pm-root .agents/pm --stdout --since-previous-tag --until-release-tag --release-version-from-package --item-url-base https://github.com/unbraind/pm-beads/blob/main/.agents/pm --pm-bin ./node_modules/.bin/pm --github-step-summary"
   },
-  "peerDependencies": {
-    "@unbrained/pm-cli": ">=2026.6.9"
-  },
   "devDependencies": {
     "@types/node": "^25.9.2",
-    "@unbrained/pm-cli": "^2026.6.11",
-    "pm-changelog": "^2026.6.8",
+    "pm-changelog": "^2026.6.10",
     "typescript": "^6.0.3"
   },
   "keywords": [
@@ -91,5 +87,8 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "dependencies": {
+    "@unbrained/pm-cli": "^2026.6.12"
   }
 }

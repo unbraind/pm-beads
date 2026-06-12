@@ -777,7 +777,8 @@ async function runValidate(
     raw = readFileSync(absolutePath, "utf-8");
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    const exitCode = /ENOENT|no such file/i.test(msg) ? EXIT_CODE.NOT_FOUND : EXIT_CODE.GENERIC_FAILURE;
+    const code = typeof (err as NodeJS.ErrnoException)?.code === "string" ? (err as NodeJS.ErrnoException).code : "";
+    const exitCode = code === "ENOENT" ? EXIT_CODE.NOT_FOUND : EXIT_CODE.GENERIC_FAILURE;
     throw new CommandError(`Failed to read file: ${msg}`, exitCode);
   }
 
@@ -839,7 +840,8 @@ function parseBeadsFile(filePath: string): BeadsItem[] {
     raw = readFileSync(absolutePath, "utf-8");
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    const exitCode = /ENOENT|no such file/i.test(msg) ? EXIT_CODE.NOT_FOUND : EXIT_CODE.GENERIC_FAILURE;
+    const code = typeof (err as NodeJS.ErrnoException)?.code === "string" ? (err as NodeJS.ErrnoException).code : "";
+    const exitCode = code === "ENOENT" ? EXIT_CODE.NOT_FOUND : EXIT_CODE.GENERIC_FAILURE;
     throw new CommandError(`Failed to read file: ${msg}`, exitCode);
   }
   const lines = raw.split("\n").filter((l) => l.trim());
@@ -892,7 +894,8 @@ export async function assertBeadsImportable(filePath: string, pmRoot?: string): 
     raw = readFileSync(absolutePath, "utf-8");
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    const exitCode = /ENOENT|no such file/i.test(msg) ? EXIT_CODE.NOT_FOUND : EXIT_CODE.GENERIC_FAILURE;
+    const code = typeof (err as NodeJS.ErrnoException)?.code === "string" ? (err as NodeJS.ErrnoException).code : "";
+    const exitCode = code === "ENOENT" ? EXIT_CODE.NOT_FOUND : EXIT_CODE.GENERIC_FAILURE;
     throw new CommandError(`Failed to read file: ${msg}`, exitCode);
   }
 
