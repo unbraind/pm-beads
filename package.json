@@ -92,5 +92,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "dependencies": {}
+  "dependencies": {
+    "@unbrained/pm-cli": "^2026.6.12"
+  }
 }
