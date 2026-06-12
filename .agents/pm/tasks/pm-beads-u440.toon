@@ -1,0 +1,16 @@
+id: pm-beads-u440
+title: "beads validate --no-workspace is a silent no-op (runtime normalizes flag to workspace:false)"
+description: "Found during the 2026-06-12 fleet verification against pm CLI 2026.6.12 (companion task pm-cli-website-k0lw). The pm runtime normalizes --no-workspace to {workspace:false}, but the validate handler only checked options['no-workspace']/options['noWorkspace'], so the flag never disabled the workspace cross-check: a dangling dependency that exists in the workspace was reported as a cross_workspace_dependency WARNING (exit 0) instead of a dangling_dependency ERROR (exit 1). Fix: resolveWorkspaceCheck() mirroring resolvePreserveIds normalization; validate handler now honors workspace:false/'false'/'0', noWorkspace:true, no-workspace:true. Regression test added covering every flag shape."
+type: Task
+status: closed
+priority: 2
+tags[3]: bug,flag-normalization,validate
+created_at: "2026-06-12T16:42:06.552Z"
+updated_at: "2026-06-12T16:42:07.312Z"
+author: codex
+acceptance_criteria: pm beads validate <file> --no-workspace reports dangling_dependency ERROR exit 1 even when the dependency exists in the workspace; default behavior unchanged (cross_workspace_dependency WARNING exit 0)
+files[2]{path,scope,note}:
+  index.ts,project,resolveWorkspaceCheck helper + validate handler fix
+  test/smoke.test.ts,project,regression test for every --no-workspace shape
+close_reason: "Fixed: validate handler uses resolveWorkspaceCheck; proven end-to-end in throwaway workspace (default: warning exit 0 when dep exists in workspace; --no-workspace: dangling error exit 1); 60/60 tests pass"
+body: ""

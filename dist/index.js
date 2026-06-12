@@ -92,6 +92,22 @@ export function resolvePreserveIds(options) {
     }
     return true;
 }
+/**
+ * Resolve the tri-state of `--workspace` / `--no-workspace` for validate.
+ * Same normalization rules as resolvePreserveIds: the runtime may surface
+ * `--no-workspace` as `{ workspace: false }`, `noWorkspace: true`, or a
+ * literal `no-workspace: true`. Default is ON (cross-check the workspace).
+ */
+export function resolveWorkspaceCheck(options) {
+    if (options["no-workspace"] === true || options["noWorkspace"] === true)
+        return false;
+    for (const k of ["workspace"]) {
+        const v = options[k];
+        if (v !== undefined)
+            return v !== false && v !== "false" && v !== "0";
+    }
+    return true;
+}
 export function mapStatus(raw) {
     if (raw === undefined || raw === null)
         return "open";
@@ -1615,7 +1631,7 @@ export default defineExtension({
                 // returned (and rendered by the runtime) instead of the human listing.
                 const json = readBoolOption(options, "json") || readBoolOption(ctx.global || {}, "json");
                 // Cross-workspace dependency check is ON by default; --no-workspace opts out.
-                const workspace = !(options["no-workspace"] === true || options["noWorkspace"] === true);
+                const workspace = resolveWorkspaceCheck(options);
                 return runValidate(ctx.args?.[0], { json, workspace, pmRoot: ctx.pm_root });
             },
         });
