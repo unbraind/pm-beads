@@ -1455,15 +1455,20 @@ export function parseDiffOptions(options, global = {}, pmRoot) {
 // ---------------------------------------------------------------------------
 // Resolve the import input file from the raw command args: the first positional
 // (non-flag) argument. Flags (e.g. `--dry-run`, `--type Task`) may trail the
-// path in the raw args array, so we skip anything beginning with "-".
+// path in the raw args array, so we skip flags and their values.
 export function resolveImportInputFile(args) {
     if (!Array.isArray(args))
         return undefined;
-    for (const a of args) {
+    const valueFlags = new Set(["--type", "--priority", "--tags", "--filter-status", "--filter-type", "--file"]);
+    for (let i = 0; i < args.length; i++) {
+        const a = args[i];
         if (typeof a !== "string")
             continue;
-        if (a.startsWith("-"))
+        if (a.startsWith("-")) {
+            if (valueFlags.has(a))
+                i++;
             continue;
+        }
         return a;
     }
     return undefined;
@@ -1553,7 +1558,7 @@ export default defineExtension({
             ],
             flags: IMPORT_FLAGS,
             async run(ctx) {
-                const file = resolveImportInputFile(ctx.args) ?? ctx.args?.[0];
+                const file = resolveImportInputFile(ctx.args) ?? optionString(ctx.options || {}, "file");
                 return runImport(file, ctx.pm_root, parseImportOptions(ctx.options));
             },
         });

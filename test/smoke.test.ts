@@ -138,8 +138,8 @@ test("importer/exporter registrations carry first-class command metadata (option
 test("resolveImportInputFile picks the first non-flag argument", () => {
   assert.strictEqual(resolveImportInputFile(["items.jsonl", "--dry-run"]), "items.jsonl");
   assert.strictEqual(resolveImportInputFile(["--upsert", "data.jsonl"]), "data.jsonl");
-  assert.strictEqual(resolveImportInputFile(["--type", "Task", "f.jsonl"]), "Task");
-  // ^ "--type Task" arrives pre-parsed in practice; raw fallback still returns a value.
+  assert.strictEqual(resolveImportInputFile(["--type", "Task", "f.jsonl"]), "f.jsonl");
+  assert.strictEqual(resolveImportInputFile(["--priority", "2", "--tags", "a,b", "f.jsonl"]), "f.jsonl");
   assert.strictEqual(resolveImportInputFile([]), undefined);
   assert.strictEqual(resolveImportInputFile(["--dry-run"]), undefined);
   assert.strictEqual(resolveImportInputFile(undefined), undefined);
