@@ -92,6 +92,6 @@
     "access": "public"
   },
   "dependencies": {
-    "@unbrained/pm-cli": ">=2026.6.12"
+    "@unbrained/pm-cli": "^2026.6.12"
   }
 }
