@@ -1711,7 +1711,7 @@ export function resolveImportInputFile(args: unknown): string | undefined {
 
 export default defineExtension({
   name: "pm-beads",
-  version: "2026.6.12",
+  version: "2026.6.13",
 
   activate(api: any) {
     // -----------------------------------------------------------------------
