@@ -1491,7 +1491,7 @@ export function resolveImportInputFile(args) {
 }
 export default defineExtension({
     name: "pm-beads",
-    version: "2026.6.13",
+    version: "2026.6.14",
     activate(api) {
         // -----------------------------------------------------------------------
         // schema — declare the bead_id provenance field
