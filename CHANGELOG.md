@@ -1,6 +1,6 @@
 # Changelog
 
-## 2026.6.12 - 2026-06-12
+## 2026.06.12 - 2026-06-12
 
 ### Added
 
@@ -11,13 +11,13 @@
 - beads validate --no-workspace is a silent no-op \(runtime normalizes flag to workspace:false\) ([pm-beads-u440](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-u440.toon))
 - Promote pm beads validate to first-class command registration ([pm-beads-azv0](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-azv0.toon))
 
-## 2026.6.9 - 2026-06-09
+## 2026.06.09 - 2026-06-09
 
 ### Added
 
 - Add beads diff for round-trip fidelity auditing ([pm-beads-tjrz](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/features/pm-beads-tjrz.toon))
 
-## 2026.6.7 - 2026-06-07
+## 2026.06.07 - 2026-06-07
 
 ### Added
 
@@ -28,25 +28,25 @@
 - Harden release readiness checks ([pm-beads-xdzs](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-xdzs.toon))
 - Align package dependencies to pm CLI/SDK 2026.6.6 ([pm-beads-j930](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-j930.toon))
 
-## 2026.6.5-1 - 2026-06-05
+## 2026.06.05-1 - 2026-06-05
 
 ### Added
 
 - beads validate does not detect dependency cycles ([pm-beads-27rw](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/features/pm-beads-27rw.toon))
 
-## 2026.6.4-1 - 2026-06-04
+## 2026.06.04-1 - 2026-06-04
 
 ### Added
 
 - preflight: fail-fast Beads-JSONL schema gate before import ([pm-beads-7mj4](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/features/pm-beads-7mj4.toon))
 
-## 2026.6.4 - 2026-06-04
+## 2026.06.04 - 2026-06-04
 
 ### Added
 
 - Timestamp fidelity, workspace dep validation, and import/export row filters ([pm-beads-vv5z](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/features/pm-beads-vv5z.toon))
 
-## 2026.6.3 - 2026-06-02
+## 2026.06.03 - 2026-06-02
 
 ### Added
 
@@ -58,19 +58,19 @@
 - beads validate <file\> command \(--json, nonzero exit on structural problems\) ([pm-beads-dxnh](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-dxnh.toon))
 - Idempotent import: --upsert keyed on bead\_id marker ([pm-beads-vqsd](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-vqsd.toon))
 
-## 2026.6.2 - 2026-06-02
+## 2026.06.02 - 2026-06-02
 
 ### Added
 
 - Add Beads JSONL exporter + id/dependency round-trip ([pm-beads-yd0o](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/features/pm-beads-yd0o.toon))
 
-## 2026.6.1 - 2026-06-01
+## 2026.06.01 - 2026-06-01
 
 ### Fixed
 
 - Command handler threw plain Error \(no exitCode\) → runtime double-invocation ([pm-beads-itf1](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-itf1.toon))
 
-## 2026.5.29 - 2026-05-29
+## 2026.05.29 - 2026-05-29
 
 ### Added
 
@@ -81,7 +81,7 @@
 - beads import returns error object instead of throwing \(exit 0 on failure + malformed file\) ([pm-beads-w7ru](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-w7ru.toon))
 - beads import --dry-run silently ignored \(still writes\) ([pm-beads-nfpq](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-nfpq.toon))
 
-## 2026.5.28 - 2026-05-28
+## 2026.05.28 - 2026-05-28
 
 ### Added
 
@@ -91,13 +91,13 @@
 
 - Production-readiness audit 2026-05-28 ([pm-beads-xwv6](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-xwv6.toon))
 
-## 2026.5.27 - 2026-05-27
+## 2026.05.27 - 2026-05-27
 
 ### Added
 
 - Add bun-install verification to release workflow ([pm-beads-cvk6](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-cvk6.toon))
 
-## 2026.5.26 - 2026-05-26
+## 2026.05.26 - 2026-05-26
 
 ### Fixed
 
