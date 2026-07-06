@@ -37,11 +37,11 @@
   },
   "devDependencies": {
     "@types/node": "^25.9.2",
-    "pm-changelog": "^2026.6.13",
+    "pm-changelog": "^2026.6.30",
     "typescript": "^6.0.3"
   },
   "peerDependencies": {
-    "@unbrained/pm-cli": ">=2026.6.12"
+    "@unbrained/pm-cli": ">=2026.7.5"
   },
   "keywords": [
     "beads",
@@ -92,6 +92,6 @@
     "access": "public"
   },
   "dependencies": {
-    "@unbrained/pm-cli": "^2026.6.12"
+    "@unbrained/pm-cli": ">=2026.7.5"
   }
 }
