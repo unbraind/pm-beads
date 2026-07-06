@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Fix release CI ordering (publish-before-tag) ([pm-beads-j4up](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-j4up.toon))
+
+### Other
+
+- Align Node engine with pm CLI runtime ([pm-beads-7wd9](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-7wd9.toon))
+- Regenerate CHANGELOG after pm close item ([pm-beads-tsu9](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-tsu9.toon))
+
 ## 2026.6.12 - 2026-06-12
 
 ### Added
@@ -8,7 +19,7 @@
 
 ### Fixed
 
-- beads validate --no-workspace is a silent no-op \(runtime normalizes flag to workspace:false\) ([pm-beads-u440](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-u440.toon))
+- beads validate --no-workspace is a silent no-op (runtime normalizes flag to workspace:false) ([pm-beads-u440](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-u440.toon))
 - Promote pm beads validate to first-class command registration ([pm-beads-azv0](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-azv0.toon))
 
 ## 2026.6.9 - 2026-06-09
@@ -55,8 +66,8 @@
 ### Other
 
 - Unit tests for upsert key + validate; functional round-trip with real data ([pm-beads-1rmb](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-1rmb.toon))
-- beads validate <file\> command \(--json, nonzero exit on structural problems\) ([pm-beads-dxnh](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-dxnh.toon))
-- Idempotent import: --upsert keyed on bead\_id marker ([pm-beads-vqsd](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-vqsd.toon))
+- beads validate <file\> command (--json, nonzero exit on structural problems) ([pm-beads-dxnh](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-dxnh.toon))
+- Idempotent import: --upsert keyed on bead_id marker ([pm-beads-vqsd](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-vqsd.toon))
 
 ## 2026.6.2 - 2026-06-02
 
@@ -68,18 +79,18 @@
 
 ### Fixed
 
-- Command handler threw plain Error \(no exitCode\) → runtime double-invocation ([pm-beads-itf1](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-itf1.toon))
+- Command handler threw plain Error (no exitCode) → runtime double-invocation ([pm-beads-itf1](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-itf1.toon))
 
 ## 2026.5.29 - 2026-05-29
 
 ### Added
 
-- Hands-on functional test pass 2026-05-29 \(real data\) ([pm-beads-dt52](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/features/pm-beads-dt52.toon))
+- Hands-on functional test pass 2026-05-29 (real data) ([pm-beads-dt52](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/features/pm-beads-dt52.toon))
 
 ### Fixed
 
-- beads import returns error object instead of throwing \(exit 0 on failure + malformed file\) ([pm-beads-w7ru](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-w7ru.toon))
-- beads import --dry-run silently ignored \(still writes\) ([pm-beads-nfpq](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-nfpq.toon))
+- beads import returns error object instead of throwing (exit 0 on failure + malformed file) ([pm-beads-w7ru](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-w7ru.toon))
+- beads import --dry-run silently ignored (still writes) ([pm-beads-nfpq](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-nfpq.toon))
 
 ## 2026.5.28 - 2026-05-28
 
