@@ -8,6 +8,7 @@
 
 ### Other
 
+- Align Node engine with pm CLI runtime ([pm-beads-7wd9](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-7wd9.toon))
 - Regenerate CHANGELOG after pm close item ([pm-beads-tsu9](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-tsu9.toon))
 
 ## 2026.6.12 - 2026-06-12
