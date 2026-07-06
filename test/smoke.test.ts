@@ -15,6 +15,13 @@ import extension, {
   normalizeBeadKey,
   normalizeIsoTimestamp,
   parseRowFilter,
+  parseFilterExpression,
+  mergeRowFilters,
+  parseMergeStrategy,
+  parsePositiveIntOption,
+  parseExportOptions,
+  readAndValidateBeads,
+  MERGE_STRATEGIES,
   patchTimestampLines,
   pmItemPassesFilter,
   pmItemToBead,
@@ -902,6 +909,246 @@ test("beads diff hard-fails on a malformed JSONL line", async () => {
       return true;
     },
   );
+});
+
+// --- Enhancement: --validate-only / --batch-size / --filter / --merge-strategy / export --dry-run ---
+
+test("parseFilterExpression parses the combined `type:...;status:...` form", () => {
+  assert.deepStrictEqual(parseFilterExpression(undefined), { statuses: undefined, types: undefined });
+  assert.deepStrictEqual(parseFilterExpression(""), { statuses: undefined, types: undefined });
+  const f = parseFilterExpression("type:Bug,Feature;status:open,in_progress");
+  assert.deepStrictEqual([...f.types!].sort(), ["bug", "feature"]);
+  assert.deepStrictEqual([...f.statuses!].sort(), ["in_progress", "open"]);
+  // Unknown dimensions are ignored (forward-compatible), not fatal.
+  assert.deepStrictEqual(parseFilterExpression("sprint:S17"), { statuses: undefined, types: undefined });
+  // Tolerates ids/aliases and stray whitespace.
+  assert.deepStrictEqual([...parseFilterExpression("statuses: closed").statuses!], ["closed"]);
+});
+
+test("mergeRowFilters lets the override dimension win, base otherwise", () => {
+  const base = parseFilterExpression("type:Bug;status:open");
+  const override = { statuses: new Set(["closed"]) } as any;
+  const merged = mergeRowFilters(base, override);
+  assert.deepStrictEqual([...merged.statuses!], ["closed"]); // override wins
+  assert.deepStrictEqual([...merged.types!], ["bug"]); // base carries over
+});
+
+test("parseRowFilter merges --filter with granular flags (granular wins per-dimension)", () => {
+  // Granular --filter-type overrides the type dimension of --filter, but the
+  // status dimension from --filter is preserved.
+  const f = parseRowFilter({ filter: "type:Bug;status:open", "filter-type": "Task" });
+  assert.deepStrictEqual([...f.types!], ["task"]);
+  assert.deepStrictEqual([...f.statuses!], ["open"]);
+  // --filter alone is honored when no granular flag is given.
+  const g = parseRowFilter({ filter: "type:Bug;status:closed" });
+  assert.deepStrictEqual([...g.types!], ["bug"]);
+  assert.deepStrictEqual([...g.statuses!], ["closed"]);
+});
+
+test("parseMergeStrategy defaults to update and rejects unknown values", () => {
+  assert.strictEqual(parseMergeStrategy({}), "update");
+  assert.strictEqual(parseMergeStrategy({ "merge-strategy": "skip" }), "skip");
+  assert.strictEqual(parseMergeStrategy({ mergeStrategy: "FAIL" }), "fail");
+  assert.throws(
+    () => parseMergeStrategy({ "merge-strategy": "overwrite" }),
+    (err: unknown) => {
+      assert.strictEqual((err as CommandError).exitCode, EXIT_CODE.USAGE);
+      assert.match((err as Error).message, /Unknown --merge-strategy/);
+      return true;
+    },
+  );
+  assert.deepStrictEqual([...MERGE_STRATEGIES], ["update", "skip", "fail"]);
+});
+
+test("parsePositiveIntOption reads kebab and camel spellings, rejects non-positive", () => {
+  assert.strictEqual(parsePositiveIntOption({ "batch-size": "100" }, "batch-size", "batchSize"), 100);
+  assert.strictEqual(parsePositiveIntOption({ batchSize: "50" }, "batch-size", "batchSize"), 50);
+  assert.strictEqual(parsePositiveIntOption({ "batch-size": "0" }, "batch-size", "batchSize"), undefined);
+  assert.strictEqual(parsePositiveIntOption({ "batch-size": "-3" }, "batch-size", "batchSize"), undefined);
+  assert.strictEqual(parsePositiveIntOption({ "batch-size": "abc" }, "batch-size", "batchSize"), undefined);
+  assert.strictEqual(parsePositiveIntOption({}, "batch-size", "batchSize"), undefined);
+});
+
+test("parseImportOptions wires every new import flag", async () => {
+  // Re-exercise via the registered importer handler using dry-run + new flags
+  // so no pm CLI is required to validate option plumbing.
+  const registered: string[] = [];
+  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any> };
+  extension.activate(makeApi(registered, captured) as any);
+  const importer = captured.importers["beads"];
+  const dir = mkdtempSync(join(tmpdir(), "beads-opts-"));
+  const file = join(dir, "in.jsonl");
+  writeFileSync(file, JSON.stringify({ id: "bd-1", title: "A", status: "open", type: "Task" }) + "\n", "utf-8");
+
+  // --validate-only short-circuits before any pm spawn (pm_root undefined so
+  // the workspace cross-check is skipped entirely).
+  const r = await importer({
+    args: [file],
+    options: { "validate-only": true },
+    pm_root: undefined,
+  });
+  assert.strictEqual(r.validateOnly, true);
+  assert.strictEqual(r.records, 1);
+  assert.strictEqual(r.valid, true);
+});
+
+test("--validate-only surfaces a nonzero exit on a malformed file", async () => {
+  const registered: string[] = [];
+  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any> };
+  extension.activate(makeApi(registered, captured) as any);
+  const importer = captured.importers["beads"];
+  const dir = mkdtempSync(join(tmpdir(), "beads-vo-bad-"));
+  const file = join(dir, "bad.jsonl");
+  writeFileSync(file, '{"id":"a","title":"ok"}\n{broken\n', "utf-8");
+  await assert.rejects(
+    async () => importer({ args: [file], options: { "validate-only": true }, pm_root: undefined }),
+    (err: unknown) => {
+      assert.match((err as Error).message, /Validation failed/);
+      assert.strictEqual((err as CommandError).exitCode, EXIT_CODE.GENERIC_FAILURE);
+      return true;
+    },
+  );
+});
+
+test("--merge-strategy without --upsert is a USAGE error", async () => {
+  const registered: string[] = [];
+  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any> };
+  extension.activate(makeApi(registered, captured) as any);
+  const importer = captured.importers["beads"];
+  const dir = mkdtempSync(join(tmpdir(), "beads-ms-noup-"));
+  const file = join(dir, "in.jsonl");
+  writeFileSync(file, JSON.stringify({ id: "bd-1", title: "A" }) + "\n", "utf-8");
+  await assert.rejects(
+    async () => importer({ args: [file], options: { "merge-strategy": "skip" }, pm_root: dir }),
+    (err: unknown) => {
+      assert.strictEqual((err as CommandError).exitCode, EXIT_CODE.USAGE);
+      assert.match((err as Error).message, /--merge-strategy only applies with --upsert/);
+      return true;
+    },
+  );
+});
+
+test("--batch-size chunks the dry-run preview and reports batches", async () => {
+  const registered: string[] = [];
+  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any> };
+  extension.activate(makeApi(registered, captured) as any);
+  const importer = captured.importers["beads"];
+  const dir = mkdtempSync(join(tmpdir(), "beads-batch-"));
+  const file = join(dir, "in.jsonl");
+  const lines = [];
+  for (let i = 1; i <= 5; i++) lines.push(JSON.stringify({ id: `bd-${i}`, title: `T${i}`, status: "open", type: "Task" }));
+  writeFileSync(file, lines.join("\n") + "\n", "utf-8");
+  // dry-run never spawns pm, so a bogus pm_root is safe. batchSize 2 -> 3 batches.
+  const r = await importer({
+    args: [file],
+    options: { "dry-run": true, "batch-size": "2" },
+    pm_root: join(dir, "no-pm"),
+  });
+  assert.strictEqual(r.dryRun, true);
+  assert.strictEqual(r.wouldImport, 5);
+  assert.strictEqual(r.batches, 3);
+});
+
+test("--merge-strategy skip/fail in dry-run against a seeded workspace", { skip: !hasPmCli() }, async () => {
+  const root = mkdtempSync(join(tmpdir(), "beads-ms-ws-"));
+  const pmRoot = join(root, ".agents", "pm");
+  mkdirSync(pmRoot, { recursive: true });
+  assert.strictEqual(spawnSync("pm", ["--path", pmRoot, "init"], { encoding: "utf-8" }).status, 0);
+  // Seed an existing item carrying bead_id bd-1 so --upsert matches it.
+  assert.strictEqual(
+    spawnSync("pm", ["--path", pmRoot, "--json", "create", "--title", "Existing", "--type", "Task",
+      "--status", "open", "--description", encodeBeadId("body", "bd-1")], { encoding: "utf-8" }).status,
+    0,
+  );
+
+  const file = join(root, "in.jsonl");
+  writeFileSync(file, JSON.stringify({ id: "bd-1", title: "Existing", status: "open", type: "Task" }) + "\n", "utf-8");
+
+  const registered: string[] = [];
+  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any> };
+  extension.activate(makeApi(registered, captured) as any);
+  const importer = captured.importers["beads"];
+
+  // skip: leaves the existing item alone — wouldImport 0, wouldSkip 1.
+  const skip = await importer({
+    args: [file], options: { "dry-run": true, upsert: true, "merge-strategy": "skip" }, pm_root: pmRoot,
+  });
+  assert.strictEqual(skip.wouldImport, 0);
+  assert.strictEqual(skip.wouldSkip, 1);
+
+  // fail: aborts the import on the first duplicate.
+  await assert.rejects(
+    async () => importer({
+      args: [file], options: { "dry-run": true, upsert: true, "merge-strategy": "fail" }, pm_root: pmRoot,
+    }),
+    (err: unknown) => {
+      assert.strictEqual((err as CommandError).exitCode, EXIT_CODE.GENERIC_FAILURE);
+      assert.match((err as Error).message, /already imported/);
+      return true;
+    },
+  );
+});
+
+test("readAndValidateBeads returns the report without throwing on errors", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "beads-rav-"));
+  const file = join(dir, "bad.jsonl");
+  writeFileSync(file, '{"id":"a"}\n{bad\n', "utf-8");
+  const report = await readAndValidateBeads(file);
+  assert.strictEqual(report.valid, false);
+  assert.ok(report.issues.some((i) => i.code === "missing_title"));
+  assert.ok(report.issues.some((i) => i.code === "invalid_json"));
+  // A clean file yields a valid report.
+  const ok = join(dir, "ok.jsonl");
+  writeFileSync(ok, JSON.stringify({ id: "x", title: "T" }) + "\n", "utf-8");
+  const okReport = await readAndValidateBeads(ok);
+  assert.strictEqual(okReport.valid, true);
+});
+
+test("readAndValidateBeads maps a missing file to NOT_FOUND", async () => {
+  await assert.rejects(
+    () => readAndValidateBeads("/nonexistent/definitely-missing.jsonl"),
+    (err: unknown) => {
+      assert.strictEqual((err as CommandError).exitCode, EXIT_CODE.NOT_FOUND);
+      return true;
+    },
+  );
+});
+
+test("parseExportOptions reads dry-run, output and filter flags", () => {
+  const o = parseExportOptions({ "dry-run": true, output: "out.jsonl", filter: "type:Bug" });
+  assert.strictEqual(o.dryRun, true);
+  assert.strictEqual(o.output, "out.jsonl");
+  assert.deepStrictEqual([...o.filter.types!], ["bug"]);
+  assert.strictEqual(parseExportOptions({}).dryRun, false);
+});
+
+test("exporter registration advertises the --dry-run flag", () => {
+  const registered: string[] = [];
+  const captured = {
+    commands: {} as Record<string, any>,
+    importers: {} as Record<string, any>,
+    exporters: {} as Record<string, any>,
+    exporterOptions: {} as Record<string, any>,
+  };
+  extension.activate(makeApi(registered, captured) as any);
+  const exp = captured.exporterOptions["beads"];
+  assert.ok(exp.flags.some((f: any) => f.long === "--dry-run"));
+});
+
+test("importer registration advertises the new import flags", () => {
+  const registered: string[] = [];
+  const captured = {
+    commands: {} as Record<string, any>,
+    importers: {} as Record<string, any>,
+    exporters: {} as Record<string, any>,
+    importerOptions: {} as Record<string, any>,
+  };
+  extension.activate(makeApi(registered, captured) as any);
+  const imp = captured.importerOptions["beads"];
+  const longs = imp.flags.map((f: any) => f.long);
+  for (const f of ["--validate-only", "--merge-strategy", "--batch-size", "--filter"]) {
+    assert.ok(longs.includes(f), `importer should advertise ${f}`);
+  }
 });
 
 function hasPmCli(): boolean {
