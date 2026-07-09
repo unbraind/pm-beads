@@ -598,34 +598,51 @@ export function detectDependencyCycles(adj: Map<string, string[]>): string[][] {
   const seenCycleKeys = new Set<string>();
   // 0 = unvisited, 1 = on the current DFS stack (gray), 2 = done (black)
   const color = new Map<string, 0 | 1 | 2>();
-  const stack: string[] = [];
 
-  const visit = (node: string): void => {
-    color.set(node, 1);
-    stack.push(node);
-    for (const next of adj.get(node) ?? []) {
-      const c = color.get(next) ?? 0;
-      if (c === 1) {
-        // Back-edge: `next` is still on the stack → cycle from `next` to here.
-        const idx = stack.indexOf(next);
-        if (idx >= 0) {
-          const cycle = stack.slice(idx);
+  for (const start of adj.keys()) {
+    if ((color.get(start) ?? 0) !== 0) continue;
+
+    // Use explicit frames instead of recursive DFS so agent-generated graphs
+    // with tens of thousands of dependencies cannot exhaust the JS call stack.
+    const path: string[] = [start];
+    const pathIndex = new Map<string, number>([[start, 0]]);
+    const frames: Array<{ node: string; neighbors: string[]; nextIndex: number }> = [
+      { node: start, neighbors: adj.get(start) ?? [], nextIndex: 0 },
+    ];
+    color.set(start, 1);
+
+    while (frames.length > 0) {
+      const frame = frames[frames.length - 1];
+      if (frame.nextIndex >= frame.neighbors.length) {
+        frames.pop();
+        const completed = path.pop()!;
+        pathIndex.delete(completed);
+        color.set(frame.node, 2);
+        continue;
+      }
+
+      const next = frame.neighbors[frame.nextIndex++];
+      const nextColor = color.get(next) ?? 0;
+      if (nextColor === 1) {
+        const idx = pathIndex.get(next);
+        if (idx !== undefined) {
+          const cycle = path.slice(idx);
           const key = [...cycle].sort().join("\u001f");
           if (!seenCycleKeys.has(key)) {
             seenCycleKeys.add(key);
-            cycles.push([...cycle, next]); // close the loop for the message
+            cycles.push([...cycle, next]);
           }
         }
-      } else if (c === 0) {
-        visit(next);
+        continue;
+      }
+
+      if (nextColor === 0) {
+        color.set(next, 1);
+        pathIndex.set(next, path.length);
+        path.push(next);
+        frames.push({ node: next, neighbors: adj.get(next) ?? [], nextIndex: 0 });
       }
     }
-    stack.pop();
-    color.set(node, 2);
-  };
-
-  for (const node of adj.keys()) {
-    if ((color.get(node) ?? 0) === 0) visit(node);
   }
   return cycles;
 }
@@ -787,15 +804,7 @@ async function runValidate(
     throw new CommandError("Usage: pm beads validate <file> [--json] [--no-workspace]", EXIT_CODE.USAGE);
   }
   const absolutePath = resolve(filePath);
-  let raw: string;
-  try {
-    raw = readFileSync(absolutePath, "utf-8");
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    const code = typeof (err as NodeJS.ErrnoException)?.code === "string" ? (err as NodeJS.ErrnoException).code : "";
-    const exitCode = code === "ENOENT" ? EXIT_CODE.NOT_FOUND : EXIT_CODE.GENERIC_FAILURE;
-    throw new CommandError(`Failed to read file: ${msg}`, exitCode);
-  }
+  const raw = readFileOrThrow(absolutePath);
 
   const workspaceBeadIds =
     opts.workspace && opts.pmRoot ? await readWorkspaceBeadIds(opts.pmRoot) : undefined;
@@ -860,17 +869,20 @@ interface ImportOptions {
   filter: RowFilter;
 }
 
-function parseBeadsFile(filePath: string): BeadsItem[] {
-  const absolutePath = resolve(filePath);
-  let raw: string;
+function readFileOrThrow(absolutePath: string): string {
   try {
-    raw = readFileSync(absolutePath, "utf-8");
+    return readFileSync(absolutePath, "utf-8");
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     const code = typeof (err as NodeJS.ErrnoException)?.code === "string" ? (err as NodeJS.ErrnoException).code : "";
     const exitCode = code === "ENOENT" ? EXIT_CODE.NOT_FOUND : EXIT_CODE.GENERIC_FAILURE;
     throw new CommandError(`Failed to read file: ${msg}`, exitCode);
   }
+}
+
+function parseBeadsFile(filePath: string): BeadsItem[] {
+  const absolutePath = resolve(filePath);
+  const raw = readFileOrThrow(absolutePath);
   const lines = raw.split("\n").filter((l) => l.trim());
   const items: BeadsItem[] = [];
   for (let i = 0; i < lines.length; i++) {
@@ -915,15 +927,7 @@ export function buildBeadIndex(items: PmItem[]): Map<string, ExistingBeadItem> {
 // both the fail-fast import gate and `--validate-only` can share it.
 export async function readAndValidateBeads(filePath: string, pmRoot?: string): Promise<ValidationReport> {
   const absolutePath = resolve(filePath);
-  let raw: string;
-  try {
-    raw = readFileSync(absolutePath, "utf-8");
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    const code = typeof (err as NodeJS.ErrnoException)?.code === "string" ? (err as NodeJS.ErrnoException).code : "";
-    const exitCode = code === "ENOENT" ? EXIT_CODE.NOT_FOUND : EXIT_CODE.GENERIC_FAILURE;
-    throw new CommandError(`Failed to read file: ${msg}`, exitCode);
-  }
+  const raw = readFileOrThrow(absolutePath);
 
   // Cross-check dependency edges against bead ids already in the workspace so
   // a reference that resolves at import time (a prior import) stays a warning,
@@ -970,19 +974,7 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
   if (!filePath) {
     throw new CommandError(
       "Usage: pm beads import <file> [--dry-run] [--validate-only] [--upsert] [--merge-strategy update|skip|fail] " +
-        "[--batch-size <n>] [--filter type:Bug;status:open] [--no-preserve-ids] [--type <type>] [--priority <n>]",
-      EXIT_CODE.USAGE,
-    );
-  }
-  if (opts.upsert && !opts.preserveIds) {
-    throw new CommandError(
-      "--upsert requires preserved Beads ids (it keys on them); do not combine with --no-preserve-ids.",
-      EXIT_CODE.USAGE,
-    );
-  }
-  if (opts.mergeStrategy !== "update" && !opts.upsert) {
-    throw new CommandError(
-      "--merge-strategy only applies with --upsert (duplicate handling needs a key to match on).",
+        '[--batch-size <n>] [--filter "type:Bug;status:open"] [--no-preserve-ids] [--type <type>] [--priority <n>]',
       EXIT_CODE.USAGE,
     );
   }
@@ -1010,6 +1002,19 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
     return { validateOnly: true, records: report.records, valid: true, issues: report.issues };
   }
 
+  if (opts.upsert && !opts.preserveIds) {
+    throw new CommandError(
+      "--upsert requires preserved Beads ids (it keys on them); do not combine with --no-preserve-ids.",
+      EXIT_CODE.USAGE,
+    );
+  }
+  if (opts.mergeStrategy !== "update" && !opts.upsert) {
+    throw new CommandError(
+      "--merge-strategy only applies with --upsert (duplicate handling needs a key to match on).",
+      EXIT_CODE.USAGE,
+    );
+  }
+
   // Authoritative fail-fast gate: abort on structural errors before ANY write.
   await assertBeadsImportable(filePath, pmRoot);
 
@@ -1019,6 +1024,7 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
   const parsed = parseBeadsFile(filePath);
   const records = parsed.filter((r) => !(r as any).__invalid);
   let skipped = parsed.length - records.length;
+  let failed = skipped;
 
   if (parsed.length === 0) {
     console.error("File is empty.");
@@ -1042,11 +1048,44 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
   const hasFilter = Boolean(opts.filter.statuses || opts.filter.types);
   let filtered = 0;
 
+  // `fail` is an all-or-nothing policy. Detect collisions with both the
+  // workspace and earlier input rows before the create/update loop can write.
+  if (opts.upsert && opts.mergeStrategy === "fail") {
+    const inputKeys = new Map<string, number>();
+    for (let i = 0; i < records.length; i++) {
+      const item = records[i];
+      const title = String(item.title || item.name || "").trim();
+      if (!title || (hasFilter && !beadPassesFilter(item, opts.typeOverride, opts.filter))) continue;
+
+      const beadId = opts.preserveIds ? normalizeBeadKey(item.id) : undefined;
+      const key = beadId;
+      if (!key) continue;
+
+      const existing = existingIndex.get(key);
+      if (existing) {
+        throw new CommandError(
+          `merge-strategy "fail": bead "${beadId}" is already imported as ${existing.pmId}; aborting before any writes.`,
+          EXIT_CODE.GENERIC_FAILURE,
+        );
+      }
+
+      const firstRecord = inputKeys.get(key);
+      if (firstRecord !== undefined) {
+        throw new CommandError(
+          `merge-strategy "fail": bead "${beadId}" appears more than once in the input ` +
+            `(records ${firstRecord + 1} and ${i + 1}); aborting before any writes.`,
+          EXIT_CODE.GENERIC_FAILURE,
+        );
+      }
+      inputKeys.set(key, i);
+    }
+  }
+
   // --batch-size chunks the create/update pass into fixed-size groups so very
   // large imports report progress per batch (and so a caller can throttle).
   // Writes remain per-record (pm exposes no batch create), so batching is a
   // progress/throughput concern, not a transactional one. Unset = one batch.
-  const batchSize = opts.batchSize && opts.batchSize > 0 ? opts.batchSize : records.length;
+  const batchSize = opts.batchSize && opts.batchSize > 0 ? opts.batchSize : (records.length || 1);
   const batchCount = Math.max(1, Math.ceil(records.length / batchSize));
   const multiBatch = batchCount > 1;
 
@@ -1062,6 +1101,7 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
       if (!title) {
         console.error(`Record ${i + 1}: missing title — skipping`);
         skipped++;
+        failed++;
         continue;
       }
 
@@ -1083,18 +1123,10 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
       const baseDescription = (item.description as string) || title;
       const description = encodeBeadId(baseDescription, beadId);
       const blockers = extractBlockerIds(item);
-      const key = normalizeBeadKey(beadId);
+      const key = beadId;
       const existing = opts.upsert && key ? existingIndex.get(key) : undefined;
       const existingPmId = existing?.pmId;
       const matched = Boolean(existingPmId);
-
-      // --merge-strategy fail: abort on the first duplicate rather than continue.
-      if (matched && opts.mergeStrategy === "fail") {
-        throw new CommandError(
-          `merge-strategy "fail": bead "${beadId}" is already imported as ${existingPmId}; aborting import.`,
-          EXIT_CODE.GENERIC_FAILURE,
-        );
-      }
 
       if (opts.dryRun) {
         let action: string;
@@ -1143,9 +1175,12 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
           if (tags) updArgs.push("--tags", tags); // --tags replaces; idempotent re-import
           appendPlanningArgs(updArgs, item);
           const result = spawnSync("pm", updArgs, { encoding: "utf-8" });
-          if (result.status !== 0) throw new Error(result.stderr || "pm update failed");
+          if (result.status !== 0) {
+            throw new Error(result.stderr?.trim() || result.error?.message || "pm update failed");
+          }
           pmId = existingPmId;
           updated++;
+          if (key) existingIndex.set(key, { pmId, status });
         } else {
           const spawnArgs = [
             "--path", pmRoot,
@@ -1162,7 +1197,7 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
 
           const result = spawnSync("pm", spawnArgs, { encoding: "utf-8" });
           if (result.status !== 0) {
-            throw new Error(result.stderr || "pm create failed");
+            throw new Error(result.stderr?.trim() || result.error?.message || "pm create failed");
           }
           const created = extractCreatedId(result.stdout);
           if (!created) throw new Error("could not determine created pm id");
@@ -1177,6 +1212,7 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
         const msg = err instanceof Error ? err.message : String(err);
         console.error(`Record ${i + 1}: ${existingPmId ? "update" : "create"} failed — ${msg}`);
         skipped++;
+        failed++;
       }
     }
   }
@@ -1259,8 +1295,8 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
     };
   }
 
-  if (imported === 0 && updated === 0 && skipped > 0 && filtered === 0) {
-    throw new CommandError(`No items imported — all ${skipped} record(s) failed (malformed input?).`);
+  if (imported === 0 && updated === 0 && failed > 0) {
+    throw new CommandError(`No items imported — all ${failed} attempted record(s) failed.`);
   }
 
   console.error(
@@ -1568,14 +1604,7 @@ export function diffBeads(a: BeadsItem[], b: BeadsItem[], filter?: RowFilter): B
 // line-naming error.
 function parseBeadsFileForDiff(filePath: string): BeadsItem[] {
   const absolutePath = resolve(filePath);
-  let raw: string;
-  try {
-    raw = readFileSync(absolutePath, "utf-8");
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    const exitCode = /ENOENT|no such file/i.test(msg) ? EXIT_CODE.NOT_FOUND : EXIT_CODE.GENERIC_FAILURE;
-    throw new CommandError(`Failed to read file: ${msg}`, exitCode);
-  }
+  const raw = readFileOrThrow(absolutePath);
   const lines = raw.split("\n");
   const beads: BeadsItem[] = [];
   for (let i = 0; i < lines.length; i++) {
@@ -1643,7 +1672,7 @@ function runDiff(args: string[] | undefined, opts: DiffOptions) {
   const fileA = files[0];
   if (!fileA) {
     throw new CommandError(
-      "Usage: pm beads diff <fileA> <fileB> | pm beads diff <file> --against-workspace [--json] [--strict] [--filter-status <list>] [--filter-type <list>]",
+      'Usage: pm beads diff <fileA> <fileB> | pm beads diff <file> --against-workspace [--json] [--strict] [--filter "type:Bug;status:open"] [--filter-status <list>] [--filter-type <list>]',
       EXIT_CODE.USAGE,
     );
   }
@@ -1730,6 +1759,7 @@ const EXPORT_FLAGS = [
   { long: "--output", short: "-o", value_name: "file", value_type: "string", description: "Write JSONL to a file instead of stdout" },
   { long: "--dry-run", value_type: "boolean", description: "Preview the export count without writing to a file or stdout" },
   { long: "--no-preserve-ids", value_type: "boolean", description: "Emit pm ids instead of the original Beads ids (default: preserve)" },
+  { long: "--filter", value_name: "expr", value_type: "string", description: "Combined row filter, e.g. `type:Bug,Feature;status:open,in_progress` (merged with --filter-status/--filter-type)" },
   { long: "--filter-status", value_name: "list", value_type: "string", description: "Only export items whose Beads status is in this comma-separated list" },
   { long: "--filter-type", value_name: "list", value_type: "string", description: "Only export items whose type is in this comma-separated list" },
 ];
@@ -1744,6 +1774,7 @@ const DIFF_FLAGS = [
   { long: "--json", value_type: "boolean", description: "Emit the structured diff object as JSON" },
   { long: "--strict", value_type: "boolean", description: "Exit nonzero when any drift (added/removed/changed) is found — for CI fidelity gates" },
   { long: "--no-preserve-ids", value_type: "boolean", description: "When diffing against the workspace, key on pm ids instead of the original Beads ids (default: preserve)" },
+  { long: "--filter", value_name: "expr", value_type: "string", description: "Combined row filter, e.g. `type:Bug,Feature;status:open,in_progress` (merged with --filter-status/--filter-type)" },
   { long: "--filter-status", value_name: "list", value_type: "string", description: "Only compare beads whose mapped status is in this comma-separated list" },
   { long: "--filter-type", value_name: "list", value_type: "string", description: "Only compare beads whose type is in this comma-separated list" },
 ];
@@ -1819,10 +1850,15 @@ export function resolvePreserveTimestamps(options: Record<string, unknown>): boo
 // Parse a positive integer option honoring both kebab and camel spellings.
 // Returns undefined when unset or not a positive integer.
 export function parsePositiveIntOption(options: Record<string, unknown>, ...keys: string[]): number | undefined {
-  const raw = optionString(options, ...keys);
+  const raw = keys.map((key) => options[key]).find((value) => value !== undefined);
   if (raw === undefined) return undefined;
-  const n = Math.floor(Number(raw));
-  if (!Number.isFinite(n) || n <= 0) return undefined;
+  const n = typeof raw === "number" ? raw : typeof raw === "string" && raw.trim() ? Number(raw) : Number.NaN;
+  if (!Number.isInteger(n) || n <= 0) {
+    throw new CommandError(
+      `Invalid value for --${keys[0]}: "${String(raw)}". Must be a positive integer.`,
+      EXIT_CODE.USAGE,
+    );
+  }
   return n;
 }
 
@@ -1942,13 +1978,16 @@ export default defineExtension({
           "pm beads import data.jsonl --validate-only",
           "pm beads import data.jsonl --upsert",
           "pm beads import data.jsonl --upsert --merge-strategy skip",
-          "pm beads import data.jsonl --filter type:Bug;status:open",
+          'pm beads import data.jsonl --filter "type:Bug;status:open"',
           "pm beads import big.jsonl --batch-size 100",
           "pm beads import data.jsonl --filter-status open,in_progress",
         ],
         failure_hints: [
           "Run `pm beads validate <file>` to see the structural errors that blocked the import.",
           "Use --validate-only to run that gate without importing.",
+        ],
+        arguments: [
+          { name: "file", required: true, description: "Path to the Beads JSONL source file." },
         ],
         flags: IMPORT_FLAGS,
       },
@@ -1970,6 +2009,7 @@ export default defineExtension({
         examples: [
           "pm beads export",
           "pm beads export --output items.jsonl",
+          'pm beads export --filter "type:Bug;status:open"',
           "pm beads export --filter-type Bug",
           "pm beads export --dry-run",
         ],
@@ -1996,12 +2036,15 @@ export default defineExtension({
         "pm beads import data.jsonl --upsert",
         "pm beads import data.jsonl --upsert --merge-strategy skip",
         "pm beads import data.jsonl --type Task --priority 2",
-        "pm beads import data.jsonl --filter type:Bug;status:open",
+        'pm beads import data.jsonl --filter "type:Bug;status:open"',
         "pm beads import data.jsonl --filter-status open,in_progress",
         "pm beads import data.jsonl --filter-type Bug",
         "pm beads import big.jsonl --batch-size 100",
         "pm beads import data.jsonl --no-preserve-ids",
         "pm beads import data.jsonl --no-preserve-timestamps",
+      ],
+      arguments: [
+        { name: "file", required: true, description: "Path to the Beads JSONL source file." },
       ],
       flags: IMPORT_FLAGS,
       async run(ctx: any) {
@@ -2023,6 +2066,7 @@ export default defineExtension({
         "pm beads export",
         "pm beads export --output items.jsonl",
         "pm beads export --dry-run",
+        'pm beads export --filter "type:Bug;status:open"',
         "pm beads export --filter-status open,in_progress",
         "pm beads export --filter-type Bug",
         "pm beads export --no-preserve-ids",
@@ -2053,6 +2097,9 @@ export default defineExtension({
         "pm beads validate items.jsonl",
         "pm beads validate items.jsonl --json",
         "pm beads validate items.jsonl --no-workspace",
+      ],
+      arguments: [
+        { name: "file", required: true, description: "Path to the Beads JSONL file to validate." },
       ],
       flags: VALIDATE_FLAGS,
       async run(ctx: any) {
@@ -2091,8 +2138,17 @@ export default defineExtension({
         "pm beads diff exported.jsonl --against-workspace",
         "pm beads diff a.jsonl b.jsonl --json",
         "pm beads diff a.jsonl b.jsonl --strict",
+        'pm beads diff a.jsonl b.jsonl --filter "type:Bug;status:open"',
         "pm beads diff a.jsonl b.jsonl --filter-status open,in_progress",
         "pm beads diff a.jsonl b.jsonl --filter-type Bug",
+      ],
+      arguments: [
+        { name: "source", required: true, description: "First Beads JSONL file." },
+        {
+          name: "target",
+          required: false,
+          description: "Second Beads JSONL file; omit with --against-workspace.",
+        },
       ],
       flags: DIFF_FLAGS,
       async run(ctx: any) {
