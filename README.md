@@ -62,7 +62,7 @@ pm beads import data.jsonl --validate-only         # validate then exit, no impo
 pm beads import data.jsonl --upsert                 # idempotent re-import (update, not duplicate)
 pm beads import data.jsonl --upsert --merge-strategy skip   # leave duplicates untouched
 pm beads import data.jsonl --type Task --priority 2
-pm beads import data.jsonl --filter type:Bug;status:open    # combined row filter
+pm beads import data.jsonl --filter "type:Bug;status:open"  # combined row filter
 pm beads import data.jsonl --filter-status open,in_progress
 pm beads import data.jsonl --filter-type Bug
 pm beads import big.jsonl --batch-size 100         # chunk the create/update pass
@@ -196,6 +196,7 @@ pm beads validate items.jsonl --no-workspace  # file-only dangling check
 pm beads export                              # Beads JSONL to stdout
 pm beads export --output items.jsonl         # write to a file
 pm beads export --dry-run                    # preview the count, write nothing
+pm beads export --filter "type:Bug;status:open" # combined row filter
 pm beads export --filter-status open         # only export open items
 pm beads export --filter-type Issue          # only export items of a given type
 pm beads export --no-preserve-ids            # emit pm ids instead of the original Beads ids
@@ -208,10 +209,11 @@ pm beads export --no-preserve-ids            # emit pm ids instead of the origin
 | `--output <file>`, `-o` | string | Write JSONL to a file instead of stdout |
 | `--dry-run` | boolean | Preview the export count without writing to a file or stdout |
 | `--no-preserve-ids` | boolean | Emit pm ids instead of the original Beads ids (default: preserve) |
+| `--filter <expr>` | string | Combined row filter, e.g. `type:Bug;status:open` (merged with granular filters) |
 | `--filter-status <list>` | string | Only export items whose **Beads** status is in this comma-separated list |
 | `--filter-type <list>` | string | Only export items whose type is in this comma-separated list |
 
-The import and export `--filter-status`/`--filter-type` flags are symmetric:
+The import and export `--filter`, `--filter-status`, and `--filter-type` flags are symmetric:
 import compares against the **mapped pm** status (so `--filter-status closed`
 matches a bead with `done`/`complete`), export compares against the **Beads**
 status the exporter emits.
@@ -231,6 +233,7 @@ pm beads export --output now.jsonl              # snapshot, then…
 pm beads diff before.jsonl --against-workspace  # …compare a file to the live workspace
 pm beads diff a.jsonl b.jsonl --json            # structured diff object
 pm beads diff a.jsonl b.jsonl --strict          # exit nonzero on any drift (CI gate)
+pm beads diff a.jsonl b.jsonl --filter "type:Bug;status:open"
 pm beads diff a.jsonl b.jsonl --filter-status open,in_progress
 pm beads diff a.jsonl b.jsonl --filter-type Bug
 ```
@@ -263,6 +266,7 @@ the canonical mapped value (so `done` vs `closed` is **not** drift), priority
 | `--json` | boolean | Emit the structured diff object as JSON |
 | `--strict` | boolean | Exit nonzero when any drift is found (for CI fidelity gates) |
 | `--no-preserve-ids` | boolean | When diffing against the workspace, key on pm ids instead of the original Beads ids (default: preserve) |
+| `--filter <expr>` | string | Combined row filter, e.g. `type:Bug;status:open` (merged with granular filters) |
 | `--filter-status <list>` | string | Only compare beads whose **mapped** status is in this comma-separated list |
 | `--filter-type <list>` | string | Only compare beads whose type is in this comma-separated list |
 

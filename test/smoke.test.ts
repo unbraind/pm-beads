@@ -136,6 +136,9 @@ test("importer/exporter registrations carry first-class command metadata (option
   const imp = captured.importerOptions["beads"];
   assert.ok(imp, "importer should pass the ImportExportRegistrationOptions third argument");
   assert.ok(typeof imp.description === "string" && imp.description.length > 0);
+  assert.deepStrictEqual(imp.arguments, [
+    { name: "file", required: true, description: "Path to the Beads JSONL source file." },
+  ]);
   assert.ok(Array.isArray(imp.flags) && imp.flags.some((f: any) => f.long === "--upsert"));
   assert.ok(imp.flags.every((f: any) => f.value_type === "string" || f.value_type === "boolean"));
   const exp = captured.exporterOptions["beads"];
@@ -443,6 +446,15 @@ test("detectDependencyCycles finds a multi-node cycle once and ignores acyclic e
 
 test("detectDependencyCycles returns nothing for a DAG", () => {
   const adj = new Map<string, string[]>([["a", ["b", "c"]], ["b", ["c"]], ["c", []]]);
+  assert.deepStrictEqual(detectDependencyCycles(adj), []);
+});
+
+test("detectDependencyCycles handles a very deep DAG without call-stack overflow", () => {
+  const depth = 25_000;
+  const adj = new Map<string, string[]>();
+  for (let i = 0; i < depth; i++) {
+    adj.set(`node-${i}`, i + 1 < depth ? [`node-${i + 1}`] : []);
+  }
   assert.deepStrictEqual(detectDependencyCycles(adj), []);
 });
 
@@ -911,6 +923,20 @@ test("beads diff hard-fails on a malformed JSONL line", async () => {
   );
 });
 
+test("beads diff maps a missing file to NOT_FOUND", async () => {
+  const registered: string[] = [];
+  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any> };
+  extension.activate(makeApi(registered, captured) as any);
+  const diffCmd = captured.commands["beads diff"];
+  await assert.rejects(
+    () => diffCmd.run({ args: ["/nonexistent/beads-a.jsonl", "/nonexistent/beads-b.jsonl"], options: {}, global: {} }),
+    (err: unknown) => {
+      assert.strictEqual((err as CommandError).exitCode, EXIT_CODE.NOT_FOUND);
+      return true;
+    },
+  );
+});
+
 // --- Enhancement: --validate-only / --batch-size / --filter / --merge-strategy / export --dry-run ---
 
 test("parseFilterExpression parses the combined `type:...;status:...` form", () => {
@@ -960,12 +986,20 @@ test("parseMergeStrategy defaults to update and rejects unknown values", () => {
   assert.deepStrictEqual([...MERGE_STRATEGIES], ["update", "skip", "fail"]);
 });
 
-test("parsePositiveIntOption reads kebab and camel spellings, rejects non-positive", () => {
+test("parsePositiveIntOption reads strings/numbers and rejects invalid explicit values", () => {
   assert.strictEqual(parsePositiveIntOption({ "batch-size": "100" }, "batch-size", "batchSize"), 100);
   assert.strictEqual(parsePositiveIntOption({ batchSize: "50" }, "batch-size", "batchSize"), 50);
-  assert.strictEqual(parsePositiveIntOption({ "batch-size": "0" }, "batch-size", "batchSize"), undefined);
-  assert.strictEqual(parsePositiveIntOption({ "batch-size": "-3" }, "batch-size", "batchSize"), undefined);
-  assert.strictEqual(parsePositiveIntOption({ "batch-size": "abc" }, "batch-size", "batchSize"), undefined);
+  assert.strictEqual(parsePositiveIntOption({ batchSize: 25 }, "batch-size", "batchSize"), 25);
+  for (const value of ["0", "-3", "abc", "1.5", "", true]) {
+    assert.throws(
+      () => parsePositiveIntOption({ "batch-size": value }, "batch-size", "batchSize"),
+      (err: unknown) => {
+        assert.strictEqual((err as CommandError).exitCode, EXIT_CODE.USAGE);
+        assert.match((err as Error).message, /Must be a positive integer/);
+        return true;
+      },
+    );
+  }
   assert.strictEqual(parsePositiveIntOption({}, "batch-size", "batchSize"), undefined);
 });
 
@@ -1008,6 +1042,24 @@ test("--validate-only surfaces a nonzero exit on a malformed file", async () => 
       return true;
     },
   );
+});
+
+test("--validate-only ignores write-only merge strategy constraints", async () => {
+  const registered: string[] = [];
+  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any> };
+  extension.activate(makeApi(registered, captured) as any);
+  const importer = captured.importers["beads"];
+  const dir = mkdtempSync(join(tmpdir(), "beads-vo-merge-"));
+  const file = join(dir, "in.jsonl");
+  writeFileSync(file, JSON.stringify({ id: "bd-1", title: "A" }) + "\n", "utf-8");
+
+  const result = await importer({
+    args: [file],
+    options: { "validate-only": true, "merge-strategy": "fail" },
+    pm_root: undefined,
+  });
+  assert.strictEqual(result.validateOnly, true);
+  assert.strictEqual(result.valid, true);
 });
 
 test("--merge-strategy without --upsert is a USAGE error", async () => {
@@ -1076,6 +1128,15 @@ test("--merge-strategy skip/fail in dry-run against a seeded workspace", { skip:
   assert.strictEqual(skip.wouldImport, 0);
   assert.strictEqual(skip.wouldSkip, 1);
 
+  // A real skip-only import is a successful no-op, not a malformed-input
+  // failure. This is a common idempotent sync path for agents.
+  const actualSkip = await importer({
+    args: [file], options: { upsert: true, "merge-strategy": "skip" }, pm_root: pmRoot,
+  });
+  assert.strictEqual(actualSkip.imported, 0);
+  assert.strictEqual(actualSkip.updated, 0);
+  assert.strictEqual(actualSkip.skipped, 1);
+
   // fail: aborts the import on the first duplicate.
   await assert.rejects(
     async () => importer({
@@ -1086,6 +1147,109 @@ test("--merge-strategy skip/fail in dry-run against a seeded workspace", { skip:
       assert.match((err as Error).message, /already imported/);
       return true;
     },
+  );
+});
+
+test("--merge-strategy fail preflights all collisions before writing", { skip: !hasPmCli() }, async () => {
+  const root = mkdtempSync(join(tmpdir(), "beads-ms-atomic-"));
+  const pmRoot = join(root, ".agents", "pm");
+  mkdirSync(pmRoot, { recursive: true });
+  assert.strictEqual(spawnSync("pm", ["--path", pmRoot, "init"], { encoding: "utf-8" }).status, 0);
+  assert.strictEqual(
+    spawnSync("pm", ["--path", pmRoot, "--json", "create", "--title", "Existing", "--type", "Task",
+      "--status", "open", "--description", encodeBeadId("body", "bd-existing")], { encoding: "utf-8" }).status,
+    0,
+  );
+
+  const file = join(root, "in.jsonl");
+  writeFileSync(file, [
+    JSON.stringify({ id: "bd-new", title: "Must Not Be Created", status: "open", type: "Task" }),
+    JSON.stringify({ id: "bd-existing", title: "Existing", status: "open", type: "Task" }),
+  ].join("\n") + "\n", "utf-8");
+
+  const registered: string[] = [];
+  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any> };
+  extension.activate(makeApi(registered, captured) as any);
+  await assert.rejects(
+    () => captured.importers["beads"]({
+      args: [file], options: { upsert: true, "merge-strategy": "fail" }, pm_root: pmRoot,
+    }),
+    /aborting before any writes/,
+  );
+
+  const search = spawnSync("pm", ["--path", pmRoot, "--json", "search", "Must Not Be Created"], { encoding: "utf-8" });
+  assert.strictEqual(search.status, 0, search.stderr);
+  const searchResult = JSON.parse(search.stdout) as { items?: Array<{ title?: string }> };
+  assert.ok(
+    !(searchResult.items ?? []).some((item) => item.title === "Must Not Be Created"),
+    "preflight failure must leave no partially created item",
+  );
+
+  const duplicateFile = join(root, "duplicate-input.jsonl");
+  writeFileSync(duplicateFile, [
+    JSON.stringify({ id: "bd-duplicate", title: "First duplicate", status: "open", type: "Task" }),
+    JSON.stringify({ id: "bd-duplicate", title: "Second duplicate", status: "open", type: "Task" }),
+  ].join("\n") + "\n", "utf-8");
+  await assert.rejects(
+    () => captured.importers["beads"]({
+      args: [duplicateFile], options: { upsert: true, "merge-strategy": "fail" }, pm_root: pmRoot,
+    }),
+    /appears more than once in the input.*aborting before any writes/,
+  );
+
+  const duplicateSearch = spawnSync("pm", ["--path", pmRoot, "--json", "search", "First duplicate"], { encoding: "utf-8" });
+  assert.strictEqual(duplicateSearch.status, 0, duplicateSearch.stderr);
+  const duplicateResult = JSON.parse(duplicateSearch.stdout) as { items?: Array<{ title?: string }> };
+  assert.strictEqual(duplicateResult.items?.length ?? 0, 0, "duplicate-input preflight must not create either row");
+});
+
+test("upsert refreshes status index for repeated terminal-status rows", { skip: !hasPmCli() }, async () => {
+  const root = mkdtempSync(join(tmpdir(), "beads-upsert-status-"));
+  const pmRoot = join(root, ".agents", "pm");
+  mkdirSync(pmRoot, { recursive: true });
+  assert.strictEqual(spawnSync("pm", ["--path", pmRoot, "init"], { encoding: "utf-8" }).status, 0);
+  assert.strictEqual(
+    spawnSync("pm", ["--path", pmRoot, "--json", "create", "--title", "Existing", "--type", "Task",
+      "--status", "open", "--description", encodeBeadId("body", "bd-repeat")], { encoding: "utf-8" }).status,
+    0,
+  );
+
+  const file = join(root, "repeat.jsonl");
+  writeFileSync(file, [
+    JSON.stringify({ id: "bd-repeat", title: "Closed once", status: "closed", type: "Task" }),
+    JSON.stringify({ id: "bd-repeat", title: "Closed twice", status: "closed", type: "Task" }),
+  ].join("\n") + "\n", "utf-8");
+
+  const registered: string[] = [];
+  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any> };
+  extension.activate(makeApi(registered, captured) as any);
+  const result = await captured.importers["beads"]({
+    args: [file], options: { upsert: true }, pm_root: pmRoot,
+  });
+  assert.strictEqual(result.updated, 2, "both rows should update without attempting to re-close the terminal item");
+  assert.strictEqual(result.skipped, 0);
+});
+
+test("eligible import failures are not masked by filtered rows", { skip: !hasPmCli() }, async () => {
+  const root = mkdtempSync(join(tmpdir(), "beads-filter-failure-"));
+  const pmRoot = join(root, ".agents", "pm");
+  mkdirSync(pmRoot, { recursive: true });
+  assert.strictEqual(spawnSync("pm", ["--path", pmRoot, "init"], { encoding: "utf-8" }).status, 0);
+
+  const file = join(root, "mixed.jsonl");
+  writeFileSync(file, [
+    JSON.stringify({ id: "bad-type", title: "Eligible but invalid", status: "open", type: "DefinitelyUnknown" }),
+    JSON.stringify({ id: "filtered", title: "Filtered task", status: "open", type: "Task" }),
+  ].join("\n") + "\n", "utf-8");
+
+  const registered: string[] = [];
+  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any> };
+  extension.activate(makeApi(registered, captured) as any);
+  await assert.rejects(
+    () => captured.importers["beads"]({
+      args: [file], options: { "filter-type": "DefinitelyUnknown" }, pm_root: pmRoot,
+    }),
+    /No items imported — all 1 attempted record\(s\) failed/,
   );
 });
 
@@ -1122,7 +1286,7 @@ test("parseExportOptions reads dry-run, output and filter flags", () => {
   assert.strictEqual(parseExportOptions({}).dryRun, false);
 });
 
-test("exporter registration advertises the --dry-run flag", () => {
+test("exporter registration advertises dry-run and combined filter flags", () => {
   const registered: string[] = [];
   const captured = {
     commands: {} as Record<string, any>,
@@ -1133,6 +1297,14 @@ test("exporter registration advertises the --dry-run flag", () => {
   extension.activate(makeApi(registered, captured) as any);
   const exp = captured.exporterOptions["beads"];
   assert.ok(exp.flags.some((f: any) => f.long === "--dry-run"));
+  assert.ok(exp.flags.some((f: any) => f.long === "--filter"));
+});
+
+test("diff registration advertises the combined filter flag", () => {
+  const registered: string[] = [];
+  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any> };
+  extension.activate(makeApi(registered, captured) as any);
+  assert.ok(captured.commands["beads diff"].flags.some((f: any) => f.long === "--filter"));
 });
 
 test("importer registration advertises the new import flags", () => {
