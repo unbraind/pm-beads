@@ -38,9 +38,10 @@ import extension, {
   indexBeadsById,
   diffBeads,
   parseDiffOptions,
+  isInvalidTypeValueError,
 } from "../dist/index.js";
 
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -1331,3 +1332,62 @@ function hasPmCli(): boolean {
     return false;
   }
 }
+
+test("isInvalidTypeValueError matches only pm's invalid-type rejection", () => {
+  assert.strictEqual(isInvalidTypeValueError(undefined), false);
+  assert.strictEqual(isInvalidTypeValueError(null), false);
+  assert.strictEqual(isInvalidTypeValueError(""), false);
+  assert.strictEqual(isInvalidTypeValueError("some other error"), false);
+  // Needs BOTH the machine code and the type-specific detail.
+  assert.strictEqual(isInvalidTypeValueError('"code": "invalid_argument_value"'), false);
+  assert.strictEqual(isInvalidTypeValueError("Invalid type value \"bug\""), false);
+  assert.strictEqual(
+    isInvalidTypeValueError('{"code": "invalid_argument_value", "detail": "Invalid type value \\"bug\\". Allowed: ..."}'),
+    true,
+  );
+});
+
+test("upsert of a synonym-typed bead keeps the record AND its inbound dependency edges", { skip: !hasPmCli() }, async () => {
+  // Regression: `pm create` maps synonym types (bug -> Issue) through its
+  // fallback table but `pm update` rejects them. Before the retry-without---type
+  // fix, an upsert re-import of a "bug" bead failed the record, dropped it from
+  // the bead->pm map, and the --replace-deps pass then silently stripped every
+  // dependency edge pointing at it from the other upserted items.
+  const root = mkdtempSync(join(tmpdir(), "beads-upsert-synonym-"));
+  const pmRoot = join(root, ".agents", "pm");
+  mkdirSync(pmRoot, { recursive: true });
+  assert.strictEqual(spawnSync("pm", ["--path", pmRoot, "init"], { encoding: "utf-8" }).status, 0);
+
+  const file = join(root, "in.jsonl");
+  writeFileSync(file, [
+    JSON.stringify({ id: "bd-bug", title: "Crash", status: "open", issue_type: "bug" }),
+    JSON.stringify({ id: "bd-feat", title: "Feature", status: "open", issue_type: "feature", dependencies: ["bd-bug"] }),
+  ].join("\n") + "\n", "utf-8");
+
+  const registered: string[] = [];
+  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any> };
+  extension.activate(makeApi(registered, captured) as any);
+  const importer = captured.importers["beads"];
+  const exporter = captured.exporters["beads"];
+
+  const first = await importer({ args: [file], options: {}, pm_root: pmRoot });
+  assert.strictEqual(first.imported, 2);
+  assert.strictEqual(first.dependencies, 1);
+
+  // Re-import with --upsert: the "bug" bead must update (via the --type retry),
+  // not fail, and the bd-feat -> bd-bug edge must survive --replace-deps.
+  const second = await importer({ args: [file], options: { upsert: true }, pm_root: pmRoot });
+  assert.strictEqual(second.imported, 0);
+  assert.strictEqual(second.updated, 2, "synonym-typed bead must not fail the upsert update");
+  assert.strictEqual(second.dependencies, 1, "inbound edge to the synonym-typed bead must survive");
+
+  const out = join(root, "out.jsonl");
+  await exporter({ args: [], options: { output: out }, pm_root: pmRoot });
+  const rows = readFileSync(out, "utf-8").trim().split("\n").map((l) => JSON.parse(l));
+  const feat = rows.find((r) => r.id === "bd-feat");
+  assert.ok(feat, "bd-feat must round-trip");
+  assert.ok(
+    Array.isArray(feat.dependencies) && feat.dependencies.some((d: any) => (d.depends_on_id ?? d) === "bd-bug"),
+    "bd-feat must still depend on bd-bug after an upsert re-import",
+  );
+});
