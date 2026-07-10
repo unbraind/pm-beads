@@ -1,0 +1,34 @@
+id: pm-beads-vxw7
+title: Full pm ecosystem production pass for pm-beads
+description: ""
+type: Feature
+status: in_progress
+priority: 1
+tags[3]: ecosystem,ecosystem-pass-2026-06-10,production
+created_at: "2026-06-09T22:37:22.863Z"
+updated_at: "2026-07-10T04:46:16.527Z"
+assignee: codex-5-3-sweep
+author: codex-5-3-sweep
+comments[13]{created_at,author,text}:
+  "2026-07-09T22:01:49.194Z",codex-5-3-sweep,"Review intake 2026-07-09: PR #23 is conflict-free. Dependabot and secret-scanning report zero open alerts. Actionable feedback clusters: shell-safe filter docs; validate-only option compatibility; empty-input batch metadata; transactional preflight for merge-strategy fail; numeric programmatic batch size. Existing broader stale items will be reconciled after this PR is verified to avoid duplicate tracking."
+  "2026-07-09T22:03:12.759Z",codex-5-3-sweep,"Implementation: validate-only now returns before write-only option constraints; fail strategy preflights workspace and input collisions before mutation; zero-record batch denominator is safe; numeric programmatic batch sizes are accepted; semicolon filters are quoted in README and runtime examples. Regression tests include a real temporary pm workspace proving no partial create occurs."
+  "2026-07-09T22:08:07.290Z",codex-5-3-sweep,"Manual pm-cli 2026.7.9 E2E: installed the local package into two fresh isolated projects; created two realistic release tasks; exported and validated 2 Beads JSONL records; validate-only succeeded; imported 2 records; linked 1 blocked_by dependency; strict file-vs-workspace diff reported zero drift. This uncovered and fixed missing positional argument contracts for import/validate/diff on the latest CLI."
+  "2026-07-09T22:08:52.219Z",codex-5-3-sweep,"Privacy audit: zero secret-pattern matches across all refs and zero open GitHub secret-scanning alerts. Current/history privacy scan found host-specific paths in four committed pm records plus a personal author email in commit metadata. Full remediation requires coordinated history rewrite/force-push and is not safe inside PR #23; treat portfolio history sanitization as a separate release blocker. Current implementation diff introduces no new sensitive values."
+  "2026-07-09T22:24:54.851Z",codex-5-3-sweep,"Greptile pre-push review dc1ae01f-78dd-44cf-86cf-f558c51ea50e completed with confidence 5/5, Safe to merge, and no review comments. It specifically validated atomic fail preflight, validate-only ordering, zero-record batch guard, and real pm CLI E2E coverage."
+  "2026-07-09T22:41:19.115Z",codex-5-3-sweep,"Greptile follow-up review 5092e283-ec72-4213-ad11-a3a076fd7f36 remained 5/5 safe-to-merge with no comments and identified a pathological deep-graph stack risk. Replaced recursive cycle DFS with explicit traversal frames and added a 25,000-node DAG regression test so large agent-generated dependency graphs cannot overflow the JS call stack. The prior batch-count note is intentionally retained: when callers explicitly request batching, reporting batches=1 is useful and correct."
+  "2026-07-09T22:49:45.473Z",codex-5-3-sweep,"Final Greptile exact-hash pass df396594-3de1-4c63-b8cf-4b2bcf8e5497 was 5/5 safe-to-merge with no comments. Its two consistency notes were valid: normalized diff read errors using Node errno codes and promoted the already-supported combined --filter to first-class export/diff contracts, examples, README tables, and registration tests."
+  "2026-07-09T23:04:36.481Z",codex-5-3-sweep,"CI run 29056135321 diagnosis: build, 80 tests, audit, and pack all passed; only changelog:check failed. Exact merge-ref reproduction showed local generation lacked the latest v2026.07.06 tag and produced a July 9 heading, while full-tag CI correctly derived July 6. Fetched all tags, regenerated CHANGELOG.md via pm-changelog, and verified the full-tag check is clean."
+  "2026-07-09T23:17:49.204Z",codex-5-3-sweep,"Fresh Gemini review 4667348746 identified three valid paths: skip-only upserts were misclassified as total failures, and create/update spawn errors hid result.error. Added a dedicated failed counter distinct from intentional skips, a real pm skip-only success regression, and OS error propagation for both mutation paths."
+  "2026-07-09T23:28:17.811Z",codex-5-3-sweep,Gemini review 4667407643 found two valid redundant normalizations on already-normalized beadId values. Simplified both preflight and mutation-loop key assignments to use beadId directly; behavior is unchanged and the normalization contract is clearer.
+  "2026-07-09T23:41:51.736Z",codex-5-3-sweep,"Gemini review 4667468381 found two valid agent-facing edge cases: stale status in existingIndex for repeated same-ID upserts, and silent fallback for invalid batch sizes. Refresh the index after every upsert; reject explicit non-integer/non-positive batch sizes with USAGE; add a real repeated closed-status upsert test plus invalid-value coverage."
+  "2026-07-10T00:00:01.103Z",codex-5-3-sweep,"Late CodeRabbit review 4667551880 found two valid items after the green snapshot: duplicated file-read errno mapping and a filtered===0 condition that could mask total failure of all eligible rows. Consolidated all four readers on readFileOrThrow; removed the invalid filter guard; added a real mixed filtered/invalid-type import regression."
+  "2026-07-10T04:46:16.525Z",codex,"Wave verification 2026-07-10: found a REAL pre-existing upsert bug (in scope for this hardening PR). pm create maps synonym types (bug->Issue) but pm update rejects them, so upsert re-import of a synonym-typed bead failed the record and the --replace-deps pass silently dropped every dependency edge pointing at it (reproduced live: bd-2<-bd-1 and bd-4<-bd-1 lost). Fixed: (1) retry pm update without --type on invalid_argument_value + Invalid type value, preserving the canonical type from create; (2) on matched-record failure still map beadId->existingPmId so inbound edges survive replace-deps. Added isInvalidTypeValueError + 2 regression tests (84/84 pass). Verified live in throwaway workspace: upsert now updates 4/4 and relinks all 4 edges. Also verified: validate-only, batch-size, combined filters, export dry-run, merge-strategy skip/fail atomicity, cycle detection, 30k-node chain, NOT_FOUND exit 3, malformed JSONL exit 1 with per-line errors, no stack traces."
+files[1]{path,scope,note}:
+  index.ts,project,"Transactional fail preflight,validate-only ordering,numeric option support"
+tests[2]{command,scope,timeout_seconds}:
+  "npm run release:check",project,3600
+  npm test,project,600
+docs[2]{path,scope,note}:
+  CHANGELOG.md,project,Generated from canonical pm history for release readiness
+  README.md,project,Shell-safe filter examples
+body: ""
