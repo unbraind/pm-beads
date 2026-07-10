@@ -6,10 +6,10 @@ status: in_progress
 priority: 1
 tags[3]: ecosystem,ecosystem-pass-2026-06-10,production
 created_at: "2026-06-09T22:37:22.863Z"
-updated_at: "2026-07-10T00:00:01.108Z"
+updated_at: "2026-07-10T04:46:16.527Z"
 assignee: codex-5-3-sweep
 author: codex-5-3-sweep
-comments[12]{created_at,author,text}:
+comments[13]{created_at,author,text}:
   "2026-07-09T22:01:49.194Z",codex-5-3-sweep,"Review intake 2026-07-09: PR #23 is conflict-free. Dependabot and secret-scanning report zero open alerts. Actionable feedback clusters: shell-safe filter docs; validate-only option compatibility; empty-input batch metadata; transactional preflight for merge-strategy fail; numeric programmatic batch size. Existing broader stale items will be reconciled after this PR is verified to avoid duplicate tracking."
   "2026-07-09T22:03:12.759Z",codex-5-3-sweep,"Implementation: validate-only now returns before write-only option constraints; fail strategy preflights workspace and input collisions before mutation; zero-record batch denominator is safe; numeric programmatic batch sizes are accepted; semicolon filters are quoted in README and runtime examples. Regression tests include a real temporary pm workspace proving no partial create occurs."
   "2026-07-09T22:08:07.290Z",codex-5-3-sweep,"Manual pm-cli 2026.7.9 E2E: installed the local package into two fresh isolated projects; created two realistic release tasks; exported and validated 2 Beads JSONL records; validate-only succeeded; imported 2 records; linked 1 blocked_by dependency; strict file-vs-workspace diff reported zero drift. This uncovered and fixed missing positional argument contracts for import/validate/diff on the latest CLI."
@@ -22,6 +22,7 @@ comments[12]{created_at,author,text}:
   "2026-07-09T23:28:17.811Z",codex-5-3-sweep,Gemini review 4667407643 found two valid redundant normalizations on already-normalized beadId values. Simplified both preflight and mutation-loop key assignments to use beadId directly; behavior is unchanged and the normalization contract is clearer.
   "2026-07-09T23:41:51.736Z",codex-5-3-sweep,"Gemini review 4667468381 found two valid agent-facing edge cases: stale status in existingIndex for repeated same-ID upserts, and silent fallback for invalid batch sizes. Refresh the index after every upsert; reject explicit non-integer/non-positive batch sizes with USAGE; add a real repeated closed-status upsert test plus invalid-value coverage."
   "2026-07-10T00:00:01.103Z",codex-5-3-sweep,"Late CodeRabbit review 4667551880 found two valid items after the green snapshot: duplicated file-read errno mapping and a filtered===0 condition that could mask total failure of all eligible rows. Consolidated all four readers on readFileOrThrow; removed the invalid filter guard; added a real mixed filtered/invalid-type import regression."
+  "2026-07-10T04:46:16.525Z",codex,"Wave verification 2026-07-10: found a REAL pre-existing upsert bug (in scope for this hardening PR). pm create maps synonym types (bug->Issue) but pm update rejects them, so upsert re-import of a synonym-typed bead failed the record and the --replace-deps pass silently dropped every dependency edge pointing at it (reproduced live: bd-2<-bd-1 and bd-4<-bd-1 lost). Fixed: (1) retry pm update without --type on invalid_argument_value + Invalid type value, preserving the canonical type from create; (2) on matched-record failure still map beadId->existingPmId so inbound edges survive replace-deps. Added isInvalidTypeValueError + 2 regression tests (84/84 pass). Verified live in throwaway workspace: upsert now updates 4/4 and relinks all 4 edges. Also verified: validate-only, batch-size, combined filters, export dry-run, merge-strategy skip/fail atomicity, cycle detection, 30k-node chain, NOT_FOUND exit 3, malformed JSONL exit 1 with per-line errors, no stack traces."
 files[1]{path,scope,note}:
   index.ts,project,"Transactional fail preflight,validate-only ordering,numeric option support"
 tests[2]{command,scope,timeout_seconds}:

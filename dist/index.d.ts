@@ -152,6 +152,13 @@ export declare function detectDependencyCycles(adj: Map<string, string[]>): stri
 export declare function validateBeadsText(text: string, file?: string, workspaceBeadIds?: Set<string>): ValidationReport;
 export type MergeStrategy = "update" | "skip" | "fail";
 export declare const MERGE_STRATEGIES: readonly MergeStrategy[];
+/**
+ * Detect pm's "Invalid type value" rejection in `pm update` stderr. `pm create`
+ * resolves synonym types (bug -> Issue, story -> Feature, ...) through a fallback
+ * table but `pm update` validates strictly; the upsert path uses this to retry an
+ * update without `--type` instead of failing the record. Exported for tests.
+ */
+export declare function isInvalidTypeValueError(stderr: string | null | undefined): boolean;
 export interface ExistingBeadItem {
     pmId: string;
     status?: string;

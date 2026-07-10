@@ -734,6 +734,17 @@ function readFileOrThrow(absolutePath) {
         throw new CommandError(`Failed to read file: ${msg}`, exitCode);
     }
 }
+/**
+ * Detect pm's "Invalid type value" rejection in `pm update` stderr. `pm create`
+ * resolves synonym types (bug -> Issue, story -> Feature, ...) through a fallback
+ * table but `pm update` validates strictly; the upsert path uses this to retry an
+ * update without `--type` instead of failing the record. Exported for tests.
+ */
+export function isInvalidTypeValueError(stderr) {
+    if (!stderr)
+        return false;
+    return stderr.includes("invalid_argument_value") && stderr.includes("Invalid type value");
+}
 function parseBeadsFile(filePath) {
     const absolutePath = resolve(filePath);
     const raw = readFileOrThrow(absolutePath);
@@ -989,7 +1000,19 @@ async function runImport(filePath, pmRoot, opts) {
                     if (tags)
                         updArgs.push("--tags", tags); // --tags replaces; idempotent re-import
                     appendPlanningArgs(updArgs, item);
-                    const result = spawnSync("pm", updArgs, { encoding: "utf-8" });
+                    let result = spawnSync("pm", updArgs, { encoding: "utf-8" });
+                    // `pm create` maps synonym types (bug -> Issue, story -> Feature, ...)
+                    // through its fallback table, but `pm update` validates types strictly.
+                    // A bead whose issue_type is such a synonym imports fine on create yet
+                    // fails on upsert re-import. Retry once without --type: the matched
+                    // item already carries the canonical type the original create resolved,
+                    // so dropping the flag preserves it instead of failing the whole record.
+                    if (result.status !== 0 && isInvalidTypeValueError(result.stderr)) {
+                        const typeFlag = updArgs.indexOf("--type");
+                        const retryArgs = [...updArgs.slice(0, typeFlag), ...updArgs.slice(typeFlag + 2)];
+                        console.error(`  note: pm update rejected type "${type}" for ${existingPmId}; retrying without --type (existing type preserved)`);
+                        result = spawnSync("pm", retryArgs, { encoding: "utf-8" });
+                    }
                     if (result.status !== 0) {
                         throw new Error(result.stderr?.trim() || result.error?.message || "pm update failed");
                     }
@@ -1033,6 +1056,12 @@ async function runImport(filePath, pmRoot, opts) {
             catch (err) {
                 const msg = err instanceof Error ? err.message : String(err);
                 console.error(`Record ${i + 1}: ${existingPmId ? "update" : "create"} failed — ${msg}`);
+                // A matched item still EXISTS even when its update failed. Record the
+                // bead id -> pm id mapping anyway so other records' dependency edges to
+                // it keep resolving — otherwise the --replace-deps pass would silently
+                // strip every edge pointing at this bead from the updated items.
+                if (existingPmId && beadId)
+                    beadToPm.set(beadId, existingPmId);
                 skipped++;
                 failed++;
             }
