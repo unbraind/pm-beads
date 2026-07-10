@@ -150,11 +150,21 @@ export interface ValidationReport {
  */
 export declare function detectDependencyCycles(adj: Map<string, string[]>): string[][];
 export declare function validateBeadsText(text: string, file?: string, workspaceBeadIds?: Set<string>): ValidationReport;
+export type MergeStrategy = "update" | "skip" | "fail";
+export declare const MERGE_STRATEGIES: readonly MergeStrategy[];
+/**
+ * Detect pm's "Invalid type value" rejection in `pm update` stderr. `pm create`
+ * resolves synonym types (bug -> Issue, story -> Feature, ...) through a fallback
+ * table but `pm update` validates strictly; the upsert path uses this to retry an
+ * update without `--type` instead of failing the record. Exported for tests.
+ */
+export declare function isInvalidTypeValueError(stderr: string | null | undefined): boolean;
 export interface ExistingBeadItem {
     pmId: string;
     status?: string;
 }
 export declare function buildBeadIndex(items: PmItem[]): Map<string, ExistingBeadItem>;
+export declare function readAndValidateBeads(filePath: string, pmRoot?: string): Promise<ValidationReport>;
 export declare function assertBeadsImportable(filePath: string, pmRoot?: string): Promise<void>;
 export declare function extractCreatedId(stdout: string): string | undefined;
 export declare function pmItemToBead(item: PmItem, pmToBead: Map<string, string>, preserveIds: boolean): BeadsItem;
@@ -189,8 +199,19 @@ interface DiffOptions {
     filter: RowFilter;
     pmRoot?: string;
 }
+export declare function parseFilterExpression(raw: string | undefined): RowFilter;
+export declare function mergeRowFilters(base: RowFilter, override: RowFilter): RowFilter;
 export declare function parseRowFilter(options: Record<string, unknown>): RowFilter;
+export declare function parseMergeStrategy(options: Record<string, unknown>): MergeStrategy;
 export declare function resolvePreserveTimestamps(options: Record<string, unknown>): boolean;
+export declare function parsePositiveIntOption(options: Record<string, unknown>, ...keys: string[]): number | undefined;
+export interface ExportOptions {
+    dryRun: boolean;
+    preserveIds: boolean;
+    output?: string;
+    filter: RowFilter;
+}
+export declare function parseExportOptions(options: Record<string, unknown>): ExportOptions;
 export declare function parseDiffOptions(options: Record<string, unknown>, global?: Record<string, unknown>, pmRoot?: string): DiffOptions;
 export declare function resolveImportInputFile(args: unknown): string | undefined;
 declare const _default: {
