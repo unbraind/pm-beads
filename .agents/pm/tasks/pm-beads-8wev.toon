@@ -1,0 +1,35 @@
+id: pm-beads-8wev
+title: "Adopt current pm SDK, changelog, Node types, TypeScript 7, and checkout action"
+description: "Consolidate five independently green Dependabot updates into one coherent lockfile/toolchain change, validate the extension against pm CLI 2026.7.10, and supersede the overlapping bot PRs."
+type: Task
+status: closed
+priority: 1
+tags[4]: dependencies,release-readiness,sdk,toolchain
+created_at: "2026-07-11T00:08:41.865Z"
+updated_at: "2026-07-11T00:25:21.737Z"
+closed_at: "2026-07-11T00:10:12.772Z"
+author: codex
+estimated_minutes: 60
+acceptance_criteria: "package.json and lockfile resolve @unbrained/pm-cli 2026.7.10, pm-changelog 2026.7.10, @types/node 26.1.1, and TypeScript 7.0.2; CI/release workflows use actions/checkout@v7; full release gate and installed extension smoke test pass; no vulnerabilities or private data are introduced."
+definition_of_ready: Dependabot PRs 26-30 are individually green and current origin/main contains the Dependabot configuration.
+reviewer: greptile
+risk: medium
+confidence: high
+sprint: 2026-07-production
+release: next
+resolution: "Consolidated five overlapping dependency updates, synchronized package and manifest pm minimums at 2026.7.10, updated checkout to v7, and removed compiled dist artifacts from version control while retaining in-job builds for npm publication."
+expected_result: "TypeScript 7 and current pm SDK/changelog dependencies build, test, package, and activate without warnings while preserving all Beads import/export behavior."
+actual_result: "Typecheck/build and all 84 tests passed under TypeScript 7; npm audit found zero vulnerabilities; package and manifest both require pm 2026.7.10; dry-run package contains nine intended files including generated dist; isolated latest-pm install activated 8 commands, 56 flags, 1 item field, 1 importer, and 1 exporter with zero doctor warnings."
+learnings[1]{created_at,author,text}:
+  "2026-07-11T00:10:12.557Z",codex,"When consolidating npm updates,npm install can remove an intentional peer dependency if the same package is also a runtime dependency; preserve and raise both contracts explicitly."
+files[6]{path,scope,note}:
+  package.json,project,Current SDK and toolchain versions
+  package-lock.json,project,Consolidated dependency graph
+  .github/workflows/ci.yml,project,Current checkout action
+  .github/workflows/release.yml,project,Current checkout action
+  .gitignore,project,Generated dist is excluded from source history
+  manifest.json,project,Extension compatibility floor synchronized with package contracts
+tests[1]{command,path,scope,timeout_seconds,pm_context_mode}:
+  "npm run release:check",package.json,project,300,schema
+close_reason: Current SDK/toolchain batch passes release and installed-extension gates
+body: ""
