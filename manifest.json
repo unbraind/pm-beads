@@ -6,7 +6,7 @@
   "entry": "./dist/index.js",
   "priority": 50,
   "manifest_version": 1,
-  "pm_min_version": "2026.6.9",
+  "pm_min_version": "2026.7.10",
   "trusted": true,
   "sandbox_profile": "restricted",
   "permissions": {

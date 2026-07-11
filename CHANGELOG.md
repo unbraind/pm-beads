@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Other
+
+- Adopt current pm SDK, changelog, Node types, TypeScript 7, and checkout action ([pm-beads-8wev](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-8wev.toon))
+
 ## 2026.7.6 - 2026-07-06
 
 ### Fixed
