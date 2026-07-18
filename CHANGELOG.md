@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Other
+
+- Harden release bun-verify so registry-mirror lag cannot block the GitHub release ([pm-beads-87lb](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-87lb.toon))
+
 ## 2026.7.11 - 2026-07-11
 
 ### Other
