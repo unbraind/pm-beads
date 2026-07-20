@@ -1,6 +1,6 @@
 {
   "name": "pm-beads",
-  "version": "2026.7.19",
+  "version": "2026.7.20",
   "description": "Beads JSONL import/export extension for pm-cli",
   "repository": {
     "type": "git",
