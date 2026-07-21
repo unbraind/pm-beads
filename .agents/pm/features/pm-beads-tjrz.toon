@@ -17,7 +17,7 @@ comments[1]{created_at,author,text}:
 notes[2]{created_at,author,text}:
   "2026-06-09T21:42:39.745Z",codex-5-3,"Phase 5 verification: run complex Beads JSONL round-trip + beads diff fidelity checks against workspace export."
   "2026-06-09T21:43:26.547Z",codex-5-3,"Manual fidelity check in /tmp/pmbeads-fidelity-mSIyI6: imported complex JSONL (dependencies, parent, owner, labels, timestamps), exported, then diffed file-vs-file and file-vs-workspace with zero drift."
-tests[1]{command,path,scope,timeout_seconds,pm_context_mode,env_set,env_clear,shared_host_safe,assert_stdout_contains,assert_stdout_regex,assert_stderr_contains,assert_stderr_regex,assert_stdout_min_lines,assert_json_field_equals,assert_json_field_gte,note}:
-  "PM_PATH=$HOME/container/pm-beads/.agents/pm PM_GLOBAL_PATH=$HOME/.pm-cli npm run release:check",null,project,null,null,null,null,null,null,null,null,null,null,null,null,null
+tests[1]{command,scope}:
+  "PM_PATH=/workspace/pm-beads/.agents/pm PM_GLOBAL_PATH=$HOME/.pm-cli npm run release:check",project
 close_reason: Verified complex Beads JSONL round-trip fidelity with zero drift.
 body: ""
