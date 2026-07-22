@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Merge-safety docs follow-up: clarify verify scope + pin pm-cli 2026.7.22 (Greptile P1/P2) ([pm-beads-fiq7](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-fiq7.toon))
 - Recommend pm merge reconcile (2026.7.22) over raw history-repair in Multi-agent merge safety docs ([pm-beads-dlsd](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-dlsd.toon))
 
 ### Other

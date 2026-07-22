@@ -1,0 +1,16 @@
+id: pm-beads-fiq7
+title: "Merge-safety docs follow-up: clarify verify scope + pin pm-cli 2026.7.22 (Greptile P1/P2)"
+description: "Follow-up to pm-beads#42. Greptile review (raised on the fleet fan-out) flagged two items on the merge-reconcile docs: P1 the pinned @unbrained/pm-cli devDep resolved to 2026.7.21 which lacks pm merge reconcile, so npm ci gives an unknown-command; P2 pm history --verify checks a single stream while a merge can affect several. Fix: bump the devDep floor to 2026.7.22 and refresh the lockfile so the documented command exists in the repo toolchain; reword the verify step to lead with whole-tracker pm validate and note that pm merge reconcile lists each affected stream, with pm history --verify as a per-item spot check."
+type: Issue
+status: closed
+priority: 2
+tags[3]: agent-ux,docs,multi-agent
+created_at: "2026-07-22T19:59:21.349Z"
+updated_at: "2026-07-22T19:59:22.244Z"
+closed_at: "2026-07-22T19:59:22.243Z"
+author: claude-opus-20260722
+acceptance_criteria: README leads post-reconcile verification with whole-tracker pm validate and clarifies affected-stream scope; @unbrained/pm-cli devDep floor is 2026.7.22 with a refreshed lockfile; CI green; PR bot-reviewed.
+notes[1]{created_at,author,text}:
+  "2026-07-22T19:59:21.793Z",claude-opus-20260722,"Addresses Greptile P1 (devDep 2026.7.21 lacks reconcile -> bump ^2026.7.22 + lockfile) and P2 (verify scope: lead with whole-tracker pm validate; reconcile lists each affected stream; pm history --verify <id> = per-item spot check). Same fix fanned out to all 17 fleet PRs."
+close_reason: "Merge-safety docs follow-up: verify-scope clarified + pm-cli pinned to 2026.7.22 (Greptile P1/P2 addressed)."
+body: ""
