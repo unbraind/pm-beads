@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Other
+
+- Adopt pm field-aware merge driver for multi-agent branch-merge safety ([pm-beads-crk5](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-crk5.toon))
+
 ## 2026.7.19 - 2026-07-19
 
 ### Other
