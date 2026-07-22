@@ -6,11 +6,12 @@ status: closed
 priority: 2
 tags[3]: agent-ux,docs,multi-agent
 created_at: "2026-07-22T19:29:04.532Z"
-updated_at: "2026-07-22T19:29:48.160Z"
+updated_at: "2026-07-22T19:31:35.467Z"
 closed_at: "2026-07-22T19:29:48.159Z"
 author: claude-opus-20260722
 acceptance_criteria: "README Multi-agent merge safety section recommends 'pm merge reconcile' with a dry-run preview, apply, and 'pm history --verify' plus 'pm validate' confirmation; links upstream MERGE_SAFETY.md; CI green; PR reviewed by bots."
-notes[1]{created_at,author,text}:
+notes[2]{created_at,author,text}:
   "2026-07-22T19:29:47.754Z",claude-opus-20260722,"README Multi-agent merge safety section updated: the closing recommendation now points to 'pm merge reconcile' (dry-run preview -> apply with --message -> confirm with pm history --verify + pm validate), explains the field-aware driver already unions all authors' content so reconcile only re-greens the hash chain (no data loss), links the authoritative upstream docs/MERGE_SAFETY.md (verified 200), and keeps history-repair --all noted as a lower-level primitive. Reconcile workflow verified end-to-end under pm-cli 2026.7.22 (2-branch concurrent edit: 0 conflicts, both notes + priority/assignee preserved, verify+validate green)."
+  "2026-07-22T19:31:35.467Z",claude-opus-20260722,"Canary PR: https://github.com/unbraind/pm-beads/pull/42 (bot review loop triggered). Fan-out to the other 17 fleet repos tracked in companion pm-cli-website-zy8d."
 close_reason: Docs updated to recommend the 2026.7.22 pm merge reconcile workflow; verified end-to-end.
 body: ""
