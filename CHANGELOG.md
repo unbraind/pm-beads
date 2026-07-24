@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- pm item reads are capped at Node's 1 MiB spawnSync default, so a mature tracker fails with no diagnosis ([pm-beads-6a9l](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-6a9l.toon))
+
 ## 2026.7.23 - 2026-07-23
 
 ### Fixed
