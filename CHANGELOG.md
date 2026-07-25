@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- Documented install command fails: pm install github.com/unbraind/pm-beads cannot resolve an entry file ([pm-beads-00wh](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-00wh.toon))
+
 ### Other
 
 - Enable governance duplicate-detection advisory mode and adopt pm-cli 2026.7.25 ([pm-beads-89ni](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-89ni.toon))
