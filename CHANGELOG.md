@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Other
+
+- Enable governance duplicate-detection advisory mode and adopt pm-cli 2026.7.25 ([pm-beads-89ni](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-89ni.toon))
+
 ## 2026.7.25 - 2026-07-25
 
 ### Fixed
