@@ -9,7 +9,7 @@ Import work items from the Beads JSONL format into pm items, and export pm items
 ## Installation
 
 ```bash
-pm install github.com/unbraind/pm-beads --global
+pm install npm:pm-beads --global
 ```
 
 ## Capabilities
