@@ -9,8 +9,13 @@ Import work items from the Beads JSONL format into pm items, and export pm items
 ## Installation
 
 ```bash
-pm install github.com/unbraind/pm-beads --global
+pm install npm:pm-beads --global
 ```
+
+> The `npm:` prefix is required. A bare `pm install pm-beads` resolves only a local
+> directory or a bundled alias, never the registry, and a
+> `github.com/unbraind/pm-beads` source cannot work either — pm copies a GitHub
+> source as-is without building it, and this repository does not commit `dist/`.
 
 ## Capabilities
 
