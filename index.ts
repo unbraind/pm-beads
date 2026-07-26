@@ -27,7 +27,17 @@
 // id is persisted in the item description behind a parseable marker
 // (`[bead_id: <id>]`); the exporter reads it back and re-emits the native bead id.
 
-import type { ExtensionApi, ExtensionModule, FlagDefinition } from "@unbrained/pm-cli/sdk/authoring";
+import type {
+  CommandDefinition,
+  CommandHandlerContext,
+  Exporter,
+  ExtensionApi,
+  ExtensionModule,
+  FlagDefinition,
+  ImportExportContext,
+  Importer,
+  SchemaFieldDefinition,
+} from "@unbrained/pm-cli/sdk/authoring";
 import { readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -1999,15 +2009,31 @@ export function resolveImportInputFile(args: unknown): string | undefined {
   return undefined;
 }
 
-/**
- * Local stand-in for the SDK's `defineExtension` identity helper.
- *
- * Declared here rather than imported so this package keeps a type-only
- * dependency on `@unbrained/pm-cli` and adds no runtime module edge. The
- * generic constraint is the SDK's own, so the extension object is contract-
- * checked against {@link ExtensionModule} exactly as the imported helper would.
- */
+// ---------------------------------------------------------------------------
+// SDK authoring builders — local identity stand-ins.
+//
+// `@unbrained/pm-cli/sdk/authoring` ships zero-cost identity builders
+// (`defineImporter`, `defineExporter`, `defineCommand`, `defineItemField`, …)
+// whose value is entirely at the type level: they contract-check each
+// registration literal against the host surface and preserve its narrow
+// literal type, so a malformed definition is caught at edit time instead of at
+// activation. They are plain identity functions (`x => x`).
+//
+// They are declared here as local stand-ins constrained by the real SDK
+// contract types (imported type-only above) rather than imported as values, so
+// this package keeps its type-only dependency on `@unbrained/pm-cli` and the
+// published `dist/index.js` carries no static runtime module edge to the CLI —
+// it remains standalone-runnable. This mirrors the established `defineExtension`
+// stand-in pattern (commit a80a113): identical type-level contract checking and
+// literal preservation, no runtime edge. Importing the builder values as static
+// runtime imports would break that design and is a behaviour change we do not
+// ship silently.
+// ---------------------------------------------------------------------------
 const defineExtension = <TModule extends ExtensionModule>(module: TModule): TModule => module;
+const defineCommand = <TDefinition extends CommandDefinition>(definition: TDefinition): TDefinition => definition;
+const defineImporter = (importer: Importer): Importer => importer;
+const defineExporter = (exporter: Exporter): Exporter => exporter;
+const defineItemField = <TField extends SchemaFieldDefinition>(field: TField): TField => field;
 
 export default defineExtension({
   name: "pm-beads",
@@ -2018,7 +2044,7 @@ export default defineExtension({
     // schema — declare the bead_id provenance field
     // -----------------------------------------------------------------------
     api.registerItemFields([
-      { name: "bead_id", type: "string", optional: true },
+      defineItemField({ name: "bead_id", type: "string", optional: true }),
     ]);
 
     // -----------------------------------------------------------------------
@@ -2035,10 +2061,10 @@ export default defineExtension({
     // -----------------------------------------------------------------------
     api.registerImporter(
       "beads",
-      async (ctx: any) => {
+      defineImporter(async (ctx: ImportExportContext) => {
         const file = resolveImportInputFile(ctx.args) ?? optionString(ctx.options || {}, "file");
         return runImport(file, ctx.pm_root, parseImportOptions(ctx.options || {}));
-      },
+      }),
       {
         description:
           "Import work items from a Beads JSONL file into pm. Each JSON line becomes a pm item; " +
@@ -2071,9 +2097,9 @@ export default defineExtension({
     // -----------------------------------------------------------------------
     api.registerExporter(
       "beads",
-      async (ctx: any) => {
+      defineExporter(async (ctx: ImportExportContext) => {
         return runExport(ctx.pm_root, parseExportOptions(ctx.options || {}));
-      },
+      }),
       {
         description:
           "Serialize pm items back to Beads JSONL, preserving the original Beads id (when present) " +
@@ -2096,7 +2122,7 @@ export default defineExtension({
     // the auto-created `beads import` command handler. Delegates to the same
     // import core, so behavior is identical.
     // -----------------------------------------------------------------------
-    api.registerCommand({
+    api.registerCommand(defineCommand({
       name: "beads-import",
       description:
         "Import work items from a Beads JSONL file into pm (alias of `pm beads import`). " +
@@ -2120,11 +2146,11 @@ export default defineExtension({
         { name: "file", required: true, description: "Path to the Beads JSONL source file." },
       ],
       flags: IMPORT_FLAGS,
-      async run(ctx: any) {
+      async run(ctx: CommandHandlerContext) {
         const file = resolveImportInputFile(ctx.args) ?? optionString(ctx.options || {}, "file");
         return runImport(file, ctx.pm_root, parseImportOptions(ctx.options));
       },
-    });
+    }));
 
     // -----------------------------------------------------------------------
     // command — legacy `pm beads-export` alias (rich flag help).
