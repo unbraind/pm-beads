@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Removed
+
+- Adopt pm-cli 2026.7.26 typed authoring contracts and remove the any-cast defineExtension shim ([pm-beads-i8t0](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-i8t0.toon))
+
 ## 2026.7.26 - 2026-07-26
 
 ### Fixed
