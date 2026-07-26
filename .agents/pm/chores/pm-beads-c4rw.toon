@@ -1,0 +1,19 @@
+id: pm-beads-c4rw
+title: Adopt typed SDK define builders for every registration
+description: "Route every extension registration through the SDK authoring builders (defineCommand, defineImporter, defineExporter, defineItemField) as locally declared, fully typed identity stand-ins, so each registration literal is contract-checked at the authoring site instead of at activation. Keeps the package type-only against pm-cli, adding no runtime module edge to the published bundle."
+type: Chore
+status: closed
+priority: 2
+tags: []
+created_at: "2026-07-26T18:59:02.438Z"
+updated_at: "2026-07-26T18:59:15.010Z"
+closed_at: "2026-07-26T18:59:15.009Z"
+author: claude-orchestrator
+acceptance_criteria: Every registerCommand/registerImporter/registerExporter/registerItemFields call site wrapped in its typed builder; no any-typed ctx parameters remain on those handlers; zero runtime imports from pm-cli; typecheck and full test suite green; import and export verified functionally against real Beads JSONL.
+resolution: All registrations routed through typed SDK builders; import/export verified functionally against real Beads JSONL.
+expected_result: Registrations contract-checked at edit time; runtime behaviour unchanged.
+actual_result: "84/84 tests green. Functionally verified against real Beads JSONL in a throwaway workspace: import of 3 beads linked 2 dependency edges from both the dependencies[kind=blocked_by] and blocked_by[] forms; export round-tripped all 3 preserving original bead ids as depends_on_id. Both documented output paths (--output FILE and --quiet to stdout) emit strictly valid JSONL."
+learnings[1]{created_at,author,text}:
+  "2026-07-26T18:59:14.683Z",claude-orchestrator,"The define* builders are zero-cost identity functions, so wrapping registrations changes no runtime behaviour — but it does replace the any-typed ctx parameters on importer/exporter handlers with the real ImportExportContext, which is where the type checking actually lands."
+close_reason: completed
+body: ""
