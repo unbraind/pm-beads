@@ -27,13 +27,12 @@
 // id is persisted in the item description behind a parseable marker
 // (`[bead_id: <id>]`); the exporter reads it back and re-emits the native bead id.
 
+import type { ExtensionApi, ExtensionModule, FlagDefinition } from "@unbrained/pm-cli/sdk/authoring";
 import { readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { spawnSync } from "node:child_process";
 
-import type { defineExtension as defineExtensionType } from "@unbrained/pm-cli/sdk";
 
-const defineExtension: typeof defineExtensionType = ((extension: any) => extension) as any;
 
 // ---------------------------------------------------------------------------
 // Error contract
@@ -1803,7 +1802,7 @@ function runDiff(args: string[] | undefined, opts: DiffOptions) {
 // (SDK 2026.6.10 unified `type`/`value_type`; older hosts read either).
 // `--priority` deliberately stays a string flag: the override is forwarded
 // verbatim to `pm create/update --priority`, which does its own validation.
-const IMPORT_FLAGS = [
+const IMPORT_FLAGS: FlagDefinition[] = [
   { long: "--dry-run", value_type: "boolean", description: "Preview create/update/skip counts without writing" },
   { long: "--validate-only", value_type: "boolean", description: "Validate the input file then exit without importing (like `pm beads validate`, scoped to import)" },
   { long: "--upsert", value_type: "boolean", description: "Update existing items matched by their Beads id instead of creating duplicates" },
@@ -1819,7 +1818,7 @@ const IMPORT_FLAGS = [
   { long: "--filter-type", value_name: "list", value_type: "string", description: "Only import beads whose type is in this comma-separated list" },
 ];
 
-const EXPORT_FLAGS = [
+const EXPORT_FLAGS: FlagDefinition[] = [
   { long: "--output", short: "-o", value_name: "file", value_type: "string", description: "Write JSONL to a file instead of stdout" },
   { long: "--dry-run", value_type: "boolean", description: "Preview the export count without writing to a file or stdout" },
   { long: "--no-preserve-ids", value_type: "boolean", description: "Emit pm ids instead of the original Beads ids (default: preserve)" },
@@ -1828,12 +1827,12 @@ const EXPORT_FLAGS = [
   { long: "--filter-type", value_name: "list", value_type: "string", description: "Only export items whose type is in this comma-separated list" },
 ];
 
-const VALIDATE_FLAGS = [
+const VALIDATE_FLAGS: FlagDefinition[] = [
   { long: "--json", value_type: "boolean", description: "Emit the validation report as JSON" },
   { long: "--no-workspace", value_type: "boolean", description: "Skip cross-checking dependency references against the current pm workspace" },
 ];
 
-const DIFF_FLAGS = [
+const DIFF_FLAGS: FlagDefinition[] = [
   { long: "--against-workspace", value_type: "boolean", description: "Diff <file> against the current pm workspace (exported to Beads in-memory) instead of a second file" },
   { long: "--json", value_type: "boolean", description: "Emit the structured diff object as JSON" },
   { long: "--strict", value_type: "boolean", description: "Exit nonzero when any drift (added/removed/changed) is found — for CI fidelity gates" },
@@ -2000,11 +1999,21 @@ export function resolveImportInputFile(args: unknown): string | undefined {
   return undefined;
 }
 
+/**
+ * Local stand-in for the SDK's `defineExtension` identity helper.
+ *
+ * Declared here rather than imported so this package keeps a type-only
+ * dependency on `@unbrained/pm-cli` and adds no runtime module edge. The
+ * generic constraint is the SDK's own, so the extension object is contract-
+ * checked against {@link ExtensionModule} exactly as the imported helper would.
+ */
+const defineExtension = <TModule extends ExtensionModule>(module: TModule): TModule => module;
+
 export default defineExtension({
   name: "pm-beads",
   version: "2026.7.26",
 
-  activate(api: any) {
+  activate(api: ExtensionApi) {
     // -----------------------------------------------------------------------
     // schema — declare the bead_id provenance field
     // -----------------------------------------------------------------------
