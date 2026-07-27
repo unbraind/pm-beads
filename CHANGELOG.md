@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Removed
+
+- Replace the dynamic SDK runtime import with a typed top-level import and remove all source any ([pm-beads-w143](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-w143.toon))
+
 ## 2026.7.27 - 2026-07-27
 
 ### Removed
