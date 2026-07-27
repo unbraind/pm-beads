@@ -6,13 +6,15 @@ status: closed
 priority: 1
 tags: []
 created_at: "2026-07-27T05:14:42.040Z"
-updated_at: "2026-07-27T22:41:16.500Z"
+updated_at: "2026-07-27T23:10:18.340Z"
 closed_at: "2026-07-27T22:41:16.496Z"
 author: pi-agent
+release: 2026.7.27
 resolution: "Both commands re-register on pm-cli 2026.7.27 after dropping the shadowing --json declaration. Left unattributed on purpose: backdating it into 2026.7.27 would claim a cut release contained a fix it does not."
 expected_result: "beads validate and beads diff register successfully under pm-cli 2026.7.27, with the changelog entry under Unreleased until the next release is cut."
 actual_result: "Before the fix, redeclaring the host-owned --json global aborted registration at that command and dropped every later sibling, while --help still exited 0 with a misleading arity error (upstream pm-cli#772)."
-notes[1]{created_at,author,text}:
+notes[2]{created_at,author,text}:
   "2026-07-27T05:14:46.623Z",pi-agent,"Verified end-to-end: activation probe prints failed=[]; full suite 85/85 pass; release:check green. Also fixed pre-existing audit:prod EALLOWSCRIPTS bug."
+  "2026-07-27T23:10:18.340Z",claude-code,"CORRECTION to this item's own retirement. It was first closed with NO release attribution on the conclusion that the v2026.07.27 tag was cut before PR #51 merged, which would have made the fix genuinely unreleased. That conclusion was WRONG and came from STALE LOCAL TAGS: I compared commit ordering in git log rather than checking tag containment, and the local tag set was behind. After git fetch --tags --force, git merge-base --is-ancestor b4c4df7 v2026.07.27 confirms the fix IS contained in v2026.07.27. Re-attributed to 2026.7.27 so the entry sits in the release that actually carried it rather than in Unreleased. The durable lesson: verify release membership with git merge-base --is-ancestor against a freshly fetched tag, never by eyeballing git log order."
 close_reason: "Retired as shipped: the fix stopping beads validate and beads diff from shadowing the host-owned --json global merged today as PR #51, restoring registration under pm-cli 2026.7.27. Deliberately closed with NO release attribution, because the v2026.7.27 tag was cut before that merge -- the fix is genuinely unreleased and belongs in the Unreleased section."
 body: ""

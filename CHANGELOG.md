@@ -2,15 +2,15 @@
 
 ## Unreleased
 
-### Fixed
-
-- beads validate and beads diff fail to register on pm-cli 2026.7.27 because each redeclares the host-owned --json global ([pm-beads-080q](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-080q.toon))
-
 ### Removed
 
 - Replace the dynamic SDK runtime import with a typed top-level import and remove all source any ([pm-beads-w143](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-w143.toon))
 
 ## 2026.7.27 - 2026-07-27
+
+### Fixed
+
+- beads validate and beads diff fail to register on pm-cli 2026.7.27 because each redeclares the host-owned --json global ([pm-beads-080q](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-080q.toon))
 
 ### Removed
 
