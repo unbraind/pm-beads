@@ -2,13 +2,19 @@ id: pm-beads-pib4
 title: Align pm-beads with pm CLI 2026.6.12 release readiness
 description: ""
 type: Task
-status: in_progress
+status: closed
 priority: 1
 tags[3]: agent-context,dependency-alignment,release-readiness
 created_at: "2026-06-12T11:53:19.875Z"
-updated_at: "2026-06-12T14:26:42.916Z"
+updated_at: "2026-07-27T22:41:03.632Z"
+closed_at: "2026-07-27T22:41:03.632Z"
 author: codex
 acceptance_criteria: Latest pm CLI/SDK dependency is used; pm-changelog release scripts are present where applicable; package tests and release checks pass or blockers are recorded; no private data is introduced; results are captured in pm history.
+release: 2026.6.12
+resolution: Work completed and released in 2026.6.12. Release attribution set explicitly so pm-changelog --respect-item-release files the entry under 2026.6.12 instead of the current Unreleased section.
+expected_result: A closed item whose changelog entry appears under 2026.6.12.
+actual_result: "Item remained in_progress with no activity after its work shipped, so the delivery was absent from the changelog while still counting as open work in every fleet audit."
 notes[1]{created_at,author,text}:
   "2026-06-12T14:01:37.849Z",codex,"Verified release readiness after moving @unbrained/pm-cli to runtime dependencies: npm release:check completed for the fleet on 2026-06-12; npm audit retries for pm-beads and pm-jira returned 0 vulnerabilities after transient advisory endpoint failures."
+close_reason: "Retired as shipped: aligning pm-beads with pm CLI 2026.6.12 release readiness was completed and released in 2026.6.12, but the item was never closed and sat in progress ever since, inflating every fleet audit."
 body: "Track the June 12 2026 package-readiness pass for pm-beads: align to latest published @unbrained/pm-cli, align pm-changelog where applicable, verify changelog/release commands, run tests with real package data, and record any upstream pm CLI/SDK UX issues separately in unbraind/pm-cli.\n\n2026-06-12 PR #15 review fix: addressed Sourcery/CodeRabbit feedback by replacing message-regex filesystem error classification with err.code-based ENOENT handling in validate/import/parser read paths and clarifying the CHANGELOG entry for pm beads validate as first-class registration. Verification: npm run build, npm test (59 passing), npm run check.\n\n2026-06-12 follow-up: CI changelog gate failed because generated CHANGELOG.md derives the wording from closed issue pm-beads-azv0. Updated that pm issue title to 'Promote pm beads validate to first-class command registration' so pm-changelog replace-mode output is stable and review-compliant. Verification: npx pm-changelog ... --mode replace --all-release-tags and npm run changelog:check pass.\n\n2026-06-12 Gemini follow-up: fixed two still-valid review findings. Moved @unbrained/pm-cli out of runtime dependencies into peerDependencies plus devDependencies to avoid bundling a host CLI copy, removed the unsafe legacy beads-import ctx.args[0] fallback, and made resolveImportInputFile skip values for known import flags so --type Task f.jsonl resolves f.jsonl. Verification: npm install, npm run build, npm test (59 passing), npm run check, npm run changelog:check, npm run audit:prod (0 vulnerabilities), npm run pack:dry-run."

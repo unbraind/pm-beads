@@ -2,13 +2,17 @@ id: pm-beads-vxw7
 title: Full pm ecosystem production pass for pm-beads
 description: ""
 type: Feature
-status: in_progress
+status: closed
 priority: 1
 tags[3]: ecosystem,ecosystem-pass-2026-06-10,production
 created_at: "2026-06-09T22:37:22.863Z"
-updated_at: "2026-07-10T04:46:16.527Z"
-assignee: codex-5-3-sweep
+updated_at: "2026-07-27T22:41:01.644Z"
+closed_at: "2026-07-27T22:41:01.643Z"
 author: codex-5-3-sweep
+release: 2026.7.11
+resolution: Work completed and released in 2026.7.11. Release attribution set explicitly so pm-changelog --respect-item-release files the entry under 2026.7.11 instead of the current Unreleased section.
+expected_result: A closed item whose changelog entry appears under 2026.7.11.
+actual_result: "Item remained in_progress with no activity after its work shipped, so the delivery was absent from the changelog while still counting as open work in every fleet audit."
 comments[13]{created_at,author,text}:
   "2026-07-09T22:01:49.194Z",codex-5-3-sweep,"Review intake 2026-07-09: PR #23 is conflict-free. Dependabot and secret-scanning report zero open alerts. Actionable feedback clusters: shell-safe filter docs; validate-only option compatibility; empty-input batch metadata; transactional preflight for merge-strategy fail; numeric programmatic batch size. Existing broader stale items will be reconciled after this PR is verified to avoid duplicate tracking."
   "2026-07-09T22:03:12.759Z",codex-5-3-sweep,"Implementation: validate-only now returns before write-only option constraints; fail strategy preflights workspace and input collisions before mutation; zero-record batch denominator is safe; numeric programmatic batch sizes are accepted; semicolon filters are quoted in README and runtime examples. Regression tests include a real temporary pm workspace proving no partial create occurs."
@@ -31,4 +35,5 @@ tests[2]{command,scope,timeout_seconds}:
 docs[2]{path,scope,note}:
   CHANGELOG.md,project,Generated from canonical pm history for release readiness
   README.md,project,Shell-safe filter examples
+close_reason: "Retired as shipped: the full pm ecosystem production pass for pm-beads was completed and released in 2026.7.11, but the item was never closed and sat in progress ever since, inflating every fleet audit."
 body: ""

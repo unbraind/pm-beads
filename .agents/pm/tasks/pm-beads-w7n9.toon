@@ -2,19 +2,25 @@ id: pm-beads-w7n9
 title: Restore pm CLI runtime dependency for pm-beads
 description: ""
 type: Task
-status: in_progress
+status: closed
 priority: 1
 tags[3]: agent-context,dependency-alignment,release-readiness
 created_at: "2026-06-12T14:38:45.455Z"
-updated_at: "2026-06-12T14:45:58.622Z"
+updated_at: "2026-07-27T22:41:02.932Z"
+closed_at: "2026-07-27T22:41:02.931Z"
 author: codex
 estimated_minutes: 25
 acceptance_criteria: package.json lists @unbrained/pm-cli under dependencies at latest 2026.6.12; package lock is regenerated; build/test/check/audit/changelog/pack gates pass; PR is reviewed and merged.
 risk: low
 confidence: high
+release: 2026.6.12
+resolution: Work completed and released in 2026.6.12. Release attribution set explicitly so pm-changelog --respect-item-release files the entry under 2026.6.12 instead of the current Unreleased section.
+expected_result: A closed item whose changelog entry appears under 2026.6.12.
+actual_result: "Item remained in_progress with no activity after its work shipped, so the delivery was absent from the changelog while still counting as open work in every fleet audit."
 files[2]{path,scope,note}:
   package.json,project,Restores @unbrained/pm-cli as a runtime npm dependency
   package-lock.json,project,Regenerated lockfile with runtime dependency entry
-tests[1]{command,path,scope,timeout_seconds,pm_context_mode,env_set,env_clear,shared_host_safe,assert_stdout_contains,assert_stdout_regex,assert_stderr_contains,assert_stderr_regex,assert_stdout_min_lines,assert_json_field_equals,assert_json_field_gte,note}:
-  "npm run build && npm test && npm run check && npm run changelog:check && npm run audit:prod && npm run pack:dry-run",null,project,900,tracker,null,null,null,null,null,null,null,null,null,null,null
+tests[1]{command,scope,timeout_seconds,pm_context_mode}:
+  "npm run build && npm test && npm run check && npm run changelog:check && npm run audit:prod && npm run pack:dry-run",project,900,tracker
+close_reason: "Retired as shipped: restoring the pm CLI runtime dependency was completed and released in 2026.6.12, but the item was never closed and sat in progress ever since, inflating every fleet audit."
 body: "Latest instruction requires every pm package to list pm-cli as an npm dependency. pm-beads was changed to peer/dev only during PR review; restore runtime dependency while keeping release gates green.\n\nVerification complete on 2026-06-12: npm install, npm run build, npm test (59 passing), npm run check, npm run changelog:check, npm run audit:prod (0 vulnerabilities), and npm run pack:dry-run all passed after restoring @unbrained/pm-cli under dependencies at ^2026.6.12.\n\nReview feedback addressed on 2026-06-12: removed redundant @unbrained/pm-cli devDependency so production dependency metadata is unambiguous while retaining runtime dependencies.@unbrained/pm-cli ^2026.6.12 and peerDependencies >=2026.6.12. Re-ran npm install and npm run release:check successfully (typecheck, build, 59 tests, audit:prod 0 vulnerabilities, pack dry-run, changelog check)."

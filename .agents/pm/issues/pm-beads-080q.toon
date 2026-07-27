@@ -2,12 +2,17 @@ id: pm-beads-080q
 title: beads validate and beads diff fail to register on pm-cli 2026.7.27 because each redeclares the host-owned --json global
 description: "pm-cli 2026.7.27 (GH-719) makes the host reject any extension command whose flags shadow a host-owned global flag. beads validate and beads diff both declared { long: \"--json\" } in their flags arrays (VALIDATE_FLAGS and DIFF_FLAGS), so both commands failed to register against a real pm host. The suite never caught this because every smoke test built a hand-rolled api double that accepts all registrations unconditionally. Additionally, the audit:prod script used a bare 'npm audit --omit=dev' that fails with EALLOWSCRIPTS in project-scoped installs. Fix: drop both --json flag declarations, read the value from ctx.global.json in parseDiffOptions and the validate handler, rebuild the smoke suite on the SDK createExtensionTestHarness so pm's real activation engine validates registration, add a suite-wide guard, and fix audit:prod to strip npm_config_allow_scripts."
 type: Issue
-status: in_progress
+status: closed
 priority: 1
 tags: []
 created_at: "2026-07-27T05:14:42.040Z"
-updated_at: "2026-07-27T05:14:46.623Z"
+updated_at: "2026-07-27T22:41:16.500Z"
+closed_at: "2026-07-27T22:41:16.496Z"
 author: pi-agent
+resolution: "Both commands re-register on pm-cli 2026.7.27 after dropping the shadowing --json declaration. Left unattributed on purpose: backdating it into 2026.7.27 would claim a cut release contained a fix it does not."
+expected_result: "beads validate and beads diff register successfully under pm-cli 2026.7.27, with the changelog entry under Unreleased until the next release is cut."
+actual_result: "Before the fix, redeclaring the host-owned --json global aborted registration at that command and dropped every later sibling, while --help still exited 0 with a misleading arity error (upstream pm-cli#772)."
 notes[1]{created_at,author,text}:
   "2026-07-27T05:14:46.623Z",pi-agent,"Verified end-to-end: activation probe prints failed=[]; full suite 85/85 pass; release:check green. Also fixed pre-existing audit:prod EALLOWSCRIPTS bug."
+close_reason: "Retired as shipped: the fix stopping beads validate and beads diff from shadowing the host-owned --json global merged today as PR #51, restoring registration under pm-cli 2026.7.27. Deliberately closed with NO release attribution, because the v2026.7.27 tag was cut before that merge -- the fix is genuinely unreleased and belongs in the Unreleased section."
 body: ""
