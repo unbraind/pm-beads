@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { createExtensionTestHarness, type ExtensionTestHarness } from "@unbrained/pm-cli/sdk/testing";
+import type { GlobalOptions } from "@unbrained/pm-cli/sdk";
+
 import extension, {
   CommandError,
   EXIT_CODE,
@@ -39,67 +42,54 @@ import extension, {
   diffBeads,
   parseDiffOptions,
   isInvalidTypeValueError,
+  type RowFilter,
 } from "../dist/index.js";
 
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-// Mirror the real ExtensionApi surface so activate() can register every
-// capability the extension uses (commands, importers, exporters, schema fields,
-// hooks). A missing method makes activate() throw a TypeError.
-function makeApi(
-  registered: string[],
-  captured: {
-    commands: Record<string, any>;
-    importers: Record<string, any>;
-    exporters: Record<string, any>;
-    importerOptions?: Record<string, any>;
-    exporterOptions?: Record<string, any>;
-    preflight?: any;
-  } = {
-    commands: {},
-    importers: {},
-    exporters: {},
-  },
-) {
-  const noop = () => {};
-  return {
-    registerCommand: (def: any) => {
-      registered.push("command");
-      if (def?.name) captured.commands[def.name] = def;
-    },
-    registerParser: () => registered.push("parser"),
-    registerPreflight: (fn: any) => {
-      registered.push("preflight");
-      captured.preflight = fn;
-    },
-    registerService: () => registered.push("service"),
-    registerFlags: () => registered.push("flags"),
-    registerItemFields: () => registered.push("itemFields"),
-    registerItemTypes: () => registered.push("itemTypes"),
-    registerMigration: () => registered.push("migration"),
-    registerRenderer: () => registered.push("renderer"),
-    registerImporter: (name: string, fn: any, options?: any) => {
-      registered.push(`importer:${name}`);
-      captured.importers[name] = fn;
-      if (captured.importerOptions && options) captured.importerOptions[name] = options;
-    },
-    registerExporter: (name: string, fn: any, options?: any) => {
-      registered.push(`exporter:${name}`);
-      captured.exporters[name] = fn;
-      if (captured.exporterOptions && options) captured.exporterOptions[name] = options;
-    },
-    registerSearchProvider: () => registered.push("search"),
-    registerVectorStoreAdapter: () => registered.push("vectorStore"),
-    hooks: {
-      beforeCommand: noop,
-      afterCommand: noop,
-      onWrite: noop,
-      onRead: noop,
-      onIndex: noop,
-    },
-  };
+/** Activate pm-beads through pm's real host engine with the manifest's declared
+ * capabilities. Replaces the hand-rolled api doubles these tests used to build —
+ * a double accepts every registration unconditionally, so it cannot observe
+ * host-side rejection (which is how `--json` flags that shadow a host-owned
+ * global stayed green in CI while commands failed to register). */
+async function harness(): Promise<ExtensionTestHarness> {
+  const ext = await createExtensionTestHarness(extension, {
+    name: "pm-beads",
+    capabilities: ["commands", "schema", "importers"],
+  });
+  assert.deepEqual(ext.activation.failed, [], "activation must not fail");
+  return ext;
+}
+interface ImportResult {
+  imported?: number;
+  updated?: number;
+  skipped?: number;
+  dependencies?: number;
+  wouldImport?: number;
+  wouldSkip?: number;
+  batches?: number;
+  validateOnly?: boolean;
+  records?: number;
+  valid?: boolean;
+  dryRun?: boolean;
+}
+
+async function runImport(
+  ext: ExtensionTestHarness,
+  opts: { args?: readonly string[]; options?: Record<string, unknown>; pmRoot?: string; global?: Partial<GlobalOptions> },
+): Promise<ImportResult> {
+  const { result } = await ext.runImporter({ importer: "beads", ...opts, global: opts.global ?? { json: false } });
+  return result as ImportResult;
+}
+
+async function runExport(
+  ext: ExtensionTestHarness,
+  opts: { args?: readonly string[]; options?: Record<string, unknown>; pmRoot?: string; global?: Partial<GlobalOptions> },
+): Promise<Record<string, unknown>> {
+  const { result } = await ext.runExporter({ exporter: "beads", ...opts, global: opts.global ?? { json: false } });
+  return result as Record<string, unknown>;
 }
 
 test("extension has required shape", () => {
@@ -110,41 +100,36 @@ test("extension has required shape", () => {
   assert.strictEqual(typeof extension.activate, "function", "activate should be a function");
 });
 
-test("extension registers importer, exporter, schema and commands — but NOT preflight", () => {
-  const registered: string[] = [];
-  extension.activate(makeApi(registered) as any);
-  assert.ok(registered.includes("importer:beads"), "should register the beads importer");
-  assert.ok(registered.includes("exporter:beads"), "should register the beads exporter");
-  assert.ok(registered.includes("itemFields"), "should register the bead_id schema field");
-  assert.ok(registered.includes("command"), "should register at least one command");
+test("extension registers importer, exporter, schema and commands — but NOT preflight", async () => {
+  const ext = await harness();
+  const { registrations } = ext.activation;
+  assert.ok(registrations.importers.some((r) => r.importer === "beads"), "should register the beads importer");
+  assert.ok(registrations.exporters.some((r) => r.exporter === "beads"), "should register the beads exporter");
+  assert.ok(registrations.item_fields.length > 0, "should register schema fields");
+  assert.ok(registrations.commands.length > 0, "should register at least one command");
   // The fail-fast import gate must NOT depend on the single-winner preflight
   // override surface: a co-installed package (e.g. pm-todos) shadows it
   // (extension_preflight_override_collision) and a malformed file would then
   // partially import. The gate lives inside the import core instead.
-  assert.ok(!registered.includes("preflight"), "must not occupy the single-winner preflight slot");
+  assert.strictEqual(ext.activation.preflight.overrides.length, 0, "must not occupy the single-winner preflight slot");
+  await ext.deactivate();
 });
 
-test("importer/exporter registrations carry first-class command metadata (options arg)", () => {
-  const registered: string[] = [];
-  const captured = {
-    commands: {} as Record<string, any>,
-    importers: {} as Record<string, any>,
-    exporters: {} as Record<string, any>,
-    importerOptions: {} as Record<string, any>,
-    exporterOptions: {} as Record<string, any>,
-  };
-  extension.activate(makeApi(registered, captured) as any);
-  const imp = captured.importerOptions["beads"];
-  assert.ok(imp, "importer should pass the ImportExportRegistrationOptions third argument");
-  assert.ok(typeof imp.description === "string" && imp.description.length > 0);
-  assert.deepStrictEqual(imp.arguments, [
+test("importer/exporter registrations carry first-class command metadata (options arg)", async () => {
+  const ext = await harness();
+  // Importer/exporter options are registered as command metadata at the
+  // "beads import" / "beads export" command paths.
+  const impContract = ext.assertCommandContract({ command: "beads import", flags: ["--upsert"] });
+  assert.ok(impContract.command.description && impContract.command.description.length > 0,
+    "importer should carry a description");
+  assert.deepStrictEqual(impContract.command.arguments, [
     { name: "file", required: true, description: "Path to the Beads JSONL source file." },
   ]);
-  assert.ok(Array.isArray(imp.flags) && imp.flags.some((f: any) => f.long === "--upsert"));
-  assert.ok(imp.flags.every((f: any) => f.value_type === "string" || f.value_type === "boolean"));
-  const exp = captured.exporterOptions["beads"];
-  assert.ok(exp, "exporter should pass the ImportExportRegistrationOptions third argument");
-  assert.ok(Array.isArray(exp.flags) && exp.flags.some((f: any) => f.long === "--output"));
+  assert.ok(impContract.flags.some((f) => f.long === "--upsert"));
+  assert.ok(impContract.flags.every((f) => f.value_type === "string" || f.value_type === "boolean"));
+  const expContract = ext.assertCommandContract({ command: "beads export", flags: ["--output"] });
+  assert.ok(expContract.flags.some((f) => f.long === "--output"));
+  await ext.deactivate();
 });
 
 test("resolveImportInputFile picks the first non-flag argument", () => {
@@ -199,37 +184,32 @@ test("beads importer fail-fast: a malformed file aborts BEFORE any pm write", as
   // The gate is part of runImport itself (not the shadowable preflight slot),
   // so invoking the registered importer with a malformed file must reject with
   // the validation error — proving no create/update spawn can ever happen.
-  const registered: string[] = [];
-  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any> };
-  extension.activate(makeApi(registered, captured) as any);
-  const importer = captured.importers["beads"];
+  const ext = await harness();
   const dir = mkdtempSync(join(tmpdir(), "beads-gate-imp-"));
   const file = join(dir, "bad.jsonl");
   writeFileSync(file, '{"id":"x","title":"ok"}\n{broken\n', "utf-8");
   await assert.rejects(
-    async () => importer({ args: [file], options: {}, pm_root: undefined }),
+    () => runImport(ext, { args: [file], options: {}, global: { json: false } }),
     (err: unknown) => {
       assert.match((err as Error).message, /Beads JSONL validation failed/);
       assert.strictEqual((err as CommandError).exitCode, EXIT_CODE.GENERIC_FAILURE);
       return true;
     },
   );
+  await ext.deactivate();
 });
 
 test("beads importer rejects a missing file argument with a USAGE exit code", async () => {
-  const registered: string[] = [];
-  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any> };
-  extension.activate(makeApi(registered, captured) as any);
-  const importer = captured.importers["beads"];
-  assert.ok(importer, "beads importer should be registered");
+  const ext = await harness();
   await assert.rejects(
-    async () => importer({ args: [], options: {}, pm_root: ".agents/pm" }),
+    () => runImport(ext, { args: [], options: {}, global: { json: false }, pmRoot: ".agents/pm" }),
     (err: unknown) => {
       assert.match((err as Error).message, /Usage: pm beads import/);
       assert.strictEqual((err as CommandError).exitCode, EXIT_CODE.USAGE);
       return true;
     },
   );
+  await ext.deactivate();
 });
 
 test("bead id round-trips through the description marker", () => {
@@ -296,15 +276,15 @@ test("extractCreatedId reads both top-level and nested id shapes", () => {
   assert.strictEqual(extractCreatedId("not json"), undefined);
 });
 
-test("extension registers the validate command", () => {
-  const registered: string[] = [];
-  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any> };
-  extension.activate(makeApi(registered, captured) as any);
-  assert.ok(captured.commands["beads-validate"], "should register the beads-validate command");
+test("extension registers the validate command", async () => {
+  const ext = await harness();
+  const { registrations } = ext.activation;
+  assert.ok(registrations.commands.some((c) => c.command === "beads-validate"), "should register the beads-validate command");
   // The README documents `pm beads validate <file>` as the canonical form; it
   // must exist as a real command (the `beads` group only gets import/export
   // from the importer/exporter, so validate needs an explicit registerCommand).
-  assert.ok(captured.commands["beads validate"], "should register the canonical 'beads validate' command");
+  assert.ok(registrations.commands.some((c) => c.command === "beads validate"), "should register the canonical 'beads validate' command");
+  await ext.deactivate();
 });
 
 test("normalizeBeadKey trims and preserves case but drops empties", () => {
@@ -759,7 +739,7 @@ test("diffBeads detects dependency edge changes", () => {
 test("normalizeDiffField and changedFields cover all DIFF_FIELDS", () => {
   assert.deepStrictEqual([...DIFF_FIELDS], ["title", "status", "type", "priority", "tags", "assignee", "parent", "deadline", "dependencies"]);
   // beadDeadline alias: due_date is honored when deadline is absent.
-  assert.strictEqual(normalizeDiffField({ due_date: "2026-03-03" } as any, "deadline"), "2026-03-03");
+  assert.strictEqual(normalizeDiffField({ due_date: "2026-03-03" } as unknown as Record<string, unknown>, "deadline"), "2026-03-03");
   assert.deepStrictEqual(changedFields({ id: "x", title: "Same" }, { id: "x", title: "Same" }), []);
   assert.deepStrictEqual(changedFields({ id: "x", title: "A" }, { id: "x", title: "B" }), ["title"]);
 });
@@ -790,18 +770,18 @@ test("parseDiffOptions reads flags from options and the global --json", () => {
   assert.strictEqual(o.preserveIds, true);
   assert.deepStrictEqual([...o.filter.statuses!], ["open"]);
   assert.strictEqual(o.pmRoot, "/pm");
-  // --json may arrive on the global flag bag instead of the command options.
+  // `--json` is a host-owned global read from the global flag bag, not
+  // command options (the flag declaration was removed to avoid shadowing).
   assert.strictEqual(parseDiffOptions({}, { json: true }).json, true);
-  assert.strictEqual(parseDiffOptions({ json: true }, {}).json, true);
   assert.strictEqual(parseDiffOptions({}, {}).json, false);
 });
 
-test("extension registers the diff command and its hyphenated alias", () => {
-  const registered: string[] = [];
-  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any> };
-  extension.activate(makeApi(registered, captured) as any);
-  assert.ok(captured.commands["beads diff"], "should register the canonical 'beads diff' command");
-  assert.ok(captured.commands["beads-diff"], "should register the 'beads-diff' rich-help alias");
+test("extension registers the diff command and its hyphenated alias", async () => {
+  const ext = await harness();
+  const { registrations } = ext.activation;
+  assert.ok(registrations.commands.some((c) => c.command === "beads diff"), "should register the canonical 'beads diff' command");
+  assert.ok(registrations.commands.some((c) => c.command === "beads-diff"), "should register the 'beads-diff' rich-help alias");
+  await ext.deactivate();
 });
 
 // --against-workspace path: build a real fixture pm workspace via the `pm` CLI,
@@ -827,11 +807,7 @@ test("beads diff --against-workspace compares a file against the live workspace"
   );
   assert.strictEqual(create.status, 0, `pm create failed: ${create.stderr}`);
 
-  const registered: string[] = [];
-  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any> };
-  extension.activate(makeApi(registered, captured) as any);
-  const diffCmd = captured.commands["beads diff"];
-  assert.ok(diffCmd, "beads diff command should be registered");
+  const ext = await harness();
 
   // File A matches the workspace bead exactly (same id + title) -> no drift,
   // plus an extra bead only in the file -> classified as "removed" (only in A).
@@ -850,50 +826,50 @@ test("beads diff --against-workspace compares a file against the live workspace"
   // Pass args the way the real CLI does: the boolean flag token rides along in
   // ctx.args next to the positional file. runDiff must extract the positional
   // file and not mistake the flag for a second file.
-  const result = await diffCmd.run({
+  // `--json` is a host-owned global read from ctx.global, so pass it via global.
+  const { result } = await ext.runCommand({
+    command: "beads diff",
     args: [fileA, "--against-workspace"],
-    options: { "against-workspace": true, json: true },
-    global: {},
-    pm_root: pmRoot,
+    options: { "against-workspace": true },
+    global: { json: true },
+    pmRoot,
   });
+  const diff = result as { b: string; removed: string[]; added: string[]; unchanged: number; drift: boolean };
   // bd-ws-1 is in both (unchanged); bd-extra is only in the file (A) -> removed.
-  assert.strictEqual(result.b, "workspace");
-  assert.ok(result.removed.includes("bd-extra"), "file-only bead is 'removed' (only in A)");
-  assert.ok(!result.added.includes("bd-ws-1"));
-  assert.strictEqual(result.unchanged, 1, "the matching bead is unchanged");
-  assert.strictEqual(result.drift, true);
+  assert.strictEqual(diff.b, "workspace");
+  assert.ok(diff.removed.includes("bd-extra"), "file-only bead is 'removed' (only in A)");
+  assert.ok(!diff.added.includes("bd-ws-1"));
+  assert.strictEqual(diff.unchanged, 1, "the matching bead is unchanged");
+  assert.strictEqual(diff.drift, true);
+  await ext.deactivate();
 });
 
 test("beads diff requires a second file without --against-workspace (USAGE)", async () => {
-  const registered: string[] = [];
-  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any> };
-  extension.activate(makeApi(registered, captured) as any);
-  const diffCmd = captured.commands["beads diff"];
+  const ext = await harness();
   const dir = mkdtempSync(join(tmpdir(), "beads-diff-usage-"));
   const fileA = join(dir, "a.jsonl");
   writeFileSync(fileA, JSON.stringify({ id: "bd-1", title: "T" }) + "\n", "utf-8");
   await assert.rejects(
-    async () => diffCmd.run({ args: [fileA], options: {}, global: {}, pm_root: dir }),
+    () => ext.runCommand({ command: "beads diff", args: [fileA], options: {}, global: { json: false }, pmRoot: dir }),
     (err: unknown) => {
       assert.strictEqual((err as CommandError).exitCode, EXIT_CODE.USAGE);
       return true;
     },
   );
+  await ext.deactivate();
 });
 
 test("beads diff --strict exits nonzero (throws) on drift, zero otherwise", async () => {
-  const registered: string[] = [];
-  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any> };
-  extension.activate(makeApi(registered, captured) as any);
-  const diffCmd = captured.commands["beads diff"];
+  const ext = await harness();
   const dir = mkdtempSync(join(tmpdir(), "beads-diff-strict-"));
   const a = join(dir, "a.jsonl");
   const b = join(dir, "b.jsonl");
   writeFileSync(a, JSON.stringify({ id: "bd-1", title: "One" }) + "\n", "utf-8");
   writeFileSync(b, JSON.stringify({ id: "bd-2", title: "Two" }) + "\n", "utf-8");
   // Drift + --strict -> throws a CommandError with a nonzero exit code.
+  // Use json:false so runDiff takes the throw path (json:true sets exitCode instead).
   await assert.rejects(
-    async () => diffCmd.run({ args: [a, b], options: { strict: true }, global: {}, pm_root: dir }),
+    () => ext.runCommand({ command: "beads diff", args: [a, b], options: { strict: true }, global: { json: false }, pmRoot: dir }),
     (err: unknown) => {
       assert.strictEqual((err as CommandError).exitCode, EXIT_CODE.GENERIC_FAILURE);
       assert.match((err as Error).message, /Drift detected/);
@@ -901,41 +877,38 @@ test("beads diff --strict exits nonzero (throws) on drift, zero otherwise", asyn
     },
   );
   // Identical files + --strict -> no throw, returns a no-drift result.
-  const same = await diffCmd.run({ args: [a, a], options: { strict: true }, global: {}, pm_root: dir });
-  assert.strictEqual(same.drift, false);
+  const { result: same } = await ext.runCommand({ command: "beads diff", args: [a, a], options: { strict: true }, global: { json: false }, pmRoot: dir });
+  assert.strictEqual((same as { drift: boolean }).drift, false);
+  await ext.deactivate();
 });
 
 test("beads diff hard-fails on a malformed JSONL line", async () => {
-  const registered: string[] = [];
-  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any> };
-  extension.activate(makeApi(registered, captured) as any);
-  const diffCmd = captured.commands["beads diff"];
+  const ext = await harness();
   const dir = mkdtempSync(join(tmpdir(), "beads-diff-bad-"));
   const a = join(dir, "a.jsonl");
   const b = join(dir, "b.jsonl");
   writeFileSync(a, "{not json\n", "utf-8");
   writeFileSync(b, JSON.stringify({ id: "bd-1", title: "T" }) + "\n", "utf-8");
   await assert.rejects(
-    async () => diffCmd.run({ args: [a, b], options: {}, global: {}, pm_root: dir }),
+    () => ext.runCommand({ command: "beads diff", args: [a, b], options: {}, global: { json: false }, pmRoot: dir }),
     (err: unknown) => {
       assert.match((err as Error).message, /invalid JSON/);
       return true;
     },
   );
+  await ext.deactivate();
 });
 
 test("beads diff maps a missing file to NOT_FOUND", async () => {
-  const registered: string[] = [];
-  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any> };
-  extension.activate(makeApi(registered, captured) as any);
-  const diffCmd = captured.commands["beads diff"];
+  const ext = await harness();
   await assert.rejects(
-    () => diffCmd.run({ args: ["/nonexistent/beads-a.jsonl", "/nonexistent/beads-b.jsonl"], options: {}, global: {} }),
+    () => ext.runCommand({ command: "beads diff", args: ["/nonexistent/beads-a.jsonl", "/nonexistent/beads-b.jsonl"], options: {}, global: { json: false } }),
     (err: unknown) => {
       assert.strictEqual((err as CommandError).exitCode, EXIT_CODE.NOT_FOUND);
       return true;
     },
   );
+  await ext.deactivate();
 });
 
 // --- Enhancement: --validate-only / --batch-size / --filter / --merge-strategy / export --dry-run ---
@@ -954,7 +927,7 @@ test("parseFilterExpression parses the combined `type:...;status:...` form", () 
 
 test("mergeRowFilters lets the override dimension win, base otherwise", () => {
   const base = parseFilterExpression("type:Bug;status:open");
-  const override = { statuses: new Set(["closed"]) } as any;
+  const override: RowFilter = { statuses: new Set(["closed"]) };
   const merged = mergeRowFilters(base, override);
   assert.deepStrictEqual([...merged.statuses!], ["closed"]); // override wins
   assert.deepStrictEqual([...merged.types!], ["bug"]); // base carries over
@@ -1007,36 +980,30 @@ test("parsePositiveIntOption reads strings/numbers and rejects invalid explicit 
 test("parseImportOptions wires every new import flag", async () => {
   // Re-exercise via the registered importer handler using dry-run + new flags
   // so no pm CLI is required to validate option plumbing.
-  const registered: string[] = [];
-  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any> };
-  extension.activate(makeApi(registered, captured) as any);
-  const importer = captured.importers["beads"];
+  const ext = await harness();
   const dir = mkdtempSync(join(tmpdir(), "beads-opts-"));
   const file = join(dir, "in.jsonl");
   writeFileSync(file, JSON.stringify({ id: "bd-1", title: "A", status: "open", type: "Task" }) + "\n", "utf-8");
 
   // --validate-only short-circuits before any pm spawn (pm_root undefined so
   // the workspace cross-check is skipped entirely).
-  const r = await importer({
+  const ir = await runImport(ext, {
     args: [file],
     options: { "validate-only": true },
-    pm_root: undefined,
+    pmRoot: undefined,
   });
-  assert.strictEqual(r.validateOnly, true);
-  assert.strictEqual(r.records, 1);
-  assert.strictEqual(r.valid, true);
+  assert.strictEqual(ir.validateOnly, true);
+  assert.strictEqual(ir.records, 1);
+  assert.strictEqual(ir.valid, true);
 });
 
 test("--validate-only surfaces a nonzero exit on a malformed file", async () => {
-  const registered: string[] = [];
-  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any> };
-  extension.activate(makeApi(registered, captured) as any);
-  const importer = captured.importers["beads"];
+  const ext = await harness();
   const dir = mkdtempSync(join(tmpdir(), "beads-vo-bad-"));
   const file = join(dir, "bad.jsonl");
   writeFileSync(file, '{"id":"a","title":"ok"}\n{broken\n', "utf-8");
   await assert.rejects(
-    async () => importer({ args: [file], options: { "validate-only": true }, pm_root: undefined }),
+    async () => runImport(ext, { args: [file], options: { "validate-only": true }, pmRoot: undefined }),
     (err: unknown) => {
       assert.match((err as Error).message, /Validation failed/);
       assert.strictEqual((err as CommandError).exitCode, EXIT_CODE.GENERIC_FAILURE);
@@ -1046,33 +1013,27 @@ test("--validate-only surfaces a nonzero exit on a malformed file", async () => 
 });
 
 test("--validate-only ignores write-only merge strategy constraints", async () => {
-  const registered: string[] = [];
-  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any> };
-  extension.activate(makeApi(registered, captured) as any);
-  const importer = captured.importers["beads"];
+  const ext = await harness();
   const dir = mkdtempSync(join(tmpdir(), "beads-vo-merge-"));
   const file = join(dir, "in.jsonl");
   writeFileSync(file, JSON.stringify({ id: "bd-1", title: "A" }) + "\n", "utf-8");
 
-  const result = await importer({
+  const ir = await runImport(ext, {
     args: [file],
     options: { "validate-only": true, "merge-strategy": "fail" },
-    pm_root: undefined,
+    pmRoot: undefined,
   });
-  assert.strictEqual(result.validateOnly, true);
-  assert.strictEqual(result.valid, true);
+  assert.strictEqual(ir.validateOnly, true);
+  assert.strictEqual(ir.valid, true);
 });
 
 test("--merge-strategy without --upsert is a USAGE error", async () => {
-  const registered: string[] = [];
-  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any> };
-  extension.activate(makeApi(registered, captured) as any);
-  const importer = captured.importers["beads"];
+  const ext = await harness();
   const dir = mkdtempSync(join(tmpdir(), "beads-ms-noup-"));
   const file = join(dir, "in.jsonl");
   writeFileSync(file, JSON.stringify({ id: "bd-1", title: "A" }) + "\n", "utf-8");
   await assert.rejects(
-    async () => importer({ args: [file], options: { "merge-strategy": "skip" }, pm_root: dir }),
+    async () => runImport(ext, { args: [file], options: { "merge-strategy": "skip" }, pmRoot: dir }),
     (err: unknown) => {
       assert.strictEqual((err as CommandError).exitCode, EXIT_CODE.USAGE);
       assert.match((err as Error).message, /--merge-strategy only applies with --upsert/);
@@ -1082,24 +1043,21 @@ test("--merge-strategy without --upsert is a USAGE error", async () => {
 });
 
 test("--batch-size chunks the dry-run preview and reports batches", async () => {
-  const registered: string[] = [];
-  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any> };
-  extension.activate(makeApi(registered, captured) as any);
-  const importer = captured.importers["beads"];
+  const ext = await harness();
   const dir = mkdtempSync(join(tmpdir(), "beads-batch-"));
   const file = join(dir, "in.jsonl");
   const lines = [];
   for (let i = 1; i <= 5; i++) lines.push(JSON.stringify({ id: `bd-${i}`, title: `T${i}`, status: "open", type: "Task" }));
   writeFileSync(file, lines.join("\n") + "\n", "utf-8");
   // dry-run never spawns pm, so a bogus pm_root is safe. batchSize 2 -> 3 batches.
-  const r = await importer({
+  const ir = await runImport(ext, {
     args: [file],
     options: { "dry-run": true, "batch-size": "2" },
-    pm_root: join(dir, "no-pm"),
+    pmRoot: join(dir, "no-pm"),
   });
-  assert.strictEqual(r.dryRun, true);
-  assert.strictEqual(r.wouldImport, 5);
-  assert.strictEqual(r.batches, 3);
+  assert.strictEqual(ir.dryRun, true);
+  assert.strictEqual(ir.wouldImport, 5);
+  assert.strictEqual(ir.batches, 3);
 });
 
 test("--merge-strategy skip/fail in dry-run against a seeded workspace", { skip: !hasPmCli() }, async () => {
@@ -1117,31 +1075,28 @@ test("--merge-strategy skip/fail in dry-run against a seeded workspace", { skip:
   const file = join(root, "in.jsonl");
   writeFileSync(file, JSON.stringify({ id: "bd-1", title: "Existing", status: "open", type: "Task" }) + "\n", "utf-8");
 
-  const registered: string[] = [];
-  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any> };
-  extension.activate(makeApi(registered, captured) as any);
-  const importer = captured.importers["beads"];
+  const ext = await harness();
 
   // skip: leaves the existing item alone — wouldImport 0, wouldSkip 1.
-  const skip = await importer({
-    args: [file], options: { "dry-run": true, upsert: true, "merge-strategy": "skip" }, pm_root: pmRoot,
+  const ir = await runImport(ext, {
+    args: [file], options: { "dry-run": true, upsert: true, "merge-strategy": "skip" }, pmRoot: pmRoot,
   });
-  assert.strictEqual(skip.wouldImport, 0);
-  assert.strictEqual(skip.wouldSkip, 1);
+  assert.strictEqual(ir.wouldImport, 0);
+  assert.strictEqual(ir.wouldSkip, 1);
 
   // A real skip-only import is a successful no-op, not a malformed-input
   // failure. This is a common idempotent sync path for agents.
-  const actualSkip = await importer({
-    args: [file], options: { upsert: true, "merge-strategy": "skip" }, pm_root: pmRoot,
+  const ir2 = await runImport(ext, {
+    args: [file], options: { upsert: true, "merge-strategy": "skip" }, pmRoot: pmRoot,
   });
-  assert.strictEqual(actualSkip.imported, 0);
-  assert.strictEqual(actualSkip.updated, 0);
-  assert.strictEqual(actualSkip.skipped, 1);
+  assert.strictEqual(ir2.imported, 0);
+  assert.strictEqual(ir2.updated, 0);
+  assert.strictEqual(ir2.skipped, 1);
 
   // fail: aborts the import on the first duplicate.
   await assert.rejects(
-    async () => importer({
-      args: [file], options: { "dry-run": true, upsert: true, "merge-strategy": "fail" }, pm_root: pmRoot,
+    async () => runImport(ext, {
+      args: [file], options: { "dry-run": true, upsert: true, "merge-strategy": "fail" }, pmRoot: pmRoot,
     }),
     (err: unknown) => {
       assert.strictEqual((err as CommandError).exitCode, EXIT_CODE.GENERIC_FAILURE);
@@ -1168,12 +1123,10 @@ test("--merge-strategy fail preflights all collisions before writing", { skip: !
     JSON.stringify({ id: "bd-existing", title: "Existing", status: "open", type: "Task" }),
   ].join("\n") + "\n", "utf-8");
 
-  const registered: string[] = [];
-  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any> };
-  extension.activate(makeApi(registered, captured) as any);
+  const ext = await harness();
   await assert.rejects(
-    () => captured.importers["beads"]({
-      args: [file], options: { upsert: true, "merge-strategy": "fail" }, pm_root: pmRoot,
+    () => runImport(ext, {
+      args: [file], options: { upsert: true, "merge-strategy": "fail" }, pmRoot: pmRoot,
     }),
     /aborting before any writes/,
   );
@@ -1192,8 +1145,8 @@ test("--merge-strategy fail preflights all collisions before writing", { skip: !
     JSON.stringify({ id: "bd-duplicate", title: "Second duplicate", status: "open", type: "Task" }),
   ].join("\n") + "\n", "utf-8");
   await assert.rejects(
-    () => captured.importers["beads"]({
-      args: [duplicateFile], options: { upsert: true, "merge-strategy": "fail" }, pm_root: pmRoot,
+    () => runImport(ext, {
+      args: [duplicateFile], options: { upsert: true, "merge-strategy": "fail" }, pmRoot: pmRoot,
     }),
     /appears more than once in the input.*aborting before any writes/,
   );
@@ -1221,14 +1174,12 @@ test("upsert refreshes status index for repeated terminal-status rows", { skip: 
     JSON.stringify({ id: "bd-repeat", title: "Closed twice", status: "closed", type: "Task" }),
   ].join("\n") + "\n", "utf-8");
 
-  const registered: string[] = [];
-  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any> };
-  extension.activate(makeApi(registered, captured) as any);
-  const result = await captured.importers["beads"]({
-    args: [file], options: { upsert: true }, pm_root: pmRoot,
+  const ext = await harness();
+  const ir = await runImport(ext, {
+    args: [file], options: { upsert: true }, pmRoot: pmRoot,
   });
-  assert.strictEqual(result.updated, 2, "both rows should update without attempting to re-close the terminal item");
-  assert.strictEqual(result.skipped, 0);
+  assert.strictEqual(ir.updated, 2, "both rows should update without attempting to re-close the terminal item");
+  assert.strictEqual(ir.skipped, 0);
 });
 
 test("eligible import failures are not masked by filtered rows", { skip: !hasPmCli() }, async () => {
@@ -1243,12 +1194,10 @@ test("eligible import failures are not masked by filtered rows", { skip: !hasPmC
     JSON.stringify({ id: "filtered", title: "Filtered task", status: "open", type: "Task" }),
   ].join("\n") + "\n", "utf-8");
 
-  const registered: string[] = [];
-  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any> };
-  extension.activate(makeApi(registered, captured) as any);
+  const ext = await harness();
   await assert.rejects(
-    () => captured.importers["beads"]({
-      args: [file], options: { "filter-type": "DefinitelyUnknown" }, pm_root: pmRoot,
+    () => runImport(ext, {
+      args: [file], options: { "filter-type": "DefinitelyUnknown" }, pmRoot: pmRoot,
     }),
     /No items imported — all 1 attempted record\(s\) failed/,
   );
@@ -1287,38 +1236,25 @@ test("parseExportOptions reads dry-run, output and filter flags", () => {
   assert.strictEqual(parseExportOptions({}).dryRun, false);
 });
 
-test("exporter registration advertises dry-run and combined filter flags", () => {
-  const registered: string[] = [];
-  const captured = {
-    commands: {} as Record<string, any>,
-    importers: {} as Record<string, any>,
-    exporters: {} as Record<string, any>,
-    exporterOptions: {} as Record<string, any>,
-  };
-  extension.activate(makeApi(registered, captured) as any);
-  const exp = captured.exporterOptions["beads"];
-  assert.ok(exp.flags.some((f: any) => f.long === "--dry-run"));
-  assert.ok(exp.flags.some((f: any) => f.long === "--filter"));
+test("exporter registration advertises dry-run and combined filter flags", async () => {
+  const ext = await harness();
+  const expContract = ext.assertCommandContract({ command: "beads export", flags: ["--dry-run", "--filter"] });
+  assert.ok(expContract.flags.some((f) => f.long === "--dry-run"));
+  assert.ok(expContract.flags.some((f) => f.long === "--filter"));
+  await ext.deactivate();
 });
 
-test("diff registration advertises the combined filter flag", () => {
-  const registered: string[] = [];
-  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any> };
-  extension.activate(makeApi(registered, captured) as any);
-  assert.ok(captured.commands["beads diff"].flags.some((f: any) => f.long === "--filter"));
+test("diff registration advertises the combined filter flag", async () => {
+  const ext = await harness();
+  const contract = ext.assertCommandContract({ command: "beads diff", flags: ["--filter"] });
+  assert.ok(contract.flags.some((f) => f.long === "--filter"));
+  await ext.deactivate();
 });
 
-test("importer registration advertises the new import flags", () => {
-  const registered: string[] = [];
-  const captured = {
-    commands: {} as Record<string, any>,
-    importers: {} as Record<string, any>,
-    exporters: {} as Record<string, any>,
-    importerOptions: {} as Record<string, any>,
-  };
-  extension.activate(makeApi(registered, captured) as any);
-  const imp = captured.importerOptions["beads"];
-  const longs = imp.flags.map((f: any) => f.long);
+test("importer registration advertises the new import flags", async () => {
+  const ext = await harness();
+  const impContract = ext.assertCommandContract({ command: "beads import" });
+  const longs = impContract.flags.map((f) => f.long);
   for (const f of ["--validate-only", "--merge-strategy", "--batch-size", "--filter"]) {
     assert.ok(longs.includes(f), `importer should advertise ${f}`);
   }
@@ -1364,30 +1300,59 @@ test("upsert of a synonym-typed bead keeps the record AND its inbound dependency
     JSON.stringify({ id: "bd-feat", title: "Feature", status: "open", issue_type: "feature", dependencies: ["bd-bug"] }),
   ].join("\n") + "\n", "utf-8");
 
-  const registered: string[] = [];
-  const captured = { commands: {} as Record<string, any>, importers: {} as Record<string, any>, exporters: {} as Record<string, any> };
-  extension.activate(makeApi(registered, captured) as any);
-  const importer = captured.importers["beads"];
-  const exporter = captured.exporters["beads"];
+  const ext = await harness();
 
-  const first = await importer({ args: [file], options: {}, pm_root: pmRoot });
-  assert.strictEqual(first.imported, 2);
-  assert.strictEqual(first.dependencies, 1);
+  const ir = await runImport(ext, { args: [file], options: {}, pmRoot: pmRoot });
+  assert.strictEqual(ir.imported, 2);
+  assert.strictEqual(ir.dependencies, 1);
 
   // Re-import with --upsert: the "bug" bead must update (via the --type retry),
   // not fail, and the bd-feat -> bd-bug edge must survive --replace-deps.
-  const second = await importer({ args: [file], options: { upsert: true }, pm_root: pmRoot });
-  assert.strictEqual(second.imported, 0);
-  assert.strictEqual(second.updated, 2, "synonym-typed bead must not fail the upsert update");
-  assert.strictEqual(second.dependencies, 1, "inbound edge to the synonym-typed bead must survive");
+  const ir2 = await runImport(ext, { args: [file], options: { upsert: true }, pmRoot: pmRoot });
+  assert.strictEqual(ir2.imported, 0);
+  assert.strictEqual(ir2.updated, 2, "synonym-typed bead must not fail the upsert update");
+  assert.strictEqual(ir2.dependencies, 1, "inbound edge to the synonym-typed bead must survive");
 
   const out = join(root, "out.jsonl");
-  await exporter({ args: [], options: { output: out }, pm_root: pmRoot });
+  await runExport(ext, { args: [], options: { output: out }, pmRoot: pmRoot });
   const rows = readFileSync(out, "utf-8").trim().split("\n").map((l) => JSON.parse(l));
   const feat = rows.find((r) => r.id === "bd-feat");
   assert.ok(feat, "bd-feat must round-trip");
   assert.ok(
-    Array.isArray(feat.dependencies) && feat.dependencies.some((d: any) => (d.depends_on_id ?? d) === "bd-bug"),
+    Array.isArray(feat.dependencies) && feat.dependencies.some((d: { depends_on_id?: string }) => (d.depends_on_id ?? String(d)) === "bd-bug"),
     "bd-feat must still depend on bd-bug after an upsert re-import",
   );
+});
+
+// ---------------------------------------------------------------------------
+// Suite-wide guard: no command redeclares a host-owned global flag
+// ---------------------------------------------------------------------------
+
+test("no command redeclares a host-owned global flag", async () => {
+  // Guards the whole surface, not just the commands that regressed:
+  // registering any of these makes the host reject the command outright, and
+  // the value must be read from ctx.global instead.
+  const hostOwned = new Set([
+    "--json",
+    "--quiet",
+    "--path",
+    "--lean",
+    "--id-only",
+    "--author",
+    "--no-changed-fields",
+    "--full-changed-fields",
+    "--pm-path",
+  ]);
+  const ext = await harness();
+
+  for (const registration of ext.activation.registrations.flags) {
+    for (const flag of registration.flags) {
+      assert.ok(
+        flag.long === undefined || !hostOwned.has(flag.long),
+        `${registration.target_command} must not redeclare host-owned global flag ${flag.long}`,
+      );
+    }
+  }
+
+  await ext.deactivate();
 });

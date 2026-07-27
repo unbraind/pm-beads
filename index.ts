@@ -1838,13 +1838,15 @@ const EXPORT_FLAGS: FlagDefinition[] = [
 ];
 
 const VALIDATE_FLAGS: FlagDefinition[] = [
-  { long: "--json", value_type: "boolean", description: "Emit the validation report as JSON" },
+  // `--json` is a host-owned global flag: extensions must not redeclare it
+  // (the host rejects the registration) and must read it from ctx.global.
   { long: "--no-workspace", value_type: "boolean", description: "Skip cross-checking dependency references against the current pm workspace" },
 ];
 
 const DIFF_FLAGS: FlagDefinition[] = [
   { long: "--against-workspace", value_type: "boolean", description: "Diff <file> against the current pm workspace (exported to Beads in-memory) instead of a second file" },
-  { long: "--json", value_type: "boolean", description: "Emit the structured diff object as JSON" },
+  // `--json` is a host-owned global flag: extensions must not redeclare it
+  // (the host rejects the registration) and must read it from ctx.global.
   { long: "--strict", value_type: "boolean", description: "Exit nonzero when any drift (added/removed/changed) is found — for CI fidelity gates" },
   { long: "--no-preserve-ids", value_type: "boolean", description: "When diffing against the workspace, key on pm ids instead of the original Beads ids (default: preserve)" },
   { long: "--filter", value_name: "expr", value_type: "string", description: "Combined row filter, e.g. `type:Bug,Feature;status:open,in_progress` (merged with --filter-status/--filter-type)" },
@@ -1973,8 +1975,9 @@ export function parseDiffOptions(
   pmRoot?: string,
 ): DiffOptions {
   return {
-    // `--json` may surface as a command option OR pm's global flag.
-    json: readBoolOption(options, "json") || readBoolOption(global, "json"),
+    // `--json` is a host-owned global flag: extensions must not redeclare it
+    // (the host rejects the registration) and must read it from ctx.global.
+    json: readBoolOption(global, "json"),
     strict: readBoolOption(options, "strict"),
     againstWorkspace: readBoolOption(options, "against-workspace", "againstWorkspace"),
     preserveIds: resolvePreserveIds(options),
@@ -2037,7 +2040,7 @@ const defineItemField = <TField extends SchemaFieldDefinition>(field: TField): T
 
 export default defineExtension({
   name: "pm-beads",
-  version: "2026.7.26",
+  version: "2026.7.27",
 
   activate(api: ExtensionApi) {
     // -----------------------------------------------------------------------
@@ -2203,10 +2206,11 @@ export default defineExtension({
       flags: VALIDATE_FLAGS,
       async run(ctx: any) {
         const options = ctx.options || {};
-        // `--json` may arrive as a command option or as pm's global flag
-        // (surfaced on ctx.global). Honor either so the structured report is
-        // returned (and rendered by the runtime) instead of the human listing.
-        const json = readBoolOption(options, "json") || readBoolOption(ctx.global || {}, "json");
+        // `--json` is a host-owned global flag: extensions must not redeclare
+        // it (the host rejects the registration) and must read it from
+        // ctx.global so the structured report is returned (and rendered by
+        // the runtime) instead of the human listing.
+        const json = readBoolOption(ctx.global || {}, "json");
         // Cross-workspace dependency check is ON by default; --no-workspace opts out.
         const workspace = resolveWorkspaceCheck(options);
         return runValidate(ctx.args?.[0], { json, workspace, pmRoot: ctx.pm_root });
