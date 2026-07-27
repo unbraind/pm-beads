@@ -38,6 +38,12 @@ import type {
   Importer,
   SchemaFieldDefinition,
 } from "@unbrained/pm-cli/sdk/authoring";
+// Top-level SDK runtime import. This fleet once believed extensions could not
+// resolve `@unbrained/pm-cli` at runtime and hid SDK access behind inline
+// dynamic-import shims laundered through `any`; that premise was disproven (a
+// populated node_modules is the only requirement), so the store read below
+// imports its binding the same way every other fleet package does.
+import { listAllItemMetadata } from "@unbrained/pm-cli/sdk/runtime";
 import { readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -53,8 +59,10 @@ import { spawnSync } from "node:child_process";
 // (see @unbrained/pm-cli runCommandHandler). A plain `Error` makes the runtime
 // fall through to its "unhandled" path, which RE-INVOKES the command handler a
 // second time and exits with a generic code. We mirror the SDK's EXIT_CODE
-// contract here rather than importing it: standalone-installed extensions load
-// only their own `dist/`, so `@unbrained/pm-cli` is not resolvable at runtime.
+// values here rather than re-exporting them: EXIT_CODE is part of this
+// package's own public surface (imported by tests and downstream tooling), and
+// the mirror keeps that surface byte-stable (same three members, same values)
+// regardless of how the SDK's constant grows.
 export const EXIT_CODE = {
   GENERIC_FAILURE: 1,
   USAGE: 2,
@@ -775,20 +783,30 @@ export function validateBeadsText(
 // the same `[bead_id: <id>]` provenance marker the importer writes. Used by
 // `beads validate` to cross-check dependency references against the workspace.
 //
-// Prefers the SDK item-store (`listAllFrontMatter`) per the SDK contract, loaded
-// via a dynamic import so a standalone install — which bundles only this
-// extension's own dist and cannot resolve `@unbrained/pm-cli` at runtime — falls
-// back to spawning `pm list-all` (the same data path the exporter uses). Either
-// way a failure degrades to "no workspace data" so validation still runs.
+// Prefers the SDK item-store (`listAllItemMetadata`) per the SDK contract and
+// falls back to spawning `pm list-all` (the same data path the exporter uses)
+// when the store read fails. Either way a failure degrades to "no workspace
+// data" so validation still runs.
+//
+// Historical note: this used to guard a `listAllFrontMatter` binding behind an
+// inline dynamic import. That export no longer exists in the 2026.7.x SDK, so
+// the guard was permanently false and every validate run already took the
+// spawn fallback. The metadata projection below restores the intended SDK
+// path: the marker is persisted in the item description (see encodeBeadId),
+// which `ItemMetadata` always carries, so the projection is equivalent to the
+// fallback for every item this extension writes. `bead_id`/`body` arrive via
+// the ItemMetadata index signature as `unknown`, so they are narrowed with
+// typeof guards rather than trusted blindly.
 async function readWorkspaceBeadIds(pmRoot: string): Promise<Set<string> | undefined> {
   let items: PmItem[] | undefined;
   try {
-    const runtime: any = await import("@unbrained/pm-cli/sdk/runtime");
-    if (typeof runtime?.listAllFrontMatter === "function") {
-      items = (await runtime.listAllFrontMatter(pmRoot)) as PmItem[];
-    }
+    items = (await listAllItemMetadata(pmRoot)).map((meta) => ({
+      bead_id: typeof meta.bead_id === "string" ? meta.bead_id : undefined,
+      description: meta.description,
+      body: typeof meta.body === "string" ? meta.body : undefined,
+    }));
   } catch {
-    /* SDK not resolvable at runtime (standalone install) — fall back below. */
+    /* SDK store read failed — fall back to the CLI read path below. */
   }
   if (!items) {
     try {
@@ -900,17 +918,27 @@ export function isInvalidTypeValueError(stderr: string | null | undefined): bool
   return stderr.includes("invalid_argument_value") && stderr.includes("Invalid type value");
 }
 
-function parseBeadsFile(filePath: string): BeadsItem[] {
+/**
+ * A parsed Beads JSONL record as produced by `parseBeadsFile`. Malformed lines
+ * are not dropped at parse time: they are substituted with an `__invalid`
+ * sentinel so the import loop can count them as skipped (and report the same
+ * record total the validator does) instead of silently shrinking the file.
+ * The marker lives on the record type itself so the import filter can narrow
+ * on it directly instead of casting through `any`.
+ */
+type ParsedBeadsRecord = BeadsItem & { __invalid?: boolean };
+
+function parseBeadsFile(filePath: string): ParsedBeadsRecord[] {
   const absolutePath = resolve(filePath);
   const raw = readFileOrThrow(absolutePath);
   const lines = raw.split("\n").filter((l) => l.trim());
-  const items: BeadsItem[] = [];
+  const items: ParsedBeadsRecord[] = [];
   for (let i = 0; i < lines.length; i++) {
     try {
       items.push(JSON.parse(lines[i]));
     } catch {
       console.error(`Line ${i + 1}: invalid JSON — skipping`);
-      items.push({ __invalid: true } as BeadsItem);
+      items.push({ __invalid: true });
     }
   }
   return items;
@@ -1042,7 +1070,7 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
   console.error(`Parsing Beads JSONL from: ${absolutePath}`);
 
   const parsed = parseBeadsFile(filePath);
-  const records = parsed.filter((r) => !(r as any).__invalid);
+  const records = parsed.filter((r) => !r.__invalid);
   let skipped = parsed.length - records.length;
   let failed = skipped;
 
@@ -2174,7 +2202,7 @@ export default defineExtension({
         "pm beads export --no-preserve-ids",
       ],
       flags: EXPORT_FLAGS,
-      async run(ctx: any) {
+      async run(ctx: CommandHandlerContext) {
         return runExport(ctx.pm_root, parseExportOptions(ctx.options || {}));
       },
     });
@@ -2204,13 +2232,17 @@ export default defineExtension({
         { name: "file", required: true, description: "Path to the Beads JSONL file to validate." },
       ],
       flags: VALIDATE_FLAGS,
-      async run(ctx: any) {
+      async run(ctx: CommandHandlerContext) {
         const options = ctx.options || {};
         // `--json` is a host-owned global flag: extensions must not redeclare
         // it (the host rejects the registration) and must read it from
         // ctx.global so the structured report is returned (and rendered by
         // the runtime) instead of the human listing.
-        const json = readBoolOption(ctx.global || {}, "json");
+        // The spread keeps this runtime-tolerant if a host ever omits
+        // ctx.global (spreading undefined yields {}) and yields a fresh object
+        // literal, which — unlike the GlobalOptions interface — is assignable
+        // to the Record<string, unknown> readBoolOption reads through.
+        const json = readBoolOption({ ...ctx.global }, "json");
         // Cross-workspace dependency check is ON by default; --no-workspace opts out.
         const workspace = resolveWorkspaceCheck(options);
         return runValidate(ctx.args?.[0], { json, workspace, pmRoot: ctx.pm_root });
@@ -2254,8 +2286,11 @@ export default defineExtension({
         },
       ],
       flags: DIFF_FLAGS,
-      async run(ctx: any) {
-        return runDiff(ctx.args, parseDiffOptions(ctx.options || {}, ctx.global || {}, ctx.pm_root));
+      async run(ctx: CommandHandlerContext) {
+        // See the validate handler for why ctx.global is spread: `--json` is a
+        // host-owned global read through ctx.global, and the spread keeps the
+        // read runtime-tolerant and assignable to Record<string, unknown>.
+        return runDiff(ctx.args, parseDiffOptions(ctx.options || {}, { ...ctx.global }, ctx.pm_root));
       },
     });
     api.registerCommand(makeDiffCommand("beads diff"));
