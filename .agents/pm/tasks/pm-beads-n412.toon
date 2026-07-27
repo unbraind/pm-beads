@@ -2,23 +2,29 @@ id: pm-beads-n412
 title: "Full-cycle hardening wave: pm-beads"
 description: ""
 type: Task
-status: in_progress
+status: closed
 priority: 1
 tags[4]: deps-2026-6-7,full-cycle-hardening,hardening-pass,wave-full-cycle-2026-06-07
 created_at: "2026-06-07T07:41:10.421Z"
-updated_at: "2026-06-07T08:00:40.274Z"
-assignee: codex-5.3-full-cycle
+updated_at: "2026-07-27T23:25:30.408Z"
+closed_at: "2026-07-27T23:25:30.406Z"
 author: codex-5.3-full-cycle
-notes[3]{created_at,author,text}:
+release: 2026.6.8
+resolution: "Work completed and released in 2026.6.8. Verified by containment rather than by date: v2026.06.07 was tagged at 07:15:18Z while this work concluded at 08:00:40Z, so that release was cut first and cannot hold it; 2026.6.8 is the next release and the first that can. An earlier revision of this record said 2026.6.7 and is superseded."
+expected_result: "A closed item whose changelog entry appears under the 2026.6.8 heading, the first release able to contain the hardening-wave work, leaving the current release notes untouched."
+actual_result: "Item remained in_progress with no activity after its work shipped, so the delivery was absent from the changelog while still counting as open work in every fleet audit."
+notes[4]{created_at,author,text}:
   "2026-06-07T07:41:11.825Z",codex-5.3-full-cycle,"Hardening pass complete: release:check succeeded after dependency bump and changelog regeneration."
   "2026-06-07T07:41:28.126Z",codex-5.3-full-cycle,"Hardening pass complete: release:check succeeded after dependency bump and changelog regeneration."
   "2026-06-07T08:00:40.274Z",codex-5.3-full-cycle,"Security gate: high-confidence token/key regex scan over tracked files and git history found no actionable secrets. Binary-history false positives were traced to embedded wasm base64 blobs, not credentials."
+  "2026-07-27T23:22:38.584Z",claude-code,"Release attribution corrected from 2026.6.7 to 2026.6.8. Same same-day ordering flaw Greptile surfaced on pm-web#67: v2026.06.07 was tagged at 07:15:18Z while this item's work concluded at 08:00:40Z, so the 2026.6.7 release was cut BEFORE the work and provably does not contain it. v2026.06.08 is the next release and is the first that could carry it. The other five attributions in this batch were re-checked by comparing each item's last-activity timestamp against its target tag's creation time and all hold - the flaw only bites when a tag and the work it should contain land on the same calendar day in the wrong order."
 files[3]{path,scope,note}:
   CHANGELOG.md,project,Regenerated changelog to satisfy release gate
   package-lock.json,project,Regenerated lockfile after dependency alignment
   package.json,project,Upgraded @unbrained/pm-cli and pm-changelog to latest ranges
-tests[1]{command,path,scope,timeout_seconds,pm_context_mode,env_set,env_clear,shared_host_safe,assert_stdout_contains,assert_stdout_regex,assert_stderr_contains,assert_stderr_regex,assert_stdout_min_lines,assert_json_field_equals,assert_json_field_gte,note}:
-  "npm run release:check",.,project,2400,null,null,null,null,null,null,null,null,null,null,null,null
+tests[1]{command,path,scope,timeout_seconds}:
+  "npm run release:check",.,project,2400
 docs[1]{path,scope,note}:
   README.md,project,Primary package docs reference
+close_reason: "Retired as shipped: the full-cycle hardening wave for pm-beads was completed and released in 2026.6.8, the first release cut after the work concluded. The item was never closed and sat in progress ever since."
 body: Master execution item for full-cycle hardening in pm-beads.

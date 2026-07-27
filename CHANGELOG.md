@@ -8,6 +8,10 @@
 
 ## 2026.7.27 - 2026-07-27
 
+### Fixed
+
+- beads validate and beads diff fail to register on pm-cli 2026.7.27 because each redeclares the host-owned --json global ([pm-beads-080q](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-080q.toon))
+
 ### Removed
 
 - Adopt pm-cli 2026.7.26 typed authoring contracts and remove the any-cast defineExtension shim ([pm-beads-i8t0](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-i8t0.toon))
@@ -32,6 +36,10 @@
 
 - pm item reads are capped at Node's 1 MiB spawnSync default, so a mature tracker fails with no diagnosis ([pm-beads-6a9l](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-6a9l.toon))
 
+### Other
+
+- Adopt --respect-item-release in changelog scripts and bump pm-changelog to 2026.7.24 ([pm-beads-anzm](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-anzm.toon))
+
 ## 2026.7.23 - 2026-07-23
 
 ### Fixed
@@ -50,6 +58,10 @@
 - Harden release bun-verify so registry-mirror lag cannot block the GitHub release ([pm-beads-87lb](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-87lb.toon))
 
 ## 2026.7.11 - 2026-07-11
+
+### Added
+
+- Full pm ecosystem production pass for pm-beads ([pm-beads-vxw7](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/features/pm-beads-vxw7.toon))
 
 ### Other
 
@@ -77,11 +89,22 @@
 - beads validate --no-workspace is a silent no-op (runtime normalizes flag to workspace:false) ([pm-beads-u440](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-u440.toon))
 - Promote pm beads validate to first-class command registration ([pm-beads-azv0](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-azv0.toon))
 
+### Other
+
+- Align pm-beads with pm CLI 2026.6.12 release readiness ([pm-beads-pib4](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-pib4.toon))
+- Restore pm CLI runtime dependency for pm-beads ([pm-beads-w7n9](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-w7n9.toon))
+
 ## 2026.6.9 - 2026-06-09
 
 ### Added
 
 - Add beads diff for round-trip fidelity auditing ([pm-beads-tjrz](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/features/pm-beads-tjrz.toon))
+
+## 2026.6.8 - 2026-06-08
+
+### Other
+
+- Full-cycle hardening wave: pm-beads ([pm-beads-n412](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-n412.toon))
 
 ## 2026.6.7 - 2026-06-07
 
@@ -146,6 +169,10 @@
 
 - beads import returns error object instead of throwing (exit 0 on failure + malformed file) ([pm-beads-w7ru](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-w7ru.toon))
 - beads import --dry-run silently ignored (still writes) ([pm-beads-nfpq](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-nfpq.toon))
+
+### Other
+
+- Production-readiness audit 2026-05-29 ([pm-beads-e6t2](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-e6t2.toon))
 
 ## 2026.5.28 - 2026-05-28
 
