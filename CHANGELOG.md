@@ -100,6 +100,12 @@
 
 - Add beads diff for round-trip fidelity auditing ([pm-beads-tjrz](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/features/pm-beads-tjrz.toon))
 
+## 2026.6.8 - 2026-06-08
+
+### Other
+
+- Full-cycle hardening wave: pm-beads ([pm-beads-n412](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-n412.toon))
+
 ## 2026.6.7 - 2026-06-07
 
 ### Added
@@ -108,7 +114,6 @@
 
 ### Other
 
-- Full-cycle hardening wave: pm-beads ([pm-beads-n412](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-n412.toon))
 - Harden release readiness checks ([pm-beads-xdzs](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-xdzs.toon))
 - Align package dependencies to pm CLI/SDK 2026.6.6 ([pm-beads-j930](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-j930.toon))
 
