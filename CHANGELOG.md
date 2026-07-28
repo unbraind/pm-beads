@@ -1,10 +1,14 @@
 # Changelog
 
-## Unreleased
+## 2026.7.28 - 2026-07-28
 
 ### Removed
 
 - Replace the dynamic SDK runtime import with a typed top-level import and remove all source any ([pm-beads-w143](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-w143.toon))
+
+### Other
+
+- Adopt pm-cli 2026.7.28 and cover the flag-declaration form the host never validates ([pm-beads-9scl](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-9scl.toon))
 
 ## 2026.7.27 - 2026-07-27
 

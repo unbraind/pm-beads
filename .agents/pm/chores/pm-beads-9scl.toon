@@ -1,0 +1,16 @@
+id: pm-beads-9scl
+title: Adopt pm-cli 2026.7.28 and cover the flag-declaration form the host never validates
+description: "pm-cli 2026.7.28 (released 2026-07-28) ships fixes for fourteen issues this fleet filed upstream, including GH-776 (the 2026.7.27 output_format override regression), GH-772 (rejected registration dropping later siblings), GH-773 (false merge-driver drift) and GH-764 (one host-owned flag collision quarantining a whole extension). This item tracks adopting that release in pm-beads and closing the one validation gap the release does not cover.\n\nAdoption: bumped the 2026.7.27 pin to 2026.7.28 in package.json (version, dependencies, devDependencies, peerDependencies >=2026.7.28), manifest.json, and the extension module version constant, then verified the installed CLI reports 2026.7.28 and re-ran the full release:check gate.\n\nNew coverage: 2026.7.28 makes the SDK loader hard-fail when an extension declares a host-owned global flag, so a dedicated collision test in this package would duplicate the smoke suite's existing activation.failed assertion and was deliberately not added. What the host still does not validate is the *form* of a declared flag token: a flag declared as `verbose` or `-v` in a `long` field is stored verbatim and activates cleanly with no warning. test/flag-declarations.test.ts covers exactly that gap and nothing the host already enforces."
+type: Chore
+status: closed
+priority: 2
+tags: []
+created_at: "2026-07-28T03:33:35.442Z"
+updated_at: "2026-07-28T03:34:06.683Z"
+closed_at: "2026-07-28T03:33:55.424Z"
+author: codex
+resolution: fixed
+expected_result: "pm-beads declares and resolves @unbrained/pm-cli 2026.7.28 at every version site, the full release:check gate passes, and a malformed flag token is caught by a test rather than shipping silently."
+actual_result: "All four version sites report 2026.7.28 and the installed CLI resolves to 2026.7.28. release:check passes end to end. test/flag-declarations.test.ts passes and was negative-controlled: injecting a colliding --json declaration turned the suite red via the 2026.7.28 loader rejection, confirming the gate cannot pass vacuously."
+close_reason: "Adopted pm-cli 2026.7.28 across all four version sites and verified the installed CLI reports 2026.7.28. Full release:check passes: typecheck, build, 100 percent of the existing suite plus the new flag-declaration coverage, prod audit, pack dry-run and changelog check. Added test/flag-declarations.test.ts covering the flag-token form the host does not validate, and deliberately omitted a host-owned-flag collision test because 2026.7.28's loader now rejects those at activation and the smoke suite already asserts activation.failed is empty. Upstream gap filed as pm-cli#784."
+body: ""
