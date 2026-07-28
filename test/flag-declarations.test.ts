@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { createExtensionTestHarness } from "@unbrained/pm-cli/sdk/testing";
 
-import extension from "../dist/index.js";
+import extension from "../index.ts";
 
 /**
  * Well-formed long-flag token: two leading dashes, then lowercase

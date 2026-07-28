@@ -43,7 +43,7 @@ import extension, {
   parseDiffOptions,
   isInvalidTypeValueError,
   type RowFilter,
-} from "../dist/index.js";
+} from "../index.ts";
 
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
