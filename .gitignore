@@ -10,3 +10,4 @@ dist-test/
 .agents/pm/runtime/
 .agents/pm/search/
 .agents/pm/extensions/
+coverage/

@@ -1,0 +1,35 @@
+id: pm-beads-wdyb
+title: Enforce a real coverage gate by running tests against TypeScript sources
+description: "The package measured no coverage at all: tests imported the compiled output from dist, so the only obtainable numbers pointed at generated JavaScript offsets an author cannot act on, and no threshold was wired into any gate. The suite now runs against the TypeScript sources directly. Node executes TypeScript natively from the version floor this package already declares, so tests import the source module, which puts the coverage report on real source lines. The gate is scripts/coverage-gate.ts: it enforces per-dimension thresholds and reconciles the reported file list against a walk of the source tree. That second check is the point. Node omits files that never load from its report entirely rather than reporting them at zero, so without it a package can satisfy a full threshold while an entire module goes unexercised."
+type: Feature
+status: closed
+priority: 1
+tags[3]: code-quality,coverage,testing
+created_at: "2026-07-28T23:26:20.041Z"
+updated_at: "2026-07-28T23:26:29.940Z"
+deadline: "2026-08-04T23:26:20.041Z"
+closed_at: "2026-07-28T23:26:29.936Z"
+author: pi-agent
+estimated_minutes: 240
+acceptance_criteria: "Tests import TypeScript sources rather than dist so coverage reports on editable lines; the gate fails the build when any threshold regresses; the gate fails when a source file never loads, proven by a negative control; thresholds are recorded in package.json as a ratchet at the measured baseline; the gate runs in the release check and in CI on Node 22 and 26."
+resolution: "Tests moved onto TypeScript sources and scripts/coverage-gate.ts wired into release:check and CI."
+expected_result: "A coverage gate runs in the release check and in CI on both supported Node lines, reports against TypeScript sources, and fails when a source file is untested or a threshold regresses."
+actual_result: "npm run check passes. npm run coverage passes with 87 tests, the single source file index.ts present in the report, at 91.21 line, 77.36 branch and 93.07 function coverage. A negative control adding an untested source file (__probe.ts) made the gate exit 1 and name that file, so the presence check is not vacuous. Thresholds pinned at 91/77/93. The CI legs are unobserved until the PR runs."
+comments[1]{created_at,author,text}:
+  "2026-07-28T23:26:20.041Z",pi-agent,"Negative control run: adding an untested source file (__probe.ts) made the gate exit 1 and name that file, so the presence check is not vacuous. Deleting the probe restored exit 0."
+notes[1]{created_at,author,text}:
+  "2026-07-28T23:26:20.041Z",pi-agent,"Do not rewrite the node_modules pm-cli dist path when converting test spawn targets; only the package's own dist references become source paths. pm-beads tests spawn the host pm binary, not the package's own dist, so no subprocess target was rewritten."
+learnings[1]{created_at,author,text}:
+  "2026-07-28T23:26:20.041Z",pi-agent,"Node omits never-loaded files from its coverage report rather than reporting them at zero, so a threshold flag alone is satisfiable by narrowing what the suite imports. Any coverage gate must reconcile the report against the source tree."
+files[4]{path,scope,note}:
+  scripts/coverage-gate.ts,project,coverage gate with source-presence reconciliation
+  package.json,project,"coverageGate config and coverage script wired into release:check"
+  tsconfig.json,project,rewriteRelativeImportExtensions so sources import siblings as .ts
+  .github/workflows/ci.yml,project,coverage gate on a Node 22 and 26 matrix
+tests[2]{command,scope,timeout_seconds}:
+  npm run coverage,project,1800
+  "npm run release:check",project,3600
+docs[1]{path,scope,note}:
+  scripts/coverage-gate.ts,project,gate implementation and rationale
+close_reason: Coverage gate landed and locally verified; the Node 22 and 26 CI legs are unobserved until the pull request runs.
+body: "Baseline measured 2026-07-29 across one source file (index.ts): 91.21 line, 77.36 branch, 93.07 function. Thresholds are pinned at the measured floor (91/77/93) so the number can only move up."
