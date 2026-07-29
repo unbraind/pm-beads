@@ -6,11 +6,13 @@ status: closed
 priority: 2
 tags: []
 created_at: "2026-07-29T04:28:18.048Z"
-updated_at: "2026-07-29T04:31:09.798Z"
+updated_at: "2026-07-29T05:03:18.497Z"
 closed_at: "2026-07-29T04:31:09.759Z"
 completed_at: "2026-07-29T04:31:09.759Z"
 author: pi-agent
 comments[1]{created_at,author,text}:
   "2026-07-29T04:29:17.676Z",pi-agent,"Audit complete: --all flag usage: no hits found. Workaround audit: GH-651 (signed window) - no hits, not applicable. GH-672 (context low_level) - no hits, not applicable. GH-676 (list --tag CSV) - no hits, not applicable. GH-785/792 (health runtime/extension dirs) - no pre-creation scaffolding or --warn-only usage found, not applicable. GH-794 (output_format override) - no hits, not applicable. No workarounds removed."
+notes[1]{created_at,author,text}:
+  "2026-07-29T05:03:18.497Z",claude-orchestrator,"Record completeness correction appended by the orchestrator after CodeRabbit review (append-only stream, so the closed entries were not edited). The description and close_reason named only the dev and peer dependency scopes, but this package declares @unbrained/pm-cli in all three scopes and the bump touched every one: dependencies ^2026.7.28 to ^2026.7.29, devDependencies ^2026.7.28 to ^2026.7.29, peerDependencies >=2026.7.28 to >=2026.7.29. The runtime dependencies entry is the one with real install consequences, so omitting it from the audit record understated the change. Verified after the fact against package.json rather than restated from the original claim."
 close_reason: "Bumped @unbrained/pm-cli devDependency to ^2026.7.29 and peerDependency to >=2026.7.29. Audited for removed --all flag: no hits. Audited for GH-651/672/676/785/792/794 workarounds: none applicable, none removed. All quality gates green: 87 tests pass, coverage lines 91.21%, branches 77.36%, functions 93.07% (thresholds met). Changelog check and audit:prod clean."
 body: ""
