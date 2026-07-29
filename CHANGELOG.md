@@ -6,6 +6,10 @@
 
 - Enforce a real coverage gate by running tests against TypeScript sources ([pm-beads-wdyb](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/features/pm-beads-wdyb.toon))
 
+### Other
+
+- Adopt pm-cli 2026.7.29 ([pm-beads-foyv](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-foyv.toon))
+
 ## 2026.7.28 - 2026-07-28
 
 ### Removed
