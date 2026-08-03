@@ -42,6 +42,7 @@ import extension, {
   diffBeads,
   parseDiffOptions,
   isInvalidTypeValueError,
+  beadCloseReason,
   type RowFilter,
 } from "../index.ts";
 
@@ -1180,6 +1181,170 @@ test("upsert refreshes status index for repeated terminal-status rows", { skip: 
   });
   assert.strictEqual(ir.updated, 2, "both rows should update without attempting to re-close the terminal item");
   assert.strictEqual(ir.skipped, 0);
+});
+
+test("beadCloseReason carries real source provenance, never invented evidence", () => {
+  // Prefer the source record's own closure field, in declaration order.
+  assert.strictEqual(
+    beadCloseReason({ status: "done", close_reason: "Shipped in v2" }, "bd-1"),
+    "Shipped in v2",
+  );
+  // Foreign `resolution` spelling (e.g. GitHub issues).
+  assert.strictEqual(
+    beadCloseReason({ status: "complete", resolution: "Completed" }, "bd-2"),
+    "Completed",
+  );
+  // Foreign `state_reason` spelling (e.g. GitHub PRs).
+  assert.strictEqual(
+    beadCloseReason({ status: "closed", state_reason: "merged" }, "bd-3"),
+    "merged",
+  );
+  // `close_reason` wins over `resolution` / `state_reason`.
+  assert.strictEqual(
+    beadCloseReason({ close_reason: "primary", resolution: "secondary", state_reason: "tertiary" }, "bd-4"),
+    "primary",
+  );
+  // No source closure field: state import provenance factually, naming the
+  // bead id and the raw source status exactly as the file carried it.
+  assert.strictEqual(
+    beadCloseReason({ status: "done", title: "Some title" }, "bd-5"),
+    "Imported from Beads record bd-5 (source status: done)",
+  );
+  // Without a bead id, fall back to the title for the provenance name.
+  assert.strictEqual(
+    beadCloseReason({ status: "complete", title: "Titled bead" }, undefined),
+    "Imported from Beads record Titled bead (source status: complete)",
+  );
+  // No id and no title: still names the raw source status.
+  assert.strictEqual(
+    beadCloseReason({ status: "done" }, undefined),
+    "Imported from Beads (source status: done)",
+  );
+  // No status at all: defaults to "closed".
+  assert.strictEqual(
+    beadCloseReason({}, undefined),
+    "Imported from Beads (source status: closed)",
+  );
+});
+
+test("import routes a closed bead create through pm close with source reason and completed-at", { skip: !hasPmCli() }, async () => {
+  const root = mkdtempSync(join(tmpdir(), "beads-close-create-"));
+  const pmRoot = join(root, ".agents", "pm");
+  mkdirSync(pmRoot, { recursive: true });
+  assert.strictEqual(spawnSync("pm", ["--path", pmRoot, "init"], { encoding: "utf-8" }).status, 0);
+
+  const file = join(root, "closed.jsonl");
+  writeFileSync(
+    file,
+    JSON.stringify({
+      id: "bd-close-1",
+      title: "Already done",
+      status: "done",
+      type: "Task",
+      close_reason: "Shipped in v2",
+      closed_at: "2026-07-15T10:00:00Z",
+    }) + "\n",
+    "utf-8",
+  );
+
+  const ext = await harness();
+  const ir = await runImport(ext, { args: [file], options: {}, pmRoot: pmRoot });
+  assert.strictEqual(ir.imported, 1);
+  assert.strictEqual(ir.skipped, 0);
+
+  // The item must be closed with the source record's own reason and
+  // completion timestamp — not created in an open state and not given an
+  // invented close reason.
+  const search = spawnSync("pm", ["--path", pmRoot, "--json", "search", "Already done"], { encoding: "utf-8" });
+  assert.strictEqual(search.status, 0, search.stderr);
+  const found = (JSON.parse(search.stdout) as { items?: Array<{ id?: string; status?: string }> }).items ?? [];
+  const itemId = found.find((i) => i.status === "closed")?.id;
+  assert.ok(itemId, "imported bead must be closed");
+
+  const read = spawnSync("pm", ["--path", pmRoot, "--json", "read", itemId!], { encoding: "utf-8" });
+  assert.strictEqual(read.status, 0, read.stderr);
+  const item = (JSON.parse(read.stdout) as { item?: {
+    status?: string;
+    close_reason?: string;
+    completed_at?: string;
+  } }).item;
+  assert.ok(item, "pm read must return an item envelope");
+  assert.strictEqual(item.status, "closed");
+  assert.strictEqual(item.close_reason, "Shipped in v2");
+  // The source completed-at must be carried through, not replaced by import time.
+  assert.strictEqual(item.completed_at, "2026-07-15T10:00:00.000Z");
+  await ext.deactivate();
+});
+
+test("upsert routes an open-to-closed transition through pm close, not pm update --status closed", { skip: !hasPmCli() }, async () => {
+  const root = mkdtempSync(join(tmpdir(), "beads-close-upsert-"));
+  const pmRoot = join(root, ".agents", "pm");
+  mkdirSync(pmRoot, { recursive: true });
+  assert.strictEqual(spawnSync("pm", ["--path", pmRoot, "init"], { encoding: "utf-8" }).status, 0);
+  assert.strictEqual(
+    spawnSync("pm", ["--path", pmRoot, "--json", "create", "--title", "Open item", "--type", "Task",
+      "--status", "open", "--description", encodeBeadId("body", "bd-upsert-close")], { encoding: "utf-8" }).status,
+    0,
+  );
+
+  const file = join(root, "close.jsonl");
+  writeFileSync(
+    file,
+    JSON.stringify({ id: "bd-upsert-close", title: "Open item", status: "closed", type: "Task", close_reason: "Done via upsert" }) + "\n",
+    "utf-8",
+  );
+
+  const ext = await harness();
+  const ir = await runImport(ext, { args: [file], options: { upsert: true }, pmRoot: pmRoot });
+  assert.strictEqual(ir.updated, 1);
+  assert.strictEqual(ir.skipped, 0);
+
+  const search = spawnSync("pm", ["--path", pmRoot, "--json", "search", "Open item"], { encoding: "utf-8" });
+  assert.strictEqual(search.status, 0, search.stderr);
+  const found = (JSON.parse(search.stdout) as { items?: Array<{ id?: string; status?: string }> }).items ?? [];
+  const itemId = found.find((i) => i.status === "closed")?.id;
+  assert.ok(itemId, "upserted bead must be closed");
+
+  const read = spawnSync("pm", ["--path", pmRoot, "--json", "read", itemId!], { encoding: "utf-8" });
+  assert.strictEqual(read.status, 0, read.stderr);
+  const item = (JSON.parse(read.stdout) as { item?: { close_reason?: string } }).item;
+  assert.ok(item, "pm read must return an item envelope");
+  assert.strictEqual(item.close_reason, "Done via upsert");
+  await ext.deactivate();
+});
+
+test("upsert sends --status for a non-closed status change", { skip: !hasPmCli() }, async () => {
+  // Covers the non-closed, status-changes arm of the update path: `closed`
+  // is routed through `pm close`, but a normal open -> in_progress transition
+  // must still flow through `pm update --status`.
+  const root = mkdtempSync(join(tmpdir(), "beads-upsert-statuschg-"));
+  const pmRoot = join(root, ".agents", "pm");
+  mkdirSync(pmRoot, { recursive: true });
+  assert.strictEqual(spawnSync("pm", ["--path", pmRoot, "init"], { encoding: "utf-8" }).status, 0);
+  assert.strictEqual(
+    spawnSync("pm", ["--path", pmRoot, "--json", "create", "--title", "Status change", "--type", "Task",
+      "--status", "open", "--description", encodeBeadId("body", "bd-statuschg")], { encoding: "utf-8" }).status,
+    0,
+  );
+
+  const file = join(root, "chg.jsonl");
+  writeFileSync(
+    file,
+    JSON.stringify({ id: "bd-statuschg", title: "Status change", status: "in_progress", type: "Task" }) + "\n",
+    "utf-8",
+  );
+
+  const ext = await harness();
+  const ir = await runImport(ext, { args: [file], options: { upsert: true }, pmRoot: pmRoot });
+  assert.strictEqual(ir.updated, 1);
+  assert.strictEqual(ir.skipped, 0);
+
+  const search = spawnSync("pm", ["--path", pmRoot, "--json", "search", "Status change"], { encoding: "utf-8" });
+  assert.strictEqual(search.status, 0, search.stderr);
+  const found = (JSON.parse(search.stdout) as { items?: Array<{ id?: string; status?: string }> }).items ?? [];
+  const itemId = found.find((i) => i.status === "in_progress")?.id;
+  assert.ok(itemId, "upserted bead must reflect the new in_progress status");
+  await ext.deactivate();
 });
 
 test("eligible import failures are not masked by filtered rows", { skip: !hasPmCli() }, async () => {

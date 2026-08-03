@@ -106,6 +106,16 @@ interface BeadsItem {
   release?: string;
   created_at?: string;
   updated_at?: string;
+  // Closure provenance a source tracker may record on a closed record. Real
+  // Beads (`bd`) writes `closed_at` and `close_reason`; foreign variants are
+  // accepted (`resolution`, `state_reason`, `completed_at`) so the importer
+  // can carry genuine closure evidence through to `pm close` instead of
+  // inventing a reason (see beadCloseReason).
+  closed_at?: string;
+  completed_at?: string;
+  close_reason?: string;
+  resolution?: string;
+  state_reason?: string;
   dependencies?: Array<string | {
     id?: string;
     kind?: string;
@@ -918,6 +928,70 @@ export function isInvalidTypeValueError(stderr: string | null | undefined): bool
   return stderr.includes("invalid_argument_value") && stderr.includes("Invalid type value");
 }
 
+// ---------------------------------------------------------------------------
+// Terminal-status closure — route `closed` transitions through `pm close`
+// ---------------------------------------------------------------------------
+
+// pm-cli >= 2026.8.3 enforces governance.require_close_reason on EVERY
+// programmatic transition into `closed`: both `pm create --status closed` and
+// `pm update <id> --status closed` are hard close_reason_required errors (the
+// 2026.7.29 auto-route-to-close bypass, which invented the reason "Closed via
+// pm update", is gone). The import paths below therefore never send a mapped
+// `closed` status to create/update; they create/update the item in a
+// non-terminal state and then close it via `pm close --reason`, carrying the
+// source record's own closure evidence. `canceled` is not gated by the policy
+// and keeps flowing through create/update --status unchanged.
+
+/**
+ * Derive the `pm close --reason` text for an imported bead whose mapped status
+ * is `closed`. The reason must be real provenance, never invented closure
+ * evidence: prefer the source record's own closure fields (`close_reason`,
+ * then the foreign `resolution` / `state_reason` spellings); only when the
+ * source genuinely recorded none, state the import provenance factually
+ * ("Imported from Beads record <id> (source status: <raw>)"), naming the
+ * source status exactly as the file carried it (e.g. `done`, `complete`).
+ */
+export function beadCloseReason(bead: BeadsItem, beadId: string | undefined): string {
+  const own =
+    scalarString(bead.close_reason) ??
+    scalarString(bead.resolution) ??
+    scalarString(bead.state_reason);
+  if (own) return own;
+  const source = beadId ?? scalarString(bead.title) ?? scalarString(bead.name);
+  const which = source ? ` record ${source}` : "";
+  const status = scalarString(bead.status) ?? "closed";
+  return `Imported from Beads${which} (source status: ${status})`;
+}
+
+/**
+ * Close an item the import just created or updated, via `pm close` — the only
+ * sanctioned terminal transition under governance.require_close_reason. The
+ * reason comes from {@link beadCloseReason}; when the source record carries a
+ * completion timestamp (`closed_at`, or the foreign `completed_at` spelling),
+ * it is passed as `--completed-at` so the imported item keeps its real
+ * completion time instead of the import time. Throws on failure so the caller
+ * counts the record as failed exactly like a failed create/update.
+ */
+function closeImportedItem(
+  pmRoot: string,
+  pmId: string,
+  bead: BeadsItem,
+  beadId: string | undefined,
+): void {
+  const closeArgs = [
+    "--path", pmRoot,
+    "--json",
+    "close", pmId,
+    "--reason", beadCloseReason(bead, beadId),
+  ];
+  const completedAt = normalizeIsoTimestamp(bead.closed_at ?? bead.completed_at);
+  if (completedAt) closeArgs.push("--completed-at", completedAt);
+  const close = spawnSync("pm", closeArgs, { encoding: "utf-8" });
+  if (close.status !== 0) {
+    throw new Error(close.stderr?.trim() || close.error?.message || "pm close failed");
+  }
+}
+
 /**
  * A parsed Beads JSONL record as produced by `parseBeadsFile`. Malformed lines
  * are not dropped at parse time: they are substituted with an `__invalid`
@@ -946,8 +1020,10 @@ function parseBeadsFile(filePath: string): ParsedBeadsRecord[] {
 
 // An existing item the upsert path may target, keyed by its bead id. We carry
 // the current status so the update can omit `--status` when it is unchanged —
-// re-sending a terminal status (e.g. `closed`) makes `pm update` demand
-// `--force` ("already terminal; use --force to close again").
+// re-sending a terminal status (e.g. `closed`) is rejected by the host
+// (pm-cli >= 2026.8.3 hard-errors with close_reason_required; older hosts
+// demanded --force with "already terminal"). Omitting it keeps re-import
+// idempotent without forcing a spurious re-close.
 export interface ExistingBeadItem {
   pmId: string;
   status?: string;
@@ -1215,10 +1291,16 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
             "--type", type,
             "--description", description,
           ];
-          // Only set status when it actually changes. Re-sending a terminal
-          // status (closed/canceled) makes `pm update` require --force; omitting
-          // it keeps re-import idempotent without forcing a spurious re-close.
-          if (status !== existing?.status) updArgs.push("--status", status);
+          // `closed` is gated by governance.require_close_reason (pm-cli
+          // >= 2026.8.3): `pm update --status closed` hard-errors with
+          // close_reason_required. Route it through `pm close` after the
+          // update instead. `canceled` is not gated and still flows through
+          // --status. For a non-closed status that differs, send --status;
+          // when unchanged, omit it to keep re-import idempotent.
+          const routeCloseUpdate = status === "closed";
+          if (!routeCloseUpdate && status !== existing?.status) {
+            updArgs.push("--status", status);
+          }
           if (priority) updArgs.push("--priority", priority);
           if (tags) updArgs.push("--tags", tags); // --tags replaces; idempotent re-import
           appendPlanningArgs(updArgs, item);
@@ -1241,16 +1323,27 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
             throw new Error(result.stderr?.trim() || result.error?.message || "pm update failed");
           }
           pmId = existingPmId;
+          // Apply the terminal `closed` transition via `pm close` (the only
+          // sanctioned path under require_close_reason). Skip it when the
+          // item is already closed so a re-import stays idempotent and does
+          // not append a second bogus close.
+          if (routeCloseUpdate && existing?.status !== "closed") {
+            closeImportedItem(pmRoot, pmId, item, beadId);
+          }
           updated++;
           if (key) existingIndex.set(key, { pmId, status });
         } else {
+          // `closed` cannot be sent to `pm create` (close_reason_required
+          // under pm-cli >= 2026.8.3); create in the default non-terminal
+          // `open` state and route the terminal transition through `pm close`.
+          const routeCloseCreate = status === "closed";
           const spawnArgs = [
             "--path", pmRoot,
             "--json",
             "create",
             "--title", title,
             "--type", type,
-            "--status", status,
+            "--status", routeCloseCreate ? "open" : status,
             "--description", description,
           ];
           if (priority) spawnArgs.push("--priority", priority);
@@ -1264,6 +1357,9 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
           const created = extractCreatedId(result.stdout);
           if (!created) throw new Error("could not determine created pm id");
           pmId = created;
+          if (routeCloseCreate) {
+            closeImportedItem(pmRoot, pmId, item, beadId);
+          }
           // Record so a later record in the same file can upsert onto it too.
           if (key) existingIndex.set(key, { pmId, status });
           imported++;
