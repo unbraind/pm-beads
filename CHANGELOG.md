@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Other
+
+- Resolve pm-changelog to the release that derives release dates in UTC ([pm-beads-bjqg](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-bjqg.toon))
+
 ## 2026.7.29 - 2026-07-29
 
 ### Added
