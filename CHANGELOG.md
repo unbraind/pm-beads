@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- Route terminal-status transitions through pm close for pm-cli 2026.8.3 ([pm-beads-dgk3](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-dgk3.toon))
+
 ### Other
 
 - Resolve pm-changelog to the release that derives release dates in UTC ([pm-beads-bjqg](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-bjqg.toon))
