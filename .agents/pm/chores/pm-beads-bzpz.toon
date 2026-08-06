@@ -1,0 +1,15 @@
+id: pm-beads-bzpz
+title: Gate CI on pm health so a silently discarded peer edit cannot merge
+description: ""
+type: Chore
+status: closed
+priority: 2
+tags: []
+created_at: "2026-08-06T20:44:28.943Z"
+updated_at: "2026-08-06T20:44:37.063Z"
+closed_at: "2026-08-06T20:44:37.054Z"
+completed_at: "2026-08-06T20:44:37.054Z"
+author: pi-agent
+acceptance_criteria: CI runs pm health --strict-exit immediately after Install dependencies
+close_reason: "Added a Verify pm project integrity and merge safety step to .github/workflows/ci.yml immediately after Install dependencies; it runs ./node_modules/.bin/pm health --strict-exit. Verified green on this repo (exit 0) and proven to exit 1 on a same-field merge hazard in a throwaway copy, where pm validate returned ok:true."
+body: ""

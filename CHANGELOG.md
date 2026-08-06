@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Other
+
+- Gate CI on pm health so a silently discarded peer edit cannot merge ([pm-beads-bzpz](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-bzpz.toon))
+
 ## 2026.8.4 - 2026-08-04
 
 ### Fixed
