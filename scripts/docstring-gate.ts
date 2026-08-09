@@ -24,16 +24,19 @@ const repoRoot = join(import.meta.dirname, "..");
 /**
  * Outcome of one gate run, held as plain strings so a test can inspect it.
  *
- * The exit code and the exact stdout/stderr bytes the CLI emits are captured
- * here rather than written directly, so a test can assert on them without
- * touching the process streams.
+ * The exit code and the newline-free stdout/stderr content are captured here
+ * rather than written directly, so a test can assert on them without touching
+ * the process streams. The strings are deliberately not the exact bytes the CLI
+ * emits: {@link main} appends the trailing newline as it writes each non-empty
+ * stream, so an assertion here can compare whole strings without a trailing
+ * newline getting in the way.
  */
 export interface GateResult {
   /** Process exit code the run would produce (0 on success; non-zero on failure). */
   readonly exitCode: number;
-  /** Bytes the run would write to stdout. */
+  /** Content the run would write to stdout, without a trailing newline. */
   readonly stdout: string;
-  /** Bytes the run would write to stderr. */
+  /** Content the run would write to stderr, without a trailing newline. */
   readonly stderr: string;
 }
 
@@ -45,7 +48,8 @@ export interface GateResult {
  * {@link main} entry point writes them and sets the exit code.
  *
  * @param root - Absolute repository root to scan.
- * @returns The exit code and the exact stdout/stderr bytes the CLI emits.
+ * @returns The exit code and the newline-free stdout/stderr content; {@link main}
+ *          appends the trailing newline when it writes them.
  */
 export function runGate(root: string): GateResult {
   const report = analyzeDocstringCoverage({ root });
