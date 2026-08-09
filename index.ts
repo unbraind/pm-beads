@@ -283,11 +283,15 @@ export function pmStatusToBeads(raw: string | undefined): string {
 /**
  * Clamp a raw Beads priority onto pm's 0–4 scale.
  *
- * Coerces numeric strings; returns `undefined` for a missing or non-numeric
- * value so the caller can omit `--priority`.
+ * String values go through `parseInt`, which reads the **leading numeric prefix**
+ * rather than validating the whole string: `"3abc"` yields `3`, not `undefined`.
+ * Only a missing value, or one with no numeric prefix at all, returns
+ * `undefined` so the caller can omit `--priority`. Values outside the scale are
+ * clamped to its ends rather than rejected, so an out-of-range import still
+ * lands somewhere meaningful instead of failing the whole item.
  *
- * @param raw - The priority as a number or numeric string.
- * @returns The clamped priority as a string, or `undefined`.
+ * @param raw - The priority as a number, or a string whose numeric prefix is read.
+ * @returns The clamped priority as a string, or `undefined` when none can be read.
  */
 export function mapPriority(raw: number | string | undefined): string | undefined {
   if (raw === undefined || raw === null) return undefined;

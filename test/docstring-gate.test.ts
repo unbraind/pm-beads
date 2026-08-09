@@ -72,6 +72,9 @@ test("docstring gate main writes violations to stderr and sets the exit code", (
     assert.equal(observedExitCode, 1);
     assert.equal(stdout, "");
     assert.match(stderr, /undocumented: no docstring/);
+    // main appends the newline so the next release:check step starts on its own
+    // line rather than butting against this gate output.
+    assert.match(stderr, /\n$/, "stderr must be newline-terminated");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
