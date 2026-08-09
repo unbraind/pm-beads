@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Other
+
+- Adopt the canonical pm-ops docstring gate ([pm-beads-c7mx](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-c7mx.toon))
+
 ## 2026.8.7 - 2026-08-07
 
 ### Other
