@@ -63,13 +63,32 @@ import { spawnSync } from "node:child_process";
 // package's own public surface (imported by tests and downstream tooling), and
 // the mirror keeps that surface byte-stable (same three members, same values)
 // regardless of how the SDK's constant grows.
+/**
+ * Semantic exit codes pm's command runtime propagates to the shell.
+ *
+ * Mirrored here (not re-exported) because `EXIT_CODE` is part of this package's
+ * own public surface — imported by tests and downstream tooling — and the mirror
+ * keeps that surface byte-stable regardless of how the SDK's constant grows.
+ * {@link CommandError} carries one of these so a handled failure exits cleanly
+ * once instead of re-invoking the handler.
+ */
 export const EXIT_CODE = {
   GENERIC_FAILURE: 1,
   USAGE: 2,
   NOT_FOUND: 3,
 } as const;
 
+/**
+ * Error that carries a semantic process exit code.
+ *
+ * pm's command runtime treats a thrown error as a cleanly handled non-zero exit
+ * only when it exposes a numeric `exitCode`; a plain `Error` instead falls
+ * through to the "unhandled" path, which re-invokes the handler a second time
+ * and exits with a generic code. Throwing this routes a failure to a clean,
+ * single exit at the chosen code.
+ */
 export class CommandError extends Error {
+  /** Numeric exit code the runtime propagates to the shell (one of {@link EXIT_CODE}). */
   exitCode: number;
   constructor(message: string, exitCode: number = EXIT_CODE.GENERIC_FAILURE) {
     super(message);
@@ -171,6 +190,16 @@ export function readBoolOption(options: Record<string, unknown>, ...keys: string
   return false;
 }
 
+/**
+ * Read the first non-empty trimmed string value under any of the given keys.
+ *
+ * Checks both the raw kebab-case key and the camelCase form the runtime may
+ * normalize it to.
+ *
+ * @param options - The raw option object from the command handler.
+ * @param keys - The keys to try, in priority order.
+ * @returns The first non-empty trimmed value, or `undefined`.
+ */
 export function optionString(options: Record<string, unknown>, ...keys: string[]): string | undefined {
   for (const k of keys) {
     const v = options[k];
@@ -209,6 +238,15 @@ export function resolveWorkspaceCheck(options: Record<string, unknown>): boolean
   return true;
 }
 
+/**
+ * Map a raw Beads status string onto a canonical pm status.
+ *
+ * Accepts common aliases (todo/wip/done/cancelled/…) and falls back to `open`
+ * for an unrecognized value so an import never invents a state.
+ *
+ * @param raw - The status value from a Beads record.
+ * @returns The canonical pm status.
+ */
 export function mapStatus(raw: unknown): string {
   if (raw === undefined || raw === null) return "open";
   const s = String(raw).trim().toLowerCase();
@@ -224,7 +262,13 @@ export function mapStatus(raw: unknown): string {
   return map[s] ?? "open";
 }
 
-// Inverse of mapStatus for export: pm status -> a stable Beads status string.
+/**
+ * Inverse of {@link mapStatus} for export: map a pm status back to a stable
+ * Beads status string.
+ *
+ * @param raw - The canonical pm status.
+ * @returns The Beads status string.
+ */
 export function pmStatusToBeads(raw: string | undefined): string {
   switch ((raw || "").trim().toLowerCase()) {
     case "in_progress": return "in_progress";
@@ -236,6 +280,19 @@ export function pmStatusToBeads(raw: string | undefined): string {
   }
 }
 
+/**
+ * Clamp a raw Beads priority onto pm's 0–4 scale.
+ *
+ * String values go through `parseInt`, which reads the **leading numeric prefix**
+ * rather than validating the whole string: `"3abc"` yields `3`, not `undefined`.
+ * Only a missing value, or one with no numeric prefix at all, returns
+ * `undefined` so the caller can omit `--priority`. Values outside the scale are
+ * clamped to its ends rather than rejected, so an out-of-range import still
+ * lands somewhere meaningful instead of failing the whole item.
+ *
+ * @param raw - The priority as a number, or a string whose numeric prefix is read.
+ * @returns The clamped priority as a string, or `undefined` when none can be read.
+ */
 export function mapPriority(raw: number | string | undefined): string | undefined {
   if (raw === undefined || raw === null) return undefined;
   const n = typeof raw === "number" ? raw : parseInt(String(raw), 10);
@@ -247,6 +304,17 @@ export function mapPriority(raw: number | string | undefined): string | undefine
 // `pm create` (which exposes no generic custom-field setter for extensions).
 const BEAD_ID_MARKER = /\[bead_id:\s*([^\]]+)\]/;
 
+/**
+ * Embed the native Beads id into an item description behind a parseable marker.
+ *
+ * Idempotent: if the description already carries a `[bead_id: …]` marker it is
+ * returned unchanged. Used because pm `create` exposes no generic custom-field
+ * setter for extensions.
+ *
+ * @param description - The current description text.
+ * @param beadId - The native Beads id to persist.
+ * @returns The description with the marker appended.
+ */
 export function encodeBeadId(description: string, beadId: string | undefined): string {
   if (!beadId) return description;
   // Avoid duplicating the marker if the description already carries one.
@@ -256,6 +324,15 @@ export function encodeBeadId(description: string, beadId: string | undefined): s
   return trimmed ? `${trimmed}\n\n${marker}` : marker;
 }
 
+/**
+ * Recover the native Beads id for a pm item.
+ *
+ * Prefers a real `bead_id` schema field when the workspace populated one, else
+ * scans the description/body for the `[bead_id: …]` marker written on import.
+ *
+ * @param item - The pm item to read the bead id from.
+ * @returns The bead id, or `undefined` when none is recorded.
+ */
 export function decodeBeadId(item: PmItem): string | undefined {
   // Prefer a real schema field if the workspace populated it, else recover the
   // marker from the description we wrote on import.
@@ -265,15 +342,25 @@ export function decodeBeadId(item: PmItem): string | undefined {
   return m ? m[1].trim() : undefined;
 }
 
-// Strip our internal marker so exported descriptions stay clean.
+/**
+ * Remove the `[bead_id: …]` marker from a text block.
+ *
+ * Keeps exported descriptions clean of internal provenance.
+ *
+ * @param text - The text to clean (typically a description/body).
+ * @returns The text with the marker removed and trimmed.
+ */
 export function stripBeadIdMarker(text: string | undefined): string {
   if (!text) return "";
   return text.replace(BEAD_ID_MARKER, "").trim();
 }
 
-// Known pm statuses a mapped Beads status can land on. Used by `beads validate`
-// to flag records whose status maps to the `open` fallback only because it was
-// unrecognized (vs. genuinely "open").
+/**
+ * Beads status spellings that map to a recognized pm status.
+ *
+ * Used by `beads validate` to flag a record whose status fell back to `open`
+ * only because it was unrecognized, versus one that is genuinely `open`.
+ */
 export const KNOWN_BEADS_STATUSES = new Set<string>([
   "open", "todo", "new",
   "in_progress", "wip", "doing",
@@ -283,18 +370,32 @@ export const KNOWN_BEADS_STATUSES = new Set<string>([
   "draft",
 ]);
 
-// Normalize a Beads id to a stable key for dedup/upsert. Bead ids are
-// case-sensitive identifiers; we trim but DO NOT lowercase them (unlike tags,
-// which pm case-folds on storage). Keying off the case-preserving description
-// marker — not tags — is what keeps re-import idempotent. See decision note.
+/**
+ * Normalize a raw Beads id into a stable dedup/upsert key.
+ *
+ * Trims but does NOT lowercase the id: bead ids are case-sensitive, and keying
+ * off the case-preserving marker (not pm's case-folding tags) is what keeps
+ * re-import idempotent.
+ *
+ * @param id - The raw id value from a record.
+ * @returns The trimmed id, or `undefined` when blank.
+ */
 export function normalizeBeadKey(id: unknown): string | undefined {
   if (id === undefined || id === null) return undefined;
   const t = String(id).trim();
   return t.length ? t : undefined;
 }
 
-// Normalize the many ways a Beads record can express blocker edges into a flat
-// list of upstream bead ids that block this item.
+/**
+ * Flatten the many ways a Beads record can express blocker edges into one list.
+ *
+ * Reads `dependencies` (string or object form, honoring `depends_on_id` and the
+ * `blocked_by`/`depends_on`/`blocks_me` kinds), `blocked_by`, and `blocks`,
+ * returning the upstream bead ids that block this item, de-duplicated.
+ *
+ * @param item - The Beads record to read edges from.
+ * @returns The upstream blocker bead ids.
+ */
 export function extractBlockerIds(item: BeadsItem): string[] {
   const ids = new Set<string>();
   const push = (v: unknown) => {
@@ -320,6 +421,15 @@ export function extractBlockerIds(item: BeadsItem): string[] {
   return [...ids];
 }
 
+/**
+ * Resolve the item type from a Beads record.
+ *
+ * Prefers `issue_type` then `type`, returning `undefined` when neither carries a
+ * usable string.
+ *
+ * @param item - The Beads record to read.
+ * @returns The trimmed type, or `undefined`.
+ */
 function beadType(item: BeadsItem): string | undefined {
   const raw = typeof item.issue_type === "string" && item.issue_type.trim()
     ? item.issue_type
@@ -364,8 +474,15 @@ function beadAssignee(item: BeadsItem): string | undefined {
 // the timestamp is skipped with a warning — keeping `pm health` green is the
 // default behavior; raw drift is never left behind.
 
-// Accept only well-formed ISO-8601 instants so we never write garbage into the
-// front matter. Returns the normalized (round-tripped) ISO string or undefined.
+/**
+ * Validate and normalize an ISO-8601 timestamp.
+ *
+ * Accepts only well-formed instants so garbage is never written into item front
+ * matter. Returns the round-tripped canonical ISO string, or `undefined`.
+ *
+ * @param raw - The raw timestamp value.
+ * @returns The normalized ISO string, or `undefined` when unparseable.
+ */
 export function normalizeIsoTimestamp(raw: unknown): string | undefined {
   if (typeof raw !== "string") return undefined;
   const trimmed = raw.trim();
@@ -375,11 +492,17 @@ export function normalizeIsoTimestamp(raw: unknown): string | undefined {
   return new Date(t).toISOString();
 }
 
-// Replace the value of a top-level front-matter timestamp key in a stored item
-// file. Works for both supported formats (`toon` and `json_markdown`): each
-// stores the field as a single `key: "<iso>"` line. Only the first matching
-// line is rewritten and only when the key already exists, so we never invent
-// fields or disturb the body. Returns the patched text, or null if no change.
+/**
+ * Rewrite top-level `created_at`/`updated_at` lines in a stored item file.
+ *
+ * Works for both `toon` and `json_markdown` formats, which each store a field as
+ * one `key: "<iso>"` line. Only the first matching line for an existing key is
+ * rewritten, so no fields are invented and the body is left undisturbed.
+ *
+ * @param text - The raw item file contents.
+ * @param values - Timestamps to write (only set keys are applied).
+ * @returns The patched text, or `null` when nothing changed.
+ */
 export function patchTimestampLines(
   text: string,
   values: { created_at?: string; updated_at?: string },
@@ -399,9 +522,18 @@ export function patchTimestampLines(
   return changed ? out : null;
 }
 
-// Locate the on-disk file for a pm item id under the pm root. Items live in
-// per-type folders as `<id>.<ext>`; we scan shallowly (one level of type
-// folders) for `<id>.toon` / `<id>.md`, skipping the history/ sidecar logs.
+/**
+ * Locate the on-disk file for a pm item id under the pm root.
+ *
+ * Items live in per-type folders as `<id>.<ext>`; this scans one level of type
+ * folders for `<id>.toon` / `<id>.md`, skipping the `history`/`locks`/`search`
+ * sidecars. Returns `undefined` when the item file cannot be found or the root
+ * is unreadable.
+ *
+ * @param pmRoot - The pm data directory.
+ * @param pmId - The pm item id to locate.
+ * @returns Absolute path to the item file, or `undefined`.
+ */
 export function locateItemFile(pmRoot: string, pmId: string): string | undefined {
   const exts = [".toon", ".md"];
   let entries: string[];
@@ -432,8 +564,15 @@ export function locateItemFile(pmRoot: string, pmId: string): string | undefined
   return undefined;
 }
 
-// Apply preserved bead timestamps to the persisted pm item. Returns true when a
-// timestamp was written, false (with a console warning) when it had to degrade.
+/**
+ * Apply preserved bead timestamps to the persisted pm item file.
+ *
+ * Patches the on-disk `created_at`/`updated_at` lines then re-anchors the item's
+ * history chain with `pm history-repair` so the raw patch does not surface as
+ * `history_drift` in `pm health`. On a repair failure the patch is reverted so a
+ * missing timestamp stays recoverable. Returns `true` only when a timestamp was
+ * written and history stayed consistent.
+ */
 function applyTimestamps(
   pmRoot: string,
   pmId: string,
@@ -494,6 +633,15 @@ function applyTimestamps(
   return true;
 }
 
+/**
+ * Resolve the deadline field from a Beads record.
+ *
+ * Reads `deadline`, then `due_date`, then `due_at`, returning the first
+ * non-empty value.
+ *
+ * @param item - The Beads record to read.
+ * @returns The trimmed deadline, or `undefined`.
+ */
 function beadDeadline(item: BeadsItem): string | undefined {
   const raw = typeof item.deadline === "string" && item.deadline.trim()
     ? item.deadline
@@ -505,6 +653,15 @@ function beadDeadline(item: BeadsItem): string | undefined {
   return raw?.trim();
 }
 
+/**
+ * Append the planning-related pm CLI args derived from a Beads record.
+ *
+ * Adds `--deadline`, `--assignee`, `--sprint`, and `--release` only when the
+ * record carries a value for each, mutating `args` in place.
+ *
+ * @param args - The argv array being built (mutated).
+ * @param item - The Beads record to source values from.
+ */
 function appendPlanningArgs(args: string[], item: BeadsItem): void {
   const deadline = beadDeadline(item);
   if (deadline) args.push("--deadline", deadline);
@@ -524,9 +681,17 @@ function resolveParentId(parent: unknown, beadToPm: Map<string, string>): string
 // Row filters — selectively import/export a subset by status or type
 // ---------------------------------------------------------------------------
 
+/**
+ * A status/type filter narrowing which records an import or export touches.
+ *
+ * An unset dimension means “no constraint on that dimension”; an empty filter
+ * selects everything.
+ */
 export interface RowFilter {
-  statuses?: Set<string>; // lower-cased mapped pm statuses
-  types?: Set<string>;    // lower-cased item types
+  /** Lower-cased mapped pm statuses to keep (undefined = any). */
+  statuses?: Set<string>;
+  /** Lower-cased item types to keep (undefined = any). */
+  types?: Set<string>;
 }
 
 function parseFilterCsv(raw: string | undefined): Set<string> | undefined {
@@ -890,6 +1055,13 @@ async function runValidate(
 //   fail   — abort the import with a nonzero exit on the first duplicate
 export type MergeStrategy = "update" | "skip" | "fail";
 
+/**
+ * The recognized `--merge-strategy` values, in display order.
+ *
+ * Each controls how an `--upsert` import handles a bead whose id already maps to
+ * an existing pm item: `update` (replace in place), `skip` (leave untouched),
+ * or `fail` (abort on the first duplicate).
+ */
 export const MERGE_STRATEGIES: readonly MergeStrategy[] = ["update", "skip", "fail"];
 
 interface ImportOptions {
@@ -906,6 +1078,16 @@ interface ImportOptions {
   filter: RowFilter;
 }
 
+/**
+ * Read a file as UTF-8 text, mapping failures to a {@link CommandError}.
+ *
+ * A missing file (ENOENT) yields a NOT_FOUND exit code; any other read failure
+ * yields GENERIC_FAILURE, so the caller gets a semantic exit rather than a bare
+ * thrown Error.
+ *
+ * @param absolutePath - Absolute path to the file.
+ * @returns The file contents.
+ */
 function readFileOrThrow(absolutePath: string): string {
   try {
     return readFileSync(absolutePath, "utf-8");
@@ -1002,6 +1184,16 @@ function closeImportedItem(
  */
 type ParsedBeadsRecord = BeadsItem & { __invalid?: boolean };
 
+/**
+ * Parse a Beads JSONL file into records, preserving malformed lines.
+ *
+ * Each non-blank line is JSON-parsed; an unparseable line is substituted with an
+ * `{ __invalid: true }` sentinel rather than dropped, so the import loop can
+ * count it as skipped and report the same record total the validator does.
+ *
+ * @param filePath - Path to the JSONL file (resolved to absolute).
+ * @returns The parsed records, including `__invalid` sentinels.
+ */
 function parseBeadsFile(filePath: string): ParsedBeadsRecord[] {
   const absolutePath = resolve(filePath);
   const raw = readFileOrThrow(absolutePath);
@@ -1018,14 +1210,16 @@ function parseBeadsFile(filePath: string): ParsedBeadsRecord[] {
   return items;
 }
 
-// An existing item the upsert path may target, keyed by its bead id. We carry
-// the current status so the update can omit `--status` when it is unchanged —
-// re-sending a terminal status (e.g. `closed`) is rejected by the host
-// (pm-cli >= 2026.8.3 hard-errors with close_reason_required; older hosts
-// demanded --force with "already terminal"). Omitting it keeps re-import
-// idempotent without forcing a spurious re-close.
+/**
+ * An existing pm item the upsert path may target, keyed by its bead id.
+ *
+ * Carries the current status so an update can omit `--status` when it is
+ * unchanged — re-sending a terminal status is rejected by the host.
+ */
 export interface ExistingBeadItem {
+  /** The pm item id matched to the bead. */
   pmId: string;
+  /** The item's current pm status, so the update can skip a no-op status write. */
   status?: string;
 }
 
@@ -1664,11 +1858,17 @@ export const DIFF_FIELDS = [
   "dependencies",
 ] as const;
 
+/** A Beads record field that the diff compares between two files. */
 export type DiffField = (typeof DIFF_FIELDS)[number];
 
+/**
+ * One bead id whose compared fields differ between two files.
+ */
 export interface ChangedBead {
+  /** The differing bead id. */
   id: string;
-  fields: DiffField[]; // which compared fields differ between A and B
+  /** Which compared fields differ between A and B. */
+  fields: DiffField[];
 }
 
 export interface BeadsDiff {
@@ -1985,6 +2185,16 @@ const DIFF_FLAGS: FlagDefinition[] = [
 // list is comma-separated, e.g. `type:Bug,Feature;status:open,in_progress`.
 // Unknown dimensions are ignored (forward-compatible). Returns an empty filter
 // (no dimensions set) for an unset or blank expression.
+/**
+ * Parse a combined `--filter` expression into a {@link RowFilter}.
+ *
+ * Accepts semicolon-separated `dimension:csv` clauses (e.g.
+ * `type:Bug,Feature;status:open,in_progress`); unknown dimensions are ignored
+ * for forward compatibility. Returns an empty filter for an unset/blank input.
+ *
+ * @param raw - The raw filter expression string.
+ * @returns The resolved row filter.
+ */
 export function parseFilterExpression(raw: string | undefined): RowFilter {
   const filter: RowFilter = { statuses: undefined, types: undefined };
   if (!raw) return filter;
@@ -2002,10 +2212,17 @@ export function parseFilterExpression(raw: string | undefined): RowFilter {
   return filter;
 }
 
-// Merge two row filters: for each dimension, an explicitly-set dimension in
-// `override` wins; otherwise the `base` dimension is used. Used to combine the
-// combined `--filter` expression with the granular `--filter-status`/
-// `--filter-type` flags (granular overrides the combined form for that dim).
+/**
+ * Merge two row filters, with `override` winning per dimension.
+ *
+ * Used to combine the combined `--filter` expression with the granular
+ * `--filter-status`/`--filter-type` flags: a granular dimension overrides the
+ * combined form for that dimension only.
+ *
+ * @param base - The base filter (the combined `--filter` value).
+ * @param override - The override filter (the granular flags).
+ * @returns The merged filter.
+ */
 export function mergeRowFilters(base: RowFilter, override: RowFilter): RowFilter {
   return {
     statuses: override.statuses ?? base.statuses,
@@ -2013,6 +2230,15 @@ export function mergeRowFilters(base: RowFilter, override: RowFilter): RowFilter
   };
 }
 
+/**
+ * Resolve a {@link RowFilter} from the export/import options bag.
+ *
+ * Combines the granular `--filter-status`/`--filter-type` flags with the
+ * combined `--filter` expression (granular wins per dimension).
+ *
+ * @param options - The raw option object from the command handler.
+ * @returns The resolved row filter.
+ */
 export function parseRowFilter(options: Record<string, unknown>): RowFilter {
   const granular = {
     statuses: parseFilterCsv(optionString(options, "filter-status", "filterStatus")),
@@ -2022,9 +2248,15 @@ export function parseRowFilter(options: Record<string, unknown>): RowFilter {
   return mergeRowFilters(combined, granular);
 }
 
-// Parse --merge-strategy, defaulting to "update". Throws a CommandError
-// (USAGE) on an unrecognized value so a typo fails loudly instead of silently
-// falling back to the default.
+/**
+ * Parse `--merge-strategy`, defaulting to `update`.
+ *
+ * Throws {@link CommandError} (USAGE) on an unrecognized value so a typo fails
+ * loudly rather than silently falling back to the default.
+ *
+ * @param options - The raw option object from the command handler.
+ * @returns The resolved merge strategy.
+ */
 export function parseMergeStrategy(options: Record<string, unknown>): MergeStrategy {
   const raw = optionString(options, "merge-strategy", "mergeStrategy");
   if (raw === undefined) return "update";
@@ -2036,7 +2268,12 @@ export function parseMergeStrategy(options: Record<string, unknown>): MergeStrat
   );
 }
 
-// Resolve --preserve-timestamps / --no-preserve-timestamps (default ON).
+/**
+ * Resolve `--preserve-timestamps` / `--no-preserve-timestamps` (default ON).
+ *
+ * @param options - The raw option object from the command handler.
+ * @returns Whether source bead timestamps should be preserved on import.
+ */
 export function resolvePreserveTimestamps(options: Record<string, unknown>): boolean {
   if (options["no-preserve-timestamps"] === true || options["noPreserveTimestamps"] === true) return false;
   for (const k of ["preserveTimestamps", "preserve-timestamps"]) {
@@ -2046,8 +2283,16 @@ export function resolvePreserveTimestamps(options: Record<string, unknown>): boo
   return true;
 }
 
-// Parse a positive integer option honoring both kebab and camel spellings.
-// Returns undefined when unset or not a positive integer.
+/**
+ * Parse a positive-integer option honoring both kebab and camel spellings.
+ *
+ * Throws {@link CommandError} (USAGE) when the option is set but not a positive
+ * integer; returns `undefined` when unset.
+ *
+ * @param options - The raw option object from the command handler.
+ * @param keys - The keys to try (kebab or camel).
+ * @returns The parsed positive integer, or `undefined` when unset.
+ */
 export function parsePositiveIntOption(options: Record<string, unknown>, ...keys: string[]): number | undefined {
   const raw = keys.map((key) => options[key]).find((value) => value !== undefined);
   if (raw === undefined) return undefined;
@@ -2061,10 +2306,17 @@ export function parsePositiveIntOption(options: Record<string, unknown>, ...keys
   return n;
 }
 
+/**
+ * Options governing one Beads export, normalized from the CLI flag bag.
+ */
 export interface ExportOptions {
+  /** When true, preview the export without writing a file. */
   dryRun: boolean;
+  /** When true, re-emit the original bead id rather than the pm item id. */
   preserveIds: boolean;
+  /** Output file path (stdout when unset). */
   output?: string;
+  /** Status/type filter narrowing which items are exported. */
   filter: RowFilter;
 }
 
