@@ -95,21 +95,32 @@ export function main(root: string): void {
  * or carry a different drive-letter casing than the URL form, so an exact
  * string comparison would treat a direct invocation as a library import and
  * silently skip {@link main}. Resolving both sides through `realpathSync`
- * removes that ambiguity. Fails closed (returns `false`) if either path cannot
- * be resolved, so a broken `argv` never accidentally runs the gate.
+ * removes that ambiguity.
+ *
+ * The two resolutions fail for opposite reasons and are deliberately not
+ * treated alike. An unresolvable `argv[1]` only means the entry point is not
+ * this file, which is the ordinary "imported by a test" case, so it answers
+ * false. An unresolvable *own* module path is an internal contradiction: this
+ * file is executing, so it exists. Swallowing that would leave {@link main}
+ * unreached and the process exit code at zero — a mandatory gate reporting
+ * success having scanned nothing. It therefore fails closed and throws.
  *
  * @param argv - The process argv slice to inspect.
  * @param moduleUrl - The `import.meta.url` of the module that might be main.
  * @returns True when `argv[1]` resolves to this module's own real path.
+ * @throws If this module's own path cannot be resolved.
  */
 export function isMainInvocation(argv: readonly string[], moduleUrl: string): boolean {
   const entry = argv[1];
   if (entry === undefined) return false;
+  const self = realpathSync(fileURLToPath(moduleUrl));
+  let resolvedEntry: string;
   try {
-    return realpathSync(entry) === realpathSync(fileURLToPath(moduleUrl));
+    resolvedEntry = realpathSync(entry);
   } catch {
     return false;
   }
+  return resolvedEntry === self;
 }
 
 if (isMainInvocation(process.argv, import.meta.url)) {

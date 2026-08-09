@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- The mandatory docstring gate could skip its own scan and still exit zero ([pm-beads-cg9v](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-cg9v.toon))
+
 ### Other
 
 - Adopt the canonical pm-ops docstring gate ([pm-beads-c7mx](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-c7mx.toon))
