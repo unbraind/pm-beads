@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Fix daily release ordering so npm publish no longer races ahead of the protected main push ([pm-beads-kbnm](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-kbnm.toon))
 - Propagate the docstring gate entry guard fix ([pm-beads-sidy](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-sidy.toon))
 - The mandatory docstring gate could skip its own scan and still exit zero ([pm-beads-cg9v](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-cg9v.toon))
 
