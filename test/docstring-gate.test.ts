@@ -94,27 +94,22 @@ test("docstring gate isMainInvocation resolves matching and non-matching scripts
     assert.equal(isMainInvocation([process.execPath, script], url), true);
     assert.equal(isMainInvocation([process.execPath, other], url), false);
     assert.equal(isMainInvocation([process.execPath], url), false);
-    // An entry path that does not exist is the ordinary "not this script" case.
-    assert.equal(isMainInvocation([process.execPath, join(root, "absent.ts")], url), false);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
 });
 
-test("docstring gate isMainInvocation fails closed when its own path is unresolvable", () => {
-  // The gate is mandatory, so an unresolvable *own* module path must crash rather
-  // than leave main() unreached with the exit code still at zero — that shape
-  // reports success having scanned nothing. Only the self-resolution throws; an
-  // unresolvable argv[1] stays a plain false, asserted in the test above.
-  const root = mkdtempSync(join(tmpdir(), "pm-beads-docstring-self-"));
-  try {
-    const entry = join(root, "docstring-gate.ts");
-    writeFileSync(entry, "");
-    const absentSelf = pathToFileURL(join(root, "vanished", "docstring-gate.ts")).href;
-    assert.throws(() => isMainInvocation([process.execPath, entry], absentSelf), /ENOENT/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+test("docstring gate isMainInvocation throws rather than skipping the gate when argv[1] cannot be resolved", () => {
+  const root = resolve(import.meta.dirname, "..");
+  const gateUrl = pathToFileURL(resolve(root, "scripts", "docstring-gate.ts")).href;
+  // Returning false here would leave `npm run docstring` exiting 0 having
+  // scanned nothing - a required release check reporting success without doing
+  // its job. Crashing is the safe outcome, so assert it is what happens.
+  assert.throws(
+    () => isMainInvocation(["node", resolve(root, "does-not-exist.ts")], gateUrl),
+    /ENOENT/,
+    "an unresolvable entry must propagate, not silently decline to run the gate",
+  );
 });
 
 test("docstring gate main writes a success line to stdout and exits 0", () => {

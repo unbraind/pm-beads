@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Propagate the docstring gate entry guard fix ([pm-beads-sidy](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-sidy.toon))
 - The mandatory docstring gate could skip its own scan and still exit zero ([pm-beads-cg9v](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-cg9v.toon))
 
 ### Other
