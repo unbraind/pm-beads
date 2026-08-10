@@ -88,39 +88,43 @@ export function main(root: string): void {
 }
 
 /**
- * Whether the script is being invoked directly rather than imported by a test.
+ * Whether this module is the process entry point rather than a test import.
  *
- * Compares resolved real filesystem paths on both sides. `import.meta.url` is
- * already symlink-resolved as a URL, but `argv[1]` may point through a symlink
- * or carry a different drive-letter casing than the URL form, so an exact
- * string comparison would treat a direct invocation as a library import and
- * silently skip {@link main}. Resolving both sides through `realpathSync`
- * removes that ambiguity.
+ * Both sides are canonicalised through `realpathSync` before comparison. A
+ * launcher reaching this file through a symlink (an npm bin shim, a linked
+ * workspace) would otherwise compare unequal and skip the gate silently.
  *
- * The two resolutions fail for opposite reasons and are deliberately not
- * treated alike. An unresolvable `argv[1]` only means the entry point is not
- * this file, which is the ordinary "imported by a test" case, so it answers
- * false. An unresolvable *own* module path is an internal contradiction: this
- * file is executing, so it exists. Swallowing that would leave {@link main}
- * unreached and the process exit code at zero — a mandatory gate reporting
- * success having scanned nothing. It therefore fails closed and throws.
+ * Resolving only `argv[1]` would be enough under Node's defaults, where the
+ * ESM loader realpaths a module before recording `import.meta.url`. It is not
+ * enough under `--preserve-symlinks`/`--preserve-symlinks-main`, which leave
+ * `moduleUrl` holding the symlink while `realpathSync(entry)` resolves it.
+ * The two would then compare unequal on a direct invocation and the gate would
+ * exit 0 without scanning — the exact silent skip this function exists to
+ * prevent, reintroduced by a runtime flag. Canonicalising both sides adds a
+ * second `realpathSync` and removes the dependence on how Node was launched.
  *
- * @param argv - The process argv slice to inspect.
+ * An unresolvable `argv[1]` **propagates** rather than returning false. The two
+ * outcomes are not equally safe: returning false means `npm run docstring`
+ * exits 0 having scanned nothing, which is a required release check reporting
+ * success without doing its job — the one failure this gate exists to prevent.
+ * Letting `realpathSync` throw turns that into a loud non-zero exit. The case
+ * requires `argv[1]` to stop resolving after Node has already loaded this file,
+ * so in practice it means the environment is broken, and a broken environment
+ * must not silently satisfy a gate.
+ *
+ * A genuinely different entry path still returns false, which is how a test
+ * importing this module declines to run the gate.
+ *
+ * @param argv - The process argv to inspect.
  * @param moduleUrl - The `import.meta.url` of the module that might be main.
- * @returns True when `argv[1]` resolves to this module's own real path.
- * @throws If this module's own path cannot be resolved.
+ * @returns True when `argv[1]` and `moduleUrl` canonicalise to the same path,
+ *          false when they canonicalise to different ones.
+ * @throws Whatever `realpathSync` throws when either path cannot be resolved.
  */
 export function isMainInvocation(argv: readonly string[], moduleUrl: string): boolean {
   const entry = argv[1];
   if (entry === undefined) return false;
-  const self = realpathSync(fileURLToPath(moduleUrl));
-  let resolvedEntry: string;
-  try {
-    resolvedEntry = realpathSync(entry);
-  } catch {
-    return false;
-  }
-  return resolvedEntry === self;
+  return realpathSync(entry) === realpathSync(fileURLToPath(moduleUrl));
 }
 
 if (isMainInvocation(process.argv, import.meta.url)) {
