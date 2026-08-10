@@ -106,8 +106,8 @@ test("docstring gate isMainInvocation throws rather than skipping the gate when 
   // scanned nothing - a required release check reporting success without doing
   // its job. Crashing is the safe outcome, so assert it is what happens.
   assert.throws(
-    () => isMainInvocation(["node", resolve(root, "does-not-exist.ts")], gateUrl),
-    /ENOENT/,
+    () => isMainInvocation([process.execPath, resolve(root, "does-not-exist.ts")], gateUrl),
+    (error: unknown) => (error as NodeJS.ErrnoException).code === "ENOENT",
     "an unresolvable entry must propagate, not silently decline to run the gate",
   );
 });
