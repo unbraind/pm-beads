@@ -1,0 +1,24 @@
+id: pm-beads-sidy
+title: Propagate the docstring gate entry guard fix
+description: "The isMainInvocation guard caught realpathSync errors and returned false, causing npm run docstring to exit 0 having scanned nothing — a mandatory release gate reporting success without doing its job. The guard now propagates the error so a broken environment fails loudly instead of silently passing the gate."
+type: Issue
+status: closed
+priority: 2
+tags[2]: docstrings,gate
+created_at: "2026-08-10T05:42:43.486Z"
+updated_at: "2026-08-10T05:43:05.960Z"
+closed_at: "2026-08-10T05:43:01.467Z"
+completed_at: "2026-08-10T05:43:01.467Z"
+author: pi-agent
+resolution: isMainInvocation propagates realpathSync errors instead of catching them and returning false
+expected_result: "npm run docstring with an unresolvable argv[1] throws ENOENT and exits non-zero"
+actual_result: "npm run docstring with an unresolvable argv[1] previously exited 0 having scanned nothing"
+comments[1]{created_at,author,text}:
+  "2026-08-10T05:42:55.342Z",pi-agent,"Verified: node --experimental-strip-types -e with an unresolvable argv[1] now throws ENOENT instead of returning false. The gate fails loudly."
+notes[1]{created_at,author,text}:
+  "2026-08-10T05:42:49.583Z",pi-agent,"The isMainInvocation function in scripts/docstring-gate.ts wrapped realpathSync in a try/catch that returned false on ENOENT. When argv[1] could not be resolved, the top-level selector called the no-op placeholder instead of main, so npm run docstring exited 0 having scanned nothing. A required release check reported success without doing its job. The corrected implementation propagates the realpathSync error: a broken environment must not silently satisfy a gate."
+files[2]{path,scope}:
+  scripts/docstring-gate.ts,project
+  test/docstring-gate.test.ts,project
+close_reason: fixed
+body: ""
