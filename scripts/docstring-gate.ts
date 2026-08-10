@@ -15,7 +15,7 @@
 
 import { realpathSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 import { analyzeDocstringCoverage } from "pm-ops/docstrings";
 
