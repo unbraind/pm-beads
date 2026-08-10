@@ -100,11 +100,11 @@ test("docstring gate isMainInvocation resolves matching and non-matching scripts
 });
 
 test("docstring gate isMainInvocation canonicalizes a symlinked moduleUrl, as --preserve-symlinks produces", () => {
-  // The symlink test above passes argv[1] as the link and moduleUrl as the REAL
-  // path, which the old one-sided comparison also satisfied - so it could not
-  // tell the two implementations apart. This is the case that can: moduleUrl
-  // holds the SYMLINK, which is what Node records in import.meta.url under
-  // --preserve-symlinks / --preserve-symlinks-main.
+  // A symlink case that passes argv[1] as the link and moduleUrl as the REAL
+  // path cannot tell the two implementations apart: realpathSync(link) resolves
+  // to the real path, so the old one-sided comparison satisfied it too. This is
+  // the case that can: moduleUrl holds the SYMLINK, which is what Node records
+  // in import.meta.url under --preserve-symlinks / --preserve-symlinks-main.
   //
   // Old: pathToFileURL(realpathSync(link)).href === linkUrl -> false, so the
   // selector calls the placeholder and the gate exits 0 without scanning.
