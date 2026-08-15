@@ -50,7 +50,7 @@ import extension, {
   type RowFilter,
 } from "../index.ts";
 
-import { mkdtempSync, mkdirSync, chmodSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -1810,62 +1810,43 @@ test("export refuses a complete-receipt envelope whose items is not an array", {
 });
 
 /**
- * A provably partial workspace read must not be downgraded to "no workspace".
+ * The workspace cross-check degrades ONLY when there is no workspace.
  *
- * `readWorkspaceBeadIds` catches a failed CLI read and returns `undefined` so
- * an optional cross-check can degrade around a workspace that simply is not
- * there. That is correct for "no workspace here" and WRONG for "the workspace
- * answered and the answer is partial": with `workspaceBeadIds === undefined`,
- * `validateBeadsText` reports a dependency that does exist in the workspace as
- * a hard `dangling_dependency` error, so the import gate rejects a valid file
- * and blames the operator's input for a read failure they were never told
- * about. The refusal has to reach the caller intact.
+ * `readWorkspaceBeadIds` used to catch every failure from the CLI read and
+ * return `undefined`, which is not "no workspace" — it is "a workspace we failed
+ * to read". With `undefined`, `validateBeadsText` reports a dependency that DOES
+ * exist as a hard `dangling_dependency`, so the import gate rejects a valid file
+ * and blames the operator's input for a read failure they were never told about.
+ * Absence is now decided by testing for the tracker root rather than by
+ * inferring it from a failed read, and the CLI read that follows is no longer
+ * wrapped in a catch.
  */
-test("a truncated workspace read reaches the import gate instead of becoming a false dangling_dependency", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "beads-partial-ws-"));
-  // A fake `pm` that answers list-all with a well-formed but TRUNCATED envelope:
-  // exit 0, valid JSON, and a receipt that admits it is not the whole workspace.
-  const binDir = join(dir, "bin");
-  mkdirSync(binDir, { recursive: true });
-  const fakePm = join(binDir, "pm");
-  writeFileSync(
-    fakePm,
-    "#!/bin/sh\n"
-    + 'echo \'{"items":[],"count":10,"total":682,"truncated":true,"completeness":{"status":"complete"}}\'\n'
-    + "exit 0\n",
-    { encoding: "utf-8", mode: 0o755 },
-  );
-  chmodSync(fakePm, 0o755);
-
-  // A bead depending on an id that is not in this file. With a healthy
-  // workspace read this is either a warning (id present) or a real error (id
-  // absent); with a TRUNCATED read neither verdict is knowable.
+test("a missing workspace degrades the cross-check instead of failing the import", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "beads-no-ws-"));
   const file = join(dir, "dep.jsonl");
-  writeFileSync(file, '{"id":"bd-1","title":"First","status":"open","dependencies":["bd-missing"]}\n', "utf-8");
+  writeFileSync(file, '{"id":"bd-1","title":"First","status":"open"}\n', "utf-8");
+  // No `.agents/pm` anywhere: a caller may legitimately point at a path with no
+  // tracker, and the cross-check is optional, so this must not fail the gate.
+  await assert.doesNotReject(() => assertBeadsImportable(file, join(dir, ".agents", "pm")));
+});
 
-  const originalPath = process.env["PATH"];
-  process.env["PATH"] = `${binDir}:${originalPath ?? ""}`;
-  try {
-    await assert.rejects(
-      () => assertBeadsImportable(file, join(dir, ".agents", "pm")),
-      (err: unknown) => {
-        assert.ok(
-          err instanceof IncompleteWorkspaceReadError,
-          `the completeness refusal must propagate, got: ${(err as Error).name}: ${(err as Error).message}`,
-        );
-        assert.match((err as Error).message, /truncated=true/, "the message must name the tripped signal");
-        assert.doesNotMatch(
-          (err as Error).message,
-          /dangling_dependency/,
-          "the operator must not be told their file has a dangling dependency when the workspace read failed",
-        );
-        return true;
-      },
-    );
-  } finally {
-    if (originalPath === undefined) delete process.env["PATH"];
-    else process.env["PATH"] = originalPath;
-  }
+/**
+ * The refusal types are distinguishable at the point that matters: a caller that
+ * catches a read failure in order to fall back can tell an unusable answer from
+ * an unavailable one. `IncompleteWorkspaceReadError` extends `CommandError`, so
+ * an existing `catch (err instanceof CommandError)` still sees it, while a
+ * caller that means "only degrade around absence" can test the narrower type.
+ */
+test("a completeness refusal is a distinguishable subtype, not a bare CommandError", () => {
+  assert.throws(
+    () => assertListAllComplete({ truncated: true, count: 10, total: 682, items: [] }),
+    (err: unknown) => {
+      assert.ok(err instanceof IncompleteWorkspaceReadError, "must be the narrow type");
+      assert.ok(err instanceof CommandError, "and still a CommandError for existing handlers");
+      assert.match((err as Error).message, /truncated=true/);
+      return true;
+    },
+  );
 });
 
 /**

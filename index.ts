@@ -44,7 +44,7 @@ import type {
 // populated node_modules is the only requirement), so the store read below
 // imports its binding the same way every other fleet package does.
 import { listAllItemMetadata } from "@unbrained/pm-cli/sdk/runtime";
-import { readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { spawnSync } from "node:child_process";
 
@@ -1000,20 +1000,22 @@ async function readWorkspaceBeadIds(pmRoot: string): Promise<Set<string> | undef
   } catch {
     /* SDK store read failed — fall back to the CLI read path below. */
   }
-  if (!items) {
-    try {
-      items = readPmItems(pmRoot);
-    } catch (err) {
-      // "No workspace here" is a legitimate state, and the cross-check below is
-      // optional, so an ordinary read failure degrades to "no workspace data".
-      // A completeness refusal is NOT that: the workspace answered and the
-      // answer is provably partial. Degrading around it would compute the
-      // cross-check from a fraction of the workspace and report a dependency
-      // that exists as `dangling_dependency` -- blaming the operator's file for
-      // a read failure they were never told about. Let it through.
-      if (err instanceof IncompleteWorkspaceReadError) throw err;
-      return undefined;
-    }
+  if (items === undefined) {
+    // The SDK read failed. Absence is the ONE case that legitimately degrades --
+    // the cross-check is optional and a caller may point at a path with no
+    // tracker, which is exactly what `listAllItemMetadata` throws for ("Tracker
+    // root does not exist"). Testing that here rather than inferring it from the
+    // failure is what separates it from every other cause.
+    if (!existsSync(pmRoot)) return undefined;
+    // The workspace is there and the SDK could not read it, so fall back to the
+    // CLI. Deliberately NOT wrapped in a catch: an ENOBUFS overrun on a large
+    // workspace, a nonzero exit, malformed JSON and a truncated envelope are all
+    // failures to read a workspace that EXISTS, and swallowing any of them left
+    // the cross-check with an empty set. Validation then reported a dependency
+    // that DOES exist as `dangling_dependency`, so the import gate rejected a
+    // valid file and blamed the operator's input for a read failure they were
+    // never told about.
+    items = readPmItems(pmRoot);
   }
   const ids = new Set<string>();
   for (const item of items) {
@@ -1275,17 +1277,12 @@ export async function readAndValidateBeads(filePath: string, pmRoot?: string): P
   // Cross-check dependency edges against bead ids already in the workspace so
   // a reference that resolves at import time (a prior import) stays a warning,
   // not a hard error — same semantics as `pm beads validate`.
-  let workspaceBeadIds: Set<string> | undefined;
-  try {
-    workspaceBeadIds = pmRoot ? await readWorkspaceBeadIds(pmRoot) : undefined;
-  } catch (err) {
-    // Same distinction as in readWorkspaceBeadIds: a provably partial workspace
-    // must not be silently downgraded to "no workspace", because this report
-    // feeds the import gate and would reject a valid file for a dependency that
-    // does exist.
-    if (err instanceof IncompleteWorkspaceReadError) throw err;
-    workspaceBeadIds = undefined;
-  }
+  // No catch here on purpose. readWorkspaceBeadIds already returns `undefined`
+  // for the one case that legitimately degrades (no workspace at the path), so a
+  // throw that reaches here is a real failure to read a workspace that exists.
+  // Swallowing it would feed the import gate an empty cross-check set and reject
+  // a valid file with a false `dangling_dependency`.
+  const workspaceBeadIds = pmRoot ? await readWorkspaceBeadIds(pmRoot) : undefined;
 
   return validateBeadsText(raw, absolutePath, workspaceBeadIds);
 }
