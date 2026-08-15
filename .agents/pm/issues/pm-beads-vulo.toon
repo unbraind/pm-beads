@@ -2,12 +2,16 @@ id: pm-beads-vulo
 title: A truncated list-all answer is consumed as if it were complete
 description: "Every list-all read in this package takes .items from the pm list-all --json envelope without checking the envelope's completeness receipt. Verified on this host against the 682-item workspace: pm 2026.8.14 returned 10 items with truncated=true, and the exporter happily emitted a 10-item export reporting success (98% of rows missing). 2026.8.15 fixes the default, but truncated can still go true under an output budget and completeness.status can go partial when items are unreadable — each of those must refuse loudly instead of producing a partial result that reports success. Related: the @unbrained/pm-cli dependency resolves through a floating range (>=2026.8.3), which is how the 2026.8.14 regression reached this package with no diff to review."
 type: Issue
-status: open
+status: closed
 priority: 2
 tags: []
 created_at: "2026-08-15T10:02:06.253Z"
-updated_at: "2026-08-15T10:25:04.171Z"
+updated_at: "2026-08-15T10:34:57.358Z"
+closed_at: "2026-08-15T10:34:57.295Z"
+completed_at: "2026-08-15T10:34:57.295Z"
 author: pi-agent
-comments[1]{created_at,author,text}:
+comments[2]{created_at,author,text}:
   "2026-08-15T10:25:04.171Z",pi-agent,"Wired all four refusal signals into the single list-all call site (readPmItems, which feeds buildBeadsFromWorkspace / runExport / readWorkspaceBeadIds fallback): truncated===true, has_more===true, completeness.status!==complete (missing receipt also trips), omission_receipt.has_omissions===true. Each refusal is a CommandError naming the tripped signal and the count-vs-total figures; no partial list, no warning-and-continue. maxBuffer kept (64 MiB, PM_JSON_MAX_BUFFER override) and the ENOBUFS null-status case is classified explicitly. Chose REFUSAL over a paging loop: this package has no legitimate use for a partial page.\n\nRevert-proof (removed only the assertListAllComplete(parsed) call, rebuilt, ran the new tests): all four refusal tests failed with 'AssertionError [ERR_ASSERTION]: Missing expected exception' (truncated / has_more / completeness.status / omission_receipt at test/smoke.test.ts:1610 et al.); happy-path test still passed as expected. Fix restored, full suite green: 110/110.\n\nTests drive the refusal from a REAL pm list-all envelope captured from the real CLI (temp 3-item workspace, exact production argv), mutated one field each, injected through the new PmListAllSpawn seam defaulting to the real spawn. Exact-pin: devDependencies and peerDependencies both 2026.8.15 (no >=/^/~); node -p resolves 2026.8.15 after npm ci. Coverage 93.58 lines / 80.12 branches / 95.24 functions — thresholds unchanged."
+  "2026-08-15T10:34:56.347Z",pi-agent,"PR #69 open and green (test 22/26, semgrep, DeepScan, Hound; Greptile pass after adopting its two review findings: non-array items payload now refuses, packaging test enforces dev/peer pin equality). Pushed commits: 8bd9635, 6a60526."
+close_reason: "PR #69 (refuse-incomplete-list-all-and-exact-pin-cli) is open and green: list-all reads now refuse truncated/has_more/partial-completeness/omitted-fields envelopes with signal+counts in the message, CLI exact-pinned to 2026.8.15 in both dependency blocks, 111/111 tests including revert-proven refusal tests."
 body: ""
