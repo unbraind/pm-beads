@@ -8,6 +8,7 @@ import extension, {
   CommandError,
   EXIT_CODE,
   assertBeadsImportable,
+  IncompleteWorkspaceReadError,
   buildBeadIndex,
   beadPassesFilter,
   decodeBeadId,
@@ -49,7 +50,7 @@ import extension, {
   type RowFilter,
 } from "../index.ts";
 
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, chmodSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -1589,6 +1590,34 @@ function seamFor(stdout: string): PmListAllSpawn {
   return (_args, _maxBuffer) => ({ status: 0, stdout, stderr: "" });
 }
 
+/** A seam plus the argv it captured, so the production request can be asserted. */
+interface CapturingListAllSeam {
+  /** The seam to hand to `readPmItems` in place of the real spawn. */
+  readonly seam: PmListAllSpawn;
+  /** Argv of the last call, or `undefined` when the seam was never invoked. */
+  args: string[] | undefined;
+}
+
+/**
+ * Seam that answers a canned envelope AND records the argv it was called with.
+ *
+ * The completeness gate refuses a truncated envelope after the fact; the argv is
+ * what determines whether the CLI produces one. In particular the absence of
+ * `--limit` is load-bearing and invisible to every other test here: adding a
+ * ceiling would turn every workspace past that size into a hard refusal rather
+ * than a larger read, and no receipt-based assertion would notice.
+ */
+function capturingSeamFor(stdout: string): CapturingListAllSeam {
+  const captured: CapturingListAllSeam = {
+    seam: (args) => {
+      captured.args = args;
+      return { status: 0, stdout, stderr: "" };
+    },
+    args: undefined,
+  };
+  return captured;
+}
+
 const NO_FILTER: RowFilter = {};
 const OPEN_ONLY: RowFilter = { statuses: new Set(["open"]) };
 
@@ -1777,5 +1806,88 @@ test("export refuses a complete-receipt envelope whose items is not an array", {
       assert.match(err.message, /items` is not an array/);
       return true;
     },
+  );
+});
+
+/**
+ * A provably partial workspace read must not be downgraded to "no workspace".
+ *
+ * `readWorkspaceBeadIds` catches a failed CLI read and returns `undefined` so
+ * an optional cross-check can degrade around a workspace that simply is not
+ * there. That is correct for "no workspace here" and WRONG for "the workspace
+ * answered and the answer is partial": with `workspaceBeadIds === undefined`,
+ * `validateBeadsText` reports a dependency that does exist in the workspace as
+ * a hard `dangling_dependency` error, so the import gate rejects a valid file
+ * and blames the operator's input for a read failure they were never told
+ * about. The refusal has to reach the caller intact.
+ */
+test("a truncated workspace read reaches the import gate instead of becoming a false dangling_dependency", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "beads-partial-ws-"));
+  // A fake `pm` that answers list-all with a well-formed but TRUNCATED envelope:
+  // exit 0, valid JSON, and a receipt that admits it is not the whole workspace.
+  const binDir = join(dir, "bin");
+  mkdirSync(binDir, { recursive: true });
+  const fakePm = join(binDir, "pm");
+  writeFileSync(
+    fakePm,
+    "#!/bin/sh\n"
+    + 'echo \'{"items":[],"count":10,"total":682,"truncated":true,"completeness":{"status":"complete"}}\'\n'
+    + "exit 0\n",
+    { encoding: "utf-8", mode: 0o755 },
+  );
+  chmodSync(fakePm, 0o755);
+
+  // A bead depending on an id that is not in this file. With a healthy
+  // workspace read this is either a warning (id present) or a real error (id
+  // absent); with a TRUNCATED read neither verdict is knowable.
+  const file = join(dir, "dep.jsonl");
+  writeFileSync(file, '{"id":"bd-1","title":"First","status":"open","dependencies":["bd-missing"]}\n', "utf-8");
+
+  const originalPath = process.env["PATH"];
+  process.env["PATH"] = `${binDir}:${originalPath ?? ""}`;
+  try {
+    await assert.rejects(
+      () => assertBeadsImportable(file, join(dir, ".agents", "pm")),
+      (err: unknown) => {
+        assert.ok(
+          err instanceof IncompleteWorkspaceReadError,
+          `the completeness refusal must propagate, got: ${(err as Error).name}: ${(err as Error).message}`,
+        );
+        assert.match((err as Error).message, /truncated=true/, "the message must name the tripped signal");
+        assert.doesNotMatch(
+          (err as Error).message,
+          /dangling_dependency/,
+          "the operator must not be told their file has a dangling dependency when the workspace read failed",
+        );
+        return true;
+      },
+    );
+  } finally {
+    if (originalPath === undefined) delete process.env["PATH"];
+    else process.env["PATH"] = originalPath;
+  }
+});
+
+/**
+ * Pin the production `pm list-all` argv, including what must NOT be in it.
+ *
+ * `--full --include-body` is what keeps descriptions, tags and dependency edges
+ * in the export rather than the brief projection, and the absence of `--limit`
+ * is what makes the read the whole workspace. Both are invisible to the
+ * receipt-based refusals: every one of those injects its own envelope through
+ * the seam and never exercises the argv the real read would send.
+ */
+test("readPmItems asks pm for the whole workspace, with no row ceiling", { skip: !hasPmCli() }, () => {
+  const { pmRoot, stdout } = realEnvelope();
+  const capturing = capturingSeamFor(stdout);
+  buildBeadsFromWorkspace(pmRoot, { preserveIds: false, filter: NO_FILTER }, capturing.seam);
+  assert.deepStrictEqual(
+    capturing.args,
+    ["--path", pmRoot, "--json", "list-all", "--full", "--include-body"],
+    "the whole argv, so an added flag that changes what the CLI returns must be considered here",
+  );
+  assert.ok(
+    !capturing.args?.includes("--limit"),
+    "a row ceiling would turn every workspace past that size into a hard refusal, not a larger read",
   );
 });
