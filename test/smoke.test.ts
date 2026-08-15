@@ -1568,7 +1568,7 @@ function realEnvelope(): EnvelopeFixture {
   // production read path would have parsed.
   const read = spawnSync(
     "pm",
-    ["--path", pmRoot, "--json", "list-all", "--full", "--include-body", "--limit", "10000"],
+    ["--path", pmRoot, "--json", "list-all", "--full", "--include-body"],
     { encoding: "utf-8" },
   );
   assert.strictEqual(read.status, 0, `pm list-all failed: ${read.stderr}`);

@@ -1871,8 +1871,15 @@ function readPmItems(pmRoot: string, spawn: PmListAllSpawn = spawnPmListAll): Pm
   const maxBuffer = pmJsonMaxBuffer();
   // `--full --include-body` so descriptions, tags and dependency edges survive
   // the export instead of the brief projection (which omits them).
+  //
+  // No `--limit`. Omitting it is what makes `pm list-all` return every row, and
+  // a limit here would be self-defeating: the completeness gate below refuses a
+  // truncated envelope, so a hardcoded ceiling turns every workspace past that
+  // size into a hard refusal of export, workspace diff and `--upsert` rather
+  // than into a larger read. `opts.filter` is applied after this call, so the
+  // ceiling would bound the rows read, not the rows kept.
   const result = spawn(
-    ["--path", pmRoot, "--json", "list-all", "--full", "--include-body", "--limit", "10000"],
+    ["--path", pmRoot, "--json", "list-all", "--full", "--include-body"],
     maxBuffer,
   );
   if (result.error) {
