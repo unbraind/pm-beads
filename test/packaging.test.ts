@@ -148,3 +148,26 @@ test("the host CLI dev dependency is pinned to an exact version at or above the 
     `${HOST_CLI} dev pin ${declared} must be at or above the declared peer floor ${peer}: gating against a CLI older than the floor this package advertises would make that floor an untested claim`,
   );
 });
+
+/**
+ * `package.json` and `manifest.json` state the same host-compatibility fact to
+ * two different installers: npm reads the `peerDependencies` floor, the pm host
+ * reads `manifest.json`'s `pm_min_version` at load time. Nothing binds them, so
+ * they drift silently — each file stays internally consistent while the pair
+ * disagrees. This package shipped exactly that: a manifest still advertising
+ * `2026.7.28` while the code refused on a completeness receipt that only exists
+ * from `2026.8.15`, meaning a 2026.7.28 host would load an extension that
+ * cannot work against it. This test binds the two declarations together.
+ */
+test("the manifest host floor matches the package peer floor", () => {
+  const extensionManifest = JSON.parse(
+    readFileSync(new URL("../manifest.json", import.meta.url), "utf8"),
+  ) as { pm_min_version?: string };
+  const peer = manifest.peerDependencies?.[HOST_CLI] ?? "";
+  assert.match(peer, /^>=\d+\.\d+\.\d+$/, "the peer declaration must be a concrete >= floor");
+  assert.equal(
+    extensionManifest.pm_min_version,
+    peer.replace(/^>=/, ""),
+    `manifest.json pm_min_version "${extensionManifest.pm_min_version}" must equal the ${HOST_CLI} peer floor "${peer}": they are the same claim to two different installers`,
+  );
+});

@@ -1651,7 +1651,13 @@ test("export refuses a list-all envelope with completeness.status partial", { sk
 test("export refuses a list-all envelope with omission_receipt.has_omissions=true", { skip: !hasPmCli() }, () => {
   const { pmRoot } = realEnvelope();
   const stdout = mutatedEnvelope((env) => {
-    (env.omission_receipt as Record<string, unknown>).has_omissions = true;
+    // The baseline accepts an absent `omission_receipt`, so the mutation has to
+    // create the receipt rather than assume one: assigning through `undefined`
+    // would throw a TypeError here, outside the `assert.throws` below, and the
+    // test would report that instead of the refusal it exists to prove.
+    const receipt = (env.omission_receipt ?? {}) as Record<string, unknown>;
+    receipt.has_omissions = true;
+    env.omission_receipt = receipt;
   });
   assert.throws(
     () => buildBeadsFromWorkspace(pmRoot, { preserveIds: false, filter: NO_FILTER }, seamFor(stdout)),
@@ -1726,7 +1732,12 @@ test("assertListAllComplete accepts a complete envelope and tolerates missing co
 });
 
 test("readPmItems surfaces child failures through the seam", () => {
-  const { pmRoot } = realEnvelope();
+  // Every case below answers through an injected seam, so the real child process
+  // is never reached and `pmRoot` is only a path string. Using a temp directory
+  // instead of `realEnvelope()` keeps this test running on hosts without the pm
+  // CLI, where `realEnvelope()` would fail its `init.status === 0` assertion
+  // rather than skip.
+  const pmRoot = mkdtempSync(join(tmpdir(), "beads-seam-"));
   // Nonzero exit passes stderr through.
   assert.throws(
     () => buildBeadsFromWorkspace(pmRoot, { preserveIds: false, filter: NO_FILTER },
