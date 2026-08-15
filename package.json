@@ -47,7 +47,7 @@
     "typescript": "^7.0.2"
   },
   "peerDependencies": {
-    "@unbrained/pm-cli": "2026.8.15"
+    "@unbrained/pm-cli": ">=2026.8.15"
   },
   "keywords": [
     "beads",
