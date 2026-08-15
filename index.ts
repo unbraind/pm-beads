@@ -97,6 +97,23 @@ export class CommandError extends Error {
   }
 }
 
+/**
+ * A workspace read that SUCCEEDED but cannot be trusted as the whole workspace.
+ *
+ * Distinct from every other read failure, because callers must treat the two
+ * differently. "No workspace here" is a legitimate state that optional
+ * cross-checks degrade around; "the workspace answered, and the answer is
+ * provably partial" is not — degrading around it silently produces a wrong
+ * answer computed from a fraction of the data. Callers that catch a read
+ * failure to fall back must therefore let this one through.
+ */
+export class IncompleteWorkspaceReadError extends CommandError {
+  constructor(message: string) {
+    super(message);
+    this.name = "IncompleteWorkspaceReadError";
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -986,7 +1003,15 @@ async function readWorkspaceBeadIds(pmRoot: string): Promise<Set<string> | undef
   if (!items) {
     try {
       items = readPmItems(pmRoot);
-    } catch {
+    } catch (err) {
+      // "No workspace here" is a legitimate state, and the cross-check below is
+      // optional, so an ordinary read failure degrades to "no workspace data".
+      // A completeness refusal is NOT that: the workspace answered and the
+      // answer is provably partial. Degrading around it would compute the
+      // cross-check from a fraction of the workspace and report a dependency
+      // that exists as `dangling_dependency` -- blaming the operator's file for
+      // a read failure they were never told about. Let it through.
+      if (err instanceof IncompleteWorkspaceReadError) throw err;
       return undefined;
     }
   }
@@ -1253,7 +1278,12 @@ export async function readAndValidateBeads(filePath: string, pmRoot?: string): P
   let workspaceBeadIds: Set<string> | undefined;
   try {
     workspaceBeadIds = pmRoot ? await readWorkspaceBeadIds(pmRoot) : undefined;
-  } catch {
+  } catch (err) {
+    // Same distinction as in readWorkspaceBeadIds: a provably partial workspace
+    // must not be silently downgraded to "no workspace", because this report
+    // feeds the import gate and would reject a valid file for a dependency that
+    // does exist.
+    if (err instanceof IncompleteWorkspaceReadError) throw err;
     workspaceBeadIds = undefined;
   }
 
@@ -1786,7 +1816,7 @@ export function assertListAllComplete(envelope: unknown): void {
   const total = typeof env.total === "number" ? env.total : count;
   const counts = `count ${count} of total ${total}`;
   if (env.truncated === true) {
-    throw new CommandError(
+    throw new IncompleteWorkspaceReadError(
       `Refusing incomplete \`pm list-all\` answer: truncated=true (${counts}). `
       + "The item list was cut short (output budget or limit); a partial export "
       + "would report success while missing items. Narrow the operation or "
@@ -1794,7 +1824,7 @@ export function assertListAllComplete(envelope: unknown): void {
     );
   }
   if (env.has_more === true) {
-    throw new CommandError(
+    throw new IncompleteWorkspaceReadError(
       `Refusing incomplete \`pm list-all\` answer: has_more=true (${counts}). `
       + "Rows exist beyond the returned page; consuming the page as the whole "
       + "workspace would silently drop them.",
@@ -1804,7 +1834,7 @@ export function assertListAllComplete(envelope: unknown): void {
     const status = env.completeness?.status === undefined ? "(missing)" : JSON.stringify(env.completeness.status);
     const unreadable = `unreadable_item_count=${env.completeness?.unreadable_item_count ?? 0}`
       + `, unreadable_directory_count=${env.completeness?.unreadable_directory_count ?? 0}`;
-    throw new CommandError(
+    throw new IncompleteWorkspaceReadError(
       `Refusing incomplete \`pm list-all\` answer: completeness.status=${status} `
       + `(${unreadable}; ${counts}). Some workspace items could not be read, so `
       + "the returned list is not the whole workspace.",
@@ -1812,7 +1842,7 @@ export function assertListAllComplete(envelope: unknown): void {
   }
   if (env.omission_receipt?.has_omissions === true) {
     const groups = env.omission_receipt?.omitted_field_groups ?? [];
-    throw new CommandError(
+    throw new IncompleteWorkspaceReadError(
       `Refusing incomplete \`pm list-all\` answer: omission_receipt.has_omissions=true `
       + `(omitted_field_groups: ${groups.length ? groups.join(", ") : "(none listed)"}; ${counts}). `
       + "Field groups were dropped from the projection, so the rows are present "
@@ -1897,7 +1927,7 @@ function readPmItems(pmRoot: string, spawn: PmListAllSpawn = spawnPmListAll): Pm
     // exists to prevent, so classify and refuse it here.
     const items = (parsed as ListAllEnvelope).items;
     if (!Array.isArray(items)) {
-      throw new CommandError(
+      throw new IncompleteWorkspaceReadError(
         "Refusing invalid `pm list-all` answer: envelope `items` is not an array "
         + "(completeness receipt said complete). The CLI's row payload is unusable.",
       );

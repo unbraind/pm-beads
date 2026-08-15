@@ -164,7 +164,7 @@ test("the manifest host floor matches the package peer floor", () => {
     readFileSync(new URL("../manifest.json", import.meta.url), "utf8"),
   ) as { pm_min_version?: string };
   const peer = manifest.peerDependencies?.[HOST_CLI] ?? "";
-  assert.match(peer, /^>=\d+\.\d+\.\d+$/, "the peer declaration must be a concrete >= floor");
+  assert.match(peer, MINIMUM_VERSION_RANGE, "the peer declaration must be a concrete >= floor");
   assert.equal(
     extensionManifest.pm_min_version,
     peer.replace(/^>=/, ""),
