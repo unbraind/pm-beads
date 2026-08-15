@@ -43,6 +43,9 @@ import extension, {
   parseDiffOptions,
   isInvalidTypeValueError,
   beadCloseReason,
+  buildBeadsFromWorkspace,
+  assertListAllComplete,
+  type PmListAllSpawn,
   type RowFilter,
 } from "../index.ts";
 
@@ -1520,4 +1523,233 @@ test("no command redeclares a host-owned global flag", async () => {
   }
 
   await ext.deactivate();
+});
+
+// --- list-all completeness refusal ------------------------------------------
+//
+// The 2026.8.14 regression this section pins: pm's `list-all --json` defaulted
+// to a truncated answer (10 of 682 items on this host's fixture workspace) and
+// this package's exporter consumed `.items` without consulting the envelope's
+// completeness receipt — shipping a 10-row export that reported success. The
+// export core must REFUSE any envelope whose receipt says the answer was not
+// the whole workspace, naming the tripped signal and the count/total figures.
+//
+// Every refusal below is driven from a REAL envelope (captured from the real
+// pm CLI against a real workspace) with exactly one field mutated, injected
+// through the buildBeadsFromWorkspace spawn seam — not a hand-written mock of
+// the envelope shape, so a CLI-side envelope change shows up here too.
+
+/** Captured real `pm list-all --json` envelope plus the pm root it came from. */
+interface EnvelopeFixture {
+  pmRoot: string;
+  envelope: Record<string, unknown>;
+  stdout: string;
+}
+
+let cachedEnvelope: EnvelopeFixture | undefined;
+
+/** Build a real 3-item workspace once and capture the CLI's actual envelope. */
+function realEnvelope(): EnvelopeFixture {
+  if (cachedEnvelope) return cachedEnvelope;
+  const root = mkdtempSync(join(tmpdir(), "beads-envelope-"));
+  const pmRoot = join(root, ".agents", "pm");
+  mkdirSync(pmRoot, { recursive: true });
+  const init = spawnSync("pm", ["--path", pmRoot, "init"], { encoding: "utf-8" });
+  assert.strictEqual(init.status, 0, `pm init failed: ${init.stderr}`);
+  for (const title of ["Envelope Alpha", "Envelope Beta", "Envelope Gamma"]) {
+    const r = spawnSync(
+      "pm",
+      ["--path", pmRoot, "--json", "create", "--title", title, "--type", "Task", "--status", "open"],
+      { encoding: "utf-8" },
+    );
+    assert.strictEqual(r.status, 0, `pm create failed: ${r.stderr}`);
+  }
+  // The exact argv readPmItems uses, so the captured envelope is the one the
+  // production read path would have parsed.
+  const read = spawnSync(
+    "pm",
+    ["--path", pmRoot, "--json", "list-all", "--full", "--include-body", "--limit", "10000"],
+    { encoding: "utf-8" },
+  );
+  assert.strictEqual(read.status, 0, `pm list-all failed: ${read.stderr}`);
+  const envelope = JSON.parse(read.stdout) as Record<string, unknown>;
+  cachedEnvelope = { pmRoot, envelope, stdout: read.stdout };
+  return cachedEnvelope;
+}
+
+/** Deep-copy the real envelope, apply one mutation, re-serialize as stdout. */
+function mutatedEnvelope(mutate: (env: Record<string, unknown>) => void): string {
+  const env = JSON.parse(JSON.stringify(realEnvelope().envelope)) as Record<string, unknown>;
+  mutate(env);
+  return JSON.stringify(env);
+}
+
+/** Seam answering a canned stdout with a successful child exit. */
+function seamFor(stdout: string): PmListAllSpawn {
+  return (_args, _maxBuffer) => ({ status: 0, stdout, stderr: "" });
+}
+
+const NO_FILTER: RowFilter = {};
+const OPEN_ONLY: RowFilter = { statuses: new Set(["open"]) };
+
+test("real list-all envelope baseline is complete with all items", { skip: !hasPmCli() }, () => {
+  const fx = realEnvelope();
+  assert.strictEqual(fx.envelope.truncated, false);
+  assert.strictEqual(fx.envelope.has_more, false);
+  assert.strictEqual((fx.envelope.completeness as Record<string, unknown>).status, "complete");
+  const omission = fx.envelope.omission_receipt as Record<string, unknown> | undefined;
+  assert.ok(omission === undefined || omission.has_omissions === false);
+  assert.strictEqual(Array.isArray(fx.envelope.items) && fx.envelope.items.length, 3);
+  assert.strictEqual(fx.envelope.count, 3);
+  assert.strictEqual(fx.envelope.total, 3);
+});
+
+test("export refuses a list-all envelope with truncated=true", { skip: !hasPmCli() }, () => {
+  const { pmRoot } = realEnvelope();
+  const stdout = mutatedEnvelope((env) => { env.truncated = true; });
+  assert.throws(
+    () => buildBeadsFromWorkspace(pmRoot, { preserveIds: false, filter: NO_FILTER }, seamFor(stdout)),
+    (err: unknown) => {
+      assert.ok(err instanceof CommandError);
+      assert.match(err.message, /truncated=true/, "message must name the tripped signal");
+      assert.match(err.message, /count 3 of total 3/, "message must name the counts");
+      return true;
+    },
+  );
+});
+
+test("export refuses a list-all envelope with has_more=true", { skip: !hasPmCli() }, () => {
+  const { pmRoot } = realEnvelope();
+  const stdout = mutatedEnvelope((env) => { env.has_more = true; });
+  assert.throws(
+    () => buildBeadsFromWorkspace(pmRoot, { preserveIds: false, filter: NO_FILTER }, seamFor(stdout)),
+    (err: unknown) => {
+      assert.ok(err instanceof CommandError);
+      assert.match(err.message, /has_more=true/, "message must name the tripped signal");
+      assert.match(err.message, /count 3 of total 3/, "message must name the counts");
+      return true;
+    },
+  );
+});
+
+test("export refuses a list-all envelope with completeness.status partial", { skip: !hasPmCli() }, () => {
+  const { pmRoot } = realEnvelope();
+  const stdout = mutatedEnvelope((env) => {
+    (env.completeness as Record<string, unknown>).status = "partial";
+  });
+  assert.throws(
+    () => buildBeadsFromWorkspace(pmRoot, { preserveIds: false, filter: NO_FILTER }, seamFor(stdout)),
+    (err: unknown) => {
+      assert.ok(err instanceof CommandError);
+      assert.match(err.message, /completeness\.status="partial"/, "message must name the tripped signal");
+      assert.match(err.message, /count 3 of total 3/, "message must name the counts");
+      return true;
+    },
+  );
+});
+
+test("export refuses a list-all envelope with omission_receipt.has_omissions=true", { skip: !hasPmCli() }, () => {
+  const { pmRoot } = realEnvelope();
+  const stdout = mutatedEnvelope((env) => {
+    (env.omission_receipt as Record<string, unknown>).has_omissions = true;
+  });
+  assert.throws(
+    () => buildBeadsFromWorkspace(pmRoot, { preserveIds: false, filter: NO_FILTER }, seamFor(stdout)),
+    (err: unknown) => {
+      assert.ok(err instanceof CommandError);
+      assert.match(err.message, /omission_receipt\.has_omissions=true/, "message must name the tripped signal");
+      assert.match(err.message, /count 3 of total 3/, "message must name the counts");
+      return true;
+    },
+  );
+});
+
+test("happy path: a complete envelope flows every item through unchanged", { skip: !hasPmCli() }, () => {
+  const { pmRoot, stdout } = realEnvelope();
+  const beads = buildBeadsFromWorkspace(
+    pmRoot,
+    { preserveIds: false, filter: NO_FILTER },
+    seamFor(stdout),
+  );
+  const titles = beads.map((b) => b.title).sort();
+  assert.deepStrictEqual(titles, ["Envelope Alpha", "Envelope Beta", "Envelope Gamma"]);
+  // Filtering still applies downstream of the completeness gate.
+  const openOnly = buildBeadsFromWorkspace(
+    pmRoot,
+    { preserveIds: false, filter: OPEN_ONLY },
+    seamFor(stdout),
+  );
+  assert.strictEqual(openOnly.length, 3);
+});
+
+// Additional arm coverage for the refusal core, still shaped like real output.
+
+test("assertListAllComplete rejects an envelope with no completeness receipt", () => {
+  assert.throws(
+    () => assertListAllComplete({ items: [], count: 0, total: 0, truncated: false, has_more: false }),
+    (err: unknown) => {
+      assert.ok(err instanceof CommandError);
+      assert.match(err.message, /completeness\.status=\(missing\)/);
+      return true;
+    },
+  );
+});
+
+test("assertListAllComplete names listed omitted field groups", () => {
+  assert.throws(
+    () => assertListAllComplete({
+      items: [],
+      count: 0,
+      total: 0,
+      truncated: false,
+      has_more: false,
+      completeness: { status: "complete", unreadable_item_count: 0, unreadable_directory_count: 0 },
+      omission_receipt: { has_omissions: true, omitted_field_group_count: 1, omitted_field_groups: ["body"] },
+    }),
+    (err: unknown) => {
+      assert.ok(err instanceof CommandError);
+      assert.match(err.message, /omitted_field_groups: body/);
+      return true;
+    },
+  );
+});
+
+test("assertListAllComplete accepts a complete envelope and tolerates missing counts", () => {
+  // A bare-but-complete receipt (no count/total) reports row-count figures.
+  assert.doesNotThrow(() => assertListAllComplete({
+    items: [{ id: "x" }],
+    truncated: false,
+    has_more: false,
+    completeness: { status: "complete", unreadable_item_count: 0, unreadable_directory_count: 0 },
+    omission_receipt: { has_omissions: false },
+  }));
+});
+
+test("readPmItems surfaces child failures through the seam", () => {
+  const { pmRoot } = realEnvelope();
+  // Nonzero exit passes stderr through.
+  assert.throws(
+    () => buildBeadsFromWorkspace(pmRoot, { preserveIds: false, filter: NO_FILTER },
+      () => ({ status: 1, stdout: "", stderr: "tracker exploded" })),
+    /tracker exploded/,
+  );
+  // Unparseable stdout is classified, not silently emptied.
+  assert.throws(
+    () => buildBeadsFromWorkspace(pmRoot, { preserveIds: false, filter: NO_FILTER },
+      () => ({ status: 0, stdout: "not json", stderr: "" })),
+    /Could not parse `pm list-all --json` output/,
+  );
+  // ENOBUFS (status null, empty stderr) names the buffer limit.
+  const enobufs = Object.assign(new Error("spawnSync pm ENOBUFS"), { code: "ENOBUFS" });
+  assert.throws(
+    () => buildBeadsFromWorkspace(pmRoot, { preserveIds: false, filter: NO_FILTER },
+      () => ({ status: null, stdout: "", stderr: "", error: enobufs })),
+    /exceeded the .* byte read buffer/,
+  );
+  // Any other spawn error names the real cause.
+  assert.throws(
+    () => buildBeadsFromWorkspace(pmRoot, { preserveIds: false, filter: NO_FILTER },
+      () => ({ status: null, stdout: "", stderr: "", error: new Error("boom") })),
+    /pm read failed: boom/,
+  );
 });

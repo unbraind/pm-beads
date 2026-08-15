@@ -28,15 +28,6 @@ const HOST_CLI = "@unbrained/pm-cli";
 const EXACT_VERSION = /^\d+\.\d+\.\d+$/;
 
 /**
- * A peer range stating a concrete lower bound, as `>=X.Y.Z` or `^X.Y.Z`.
- *
- * The point is to exclude `*` and `x`, which declare a peer while promising
- * nothing: they would satisfy a bare presence check while telling a consumer
- * that any CLI version whatsoever will do.
- */
-const CONCRETE_PEER_RANGE = /^(>=|\^)(\d+)\.(\d+)\.(\d+)$/;
-
-/**
  * Order two dotted versions, returning a negative number when `left` precedes
  * `right`, zero when they are equal, and a positive number otherwise.
  *
@@ -81,8 +72,8 @@ test("the host CLI is declared as a peer dependency and never as a runtime depen
   assert.ok(peer, `${HOST_CLI} must be declared as a peer dependency so the host's copy is the one that loads`);
   assert.match(
     peer,
-    CONCRETE_PEER_RANGE,
-    `${HOST_CLI} must declare a concrete peer floor, not the permissive range "${peer}": a wildcard declares a peer while promising a consumer nothing about which CLI versions actually work`,
+    EXACT_VERSION,
+    `${HOST_CLI} must declare an exact peer pin, not the range "${peer}": a floating floor is how the 2026.8.14 truncated-\`list-all\` regression reached this package with no diff to review`,
   );
 });
 
@@ -94,12 +85,19 @@ test("the host CLI is declared as a peer dependency and never as a runtime depen
  * consecutive CLI releases disagreed about whether the same bytes on disk are
  * fatal, a warning, or invisible. Pinning exactly keeps the gate reproducible.
  *
- * The assertion is deliberately on the *shape* rather than on today's literal
- * version. Hardcoding the number would turn every Dependabot bump into a test
- * failure needing a second, lockstep edit, without buying any safety: what
- * matters is that the pin is exact and consistent with what this package tells
- * consumers it needs, not that it equals the version current when this test was
- * written.
+ * The same argument now covers the peer declaration (see the peer test above):
+ * the 2026.8.14 `list-all` truncation regression shipped to consumers through
+ * the floating peer floor, so both blocks carry the SAME exact pin and this
+ * test enforces that they agree — a pin below the peer declaration would gate
+ * against a CLI this package tells consumers is too old, and a pin above it
+ * would advertise a floor the gates never actually ran against.
+ *
+ * The assertion is deliberately on the *shape* and cross-consistency rather
+ * than on today's literal version. Hardcoding the number would turn every
+ * Dependabot bump into a test failure needing a second, lockstep edit, without
+ * buying any safety: what matters is that the pin is exact and consistent with
+ * what this package tells consumers it needs, not that it equals the version
+ * current when this test was written.
  */
 test("the host CLI dev dependency is pinned to an exact version at or above the declared peer floor", () => {
   const declared = manifest.devDependencies?.[HOST_CLI];
@@ -110,13 +108,16 @@ test("the host CLI dev dependency is pinned to an exact version at or above the 
     `${HOST_CLI} must be pinned exactly, not declared as the range "${declared}": the gate verdict depends on which CLI version runs it`,
   );
 
-  // A pin below this package's own advertised floor would mean the gates ran
-  // against a CLI the package tells consumers is too old to use.
-  const floor = CONCRETE_PEER_RANGE.exec(manifest.peerDependencies?.[HOST_CLI] ?? "");
-  assert.ok(floor, "the peer range must be concrete for the dev pin to be checked against it");
-  const minimum = `${floor[2]}.${floor[3]}.${floor[4]}`;
+  // The dev pin and the peer declaration must agree exactly now that both are
+  // concrete: the floor this package advertises to consumers is the same CLI
+  // the gates actually run against.
+  const peer = manifest.peerDependencies?.[HOST_CLI] ?? "";
   assert.ok(
-    compareVersions(declared, minimum) >= 0,
-    `${HOST_CLI} is pinned at ${declared}, below the peer floor of ${minimum} this package declares: the gates would run against a CLI consumers are told is too old`,
+    EXACT_VERSION.test(peer),
+    "the peer range must be concrete for the dev pin to be checked against it",
+  );
+  assert.ok(
+    compareVersions(declared, peer) >= 0,
+    `${HOST_CLI} is pinned at ${declared}, below the peer pin of ${peer} this package declares: the gates would run against a CLI consumers are told is too old`,
   );
 });
