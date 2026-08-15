@@ -8,6 +8,7 @@ import extension, {
   CommandError,
   EXIT_CODE,
   assertBeadsImportable,
+  IncompleteWorkspaceReadError,
   buildBeadIndex,
   beadPassesFilter,
   decodeBeadId,
@@ -43,6 +44,9 @@ import extension, {
   parseDiffOptions,
   isInvalidTypeValueError,
   beadCloseReason,
+  buildBeadsFromWorkspace,
+  assertListAllComplete,
+  type PmListAllSpawn,
   type RowFilter,
 } from "../index.ts";
 
@@ -1520,4 +1524,351 @@ test("no command redeclares a host-owned global flag", async () => {
   }
 
   await ext.deactivate();
+});
+
+// --- list-all completeness refusal ------------------------------------------
+//
+// The 2026.8.14 regression this section pins: pm's `list-all --json` defaulted
+// to a truncated answer (10 of 682 items on this host's fixture workspace) and
+// this package's exporter consumed `.items` without consulting the envelope's
+// completeness receipt — shipping a 10-row export that reported success. The
+// export core must REFUSE any envelope whose receipt says the answer was not
+// the whole workspace, naming the tripped signal and the count/total figures.
+//
+// Every refusal below is driven from a REAL envelope (captured from the real
+// pm CLI against a real workspace) with exactly one field mutated, injected
+// through the buildBeadsFromWorkspace spawn seam — not a hand-written mock of
+// the envelope shape, so a CLI-side envelope change shows up here too.
+
+/** Captured real `pm list-all --json` envelope plus the pm root it came from. */
+interface EnvelopeFixture {
+  pmRoot: string;
+  envelope: Record<string, unknown>;
+  stdout: string;
+}
+
+let cachedEnvelope: EnvelopeFixture | undefined;
+
+/** Build a real 3-item workspace once and capture the CLI's actual envelope. */
+function realEnvelope(): EnvelopeFixture {
+  if (cachedEnvelope) return cachedEnvelope;
+  const root = mkdtempSync(join(tmpdir(), "beads-envelope-"));
+  const pmRoot = join(root, ".agents", "pm");
+  mkdirSync(pmRoot, { recursive: true });
+  const init = spawnSync("pm", ["--path", pmRoot, "init"], { encoding: "utf-8" });
+  assert.strictEqual(init.status, 0, `pm init failed: ${init.stderr}`);
+  for (const title of ["Envelope Alpha", "Envelope Beta", "Envelope Gamma"]) {
+    const r = spawnSync(
+      "pm",
+      ["--path", pmRoot, "--json", "create", "--title", title, "--type", "Task", "--status", "open"],
+      { encoding: "utf-8" },
+    );
+    assert.strictEqual(r.status, 0, `pm create failed: ${r.stderr}`);
+  }
+  // The exact argv readPmItems uses, so the captured envelope is the one the
+  // production read path would have parsed.
+  const read = spawnSync(
+    "pm",
+    ["--path", pmRoot, "--json", "list-all", "--full", "--include-body"],
+    { encoding: "utf-8" },
+  );
+  assert.strictEqual(read.status, 0, `pm list-all failed: ${read.stderr}`);
+  const envelope = JSON.parse(read.stdout) as Record<string, unknown>;
+  cachedEnvelope = { pmRoot, envelope, stdout: read.stdout };
+  return cachedEnvelope;
+}
+
+/** Deep-copy the real envelope, apply one mutation, re-serialize as stdout. */
+function mutatedEnvelope(mutate: (env: Record<string, unknown>) => void): string {
+  const env = JSON.parse(JSON.stringify(realEnvelope().envelope)) as Record<string, unknown>;
+  mutate(env);
+  return JSON.stringify(env);
+}
+
+/** Seam answering a canned stdout with a successful child exit. */
+function seamFor(stdout: string): PmListAllSpawn {
+  return (_args, _maxBuffer) => ({ status: 0, stdout, stderr: "" });
+}
+
+/** A seam plus the argv it captured, so the production request can be asserted. */
+interface CapturingListAllSeam {
+  /** The seam to hand to `readPmItems` in place of the real spawn. */
+  readonly seam: PmListAllSpawn;
+  /** Argv of the last call, or `undefined` when the seam was never invoked. */
+  args: string[] | undefined;
+}
+
+/**
+ * Seam that answers a canned envelope AND records the argv it was called with.
+ *
+ * The completeness gate refuses a truncated envelope after the fact; the argv is
+ * what determines whether the CLI produces one. In particular the absence of
+ * `--limit` is load-bearing and invisible to every other test here: adding a
+ * ceiling would turn every workspace past that size into a hard refusal rather
+ * than a larger read, and no receipt-based assertion would notice.
+ */
+function capturingSeamFor(stdout: string): CapturingListAllSeam {
+  const captured: CapturingListAllSeam = {
+    seam: (args) => {
+      captured.args = args;
+      return { status: 0, stdout, stderr: "" };
+    },
+    args: undefined,
+  };
+  return captured;
+}
+
+const NO_FILTER: RowFilter = {};
+const OPEN_ONLY: RowFilter = { statuses: new Set(["open"]) };
+
+test("real list-all envelope baseline is complete with all items", { skip: !hasPmCli() }, () => {
+  const fx = realEnvelope();
+  assert.strictEqual(fx.envelope.truncated, false);
+  assert.strictEqual(fx.envelope.has_more, false);
+  assert.strictEqual((fx.envelope.completeness as Record<string, unknown>).status, "complete");
+  const omission = fx.envelope.omission_receipt as Record<string, unknown> | undefined;
+  assert.ok(omission === undefined || omission.has_omissions === false);
+  assert.strictEqual(Array.isArray(fx.envelope.items) && fx.envelope.items.length, 3);
+  assert.strictEqual(fx.envelope.count, 3);
+  assert.strictEqual(fx.envelope.total, 3);
+});
+
+test("export refuses a list-all envelope with truncated=true", { skip: !hasPmCli() }, () => {
+  const { pmRoot } = realEnvelope();
+  const stdout = mutatedEnvelope((env) => { env.truncated = true; });
+  assert.throws(
+    () => buildBeadsFromWorkspace(pmRoot, { preserveIds: false, filter: NO_FILTER }, seamFor(stdout)),
+    (err: unknown) => {
+      assert.ok(err instanceof CommandError);
+      assert.match(err.message, /truncated=true/, "message must name the tripped signal");
+      assert.match(err.message, /count 3 of total 3/, "message must name the counts");
+      return true;
+    },
+  );
+});
+
+test("export refuses a list-all envelope with has_more=true", { skip: !hasPmCli() }, () => {
+  const { pmRoot } = realEnvelope();
+  const stdout = mutatedEnvelope((env) => { env.has_more = true; });
+  assert.throws(
+    () => buildBeadsFromWorkspace(pmRoot, { preserveIds: false, filter: NO_FILTER }, seamFor(stdout)),
+    (err: unknown) => {
+      assert.ok(err instanceof CommandError);
+      assert.match(err.message, /has_more=true/, "message must name the tripped signal");
+      assert.match(err.message, /count 3 of total 3/, "message must name the counts");
+      return true;
+    },
+  );
+});
+
+test("export refuses a list-all envelope with completeness.status partial", { skip: !hasPmCli() }, () => {
+  const { pmRoot } = realEnvelope();
+  const stdout = mutatedEnvelope((env) => {
+    (env.completeness as Record<string, unknown>).status = "partial";
+  });
+  assert.throws(
+    () => buildBeadsFromWorkspace(pmRoot, { preserveIds: false, filter: NO_FILTER }, seamFor(stdout)),
+    (err: unknown) => {
+      assert.ok(err instanceof CommandError);
+      assert.match(err.message, /completeness\.status="partial"/, "message must name the tripped signal");
+      assert.match(err.message, /count 3 of total 3/, "message must name the counts");
+      return true;
+    },
+  );
+});
+
+test("export refuses a list-all envelope with omission_receipt.has_omissions=true", { skip: !hasPmCli() }, () => {
+  const { pmRoot } = realEnvelope();
+  const stdout = mutatedEnvelope((env) => {
+    // The baseline accepts an absent `omission_receipt`, so the mutation has to
+    // create the receipt rather than assume one: assigning through `undefined`
+    // would throw a TypeError here, outside the `assert.throws` below, and the
+    // test would report that instead of the refusal it exists to prove.
+    const receipt = (env.omission_receipt ?? {}) as Record<string, unknown>;
+    receipt.has_omissions = true;
+    env.omission_receipt = receipt;
+  });
+  assert.throws(
+    () => buildBeadsFromWorkspace(pmRoot, { preserveIds: false, filter: NO_FILTER }, seamFor(stdout)),
+    (err: unknown) => {
+      assert.ok(err instanceof CommandError);
+      assert.match(err.message, /omission_receipt\.has_omissions=true/, "message must name the tripped signal");
+      assert.match(err.message, /count 3 of total 3/, "message must name the counts");
+      return true;
+    },
+  );
+});
+
+test("happy path: a complete envelope flows every item through unchanged", { skip: !hasPmCli() }, () => {
+  const { pmRoot, stdout } = realEnvelope();
+  const beads = buildBeadsFromWorkspace(
+    pmRoot,
+    { preserveIds: false, filter: NO_FILTER },
+    seamFor(stdout),
+  );
+  const titles = beads.map((b) => b.title).sort();
+  assert.deepStrictEqual(titles, ["Envelope Alpha", "Envelope Beta", "Envelope Gamma"]);
+  // Filtering still applies downstream of the completeness gate.
+  const openOnly = buildBeadsFromWorkspace(
+    pmRoot,
+    { preserveIds: false, filter: OPEN_ONLY },
+    seamFor(stdout),
+  );
+  assert.strictEqual(openOnly.length, 3);
+});
+
+// Additional arm coverage for the refusal core, still shaped like real output.
+
+test("assertListAllComplete rejects an envelope with no completeness receipt", () => {
+  assert.throws(
+    () => assertListAllComplete({ items: [], count: 0, total: 0, truncated: false, has_more: false }),
+    (err: unknown) => {
+      assert.ok(err instanceof CommandError);
+      assert.match(err.message, /completeness\.status=\(missing\)/);
+      return true;
+    },
+  );
+});
+
+test("assertListAllComplete names listed omitted field groups", () => {
+  assert.throws(
+    () => assertListAllComplete({
+      items: [],
+      count: 0,
+      total: 0,
+      truncated: false,
+      has_more: false,
+      completeness: { status: "complete", unreadable_item_count: 0, unreadable_directory_count: 0 },
+      omission_receipt: { has_omissions: true, omitted_field_group_count: 1, omitted_field_groups: ["body"] },
+    }),
+    (err: unknown) => {
+      assert.ok(err instanceof CommandError);
+      assert.match(err.message, /omitted_field_groups: body/);
+      return true;
+    },
+  );
+});
+
+test("assertListAllComplete accepts a complete envelope and tolerates missing counts", () => {
+  // A bare-but-complete receipt (no count/total) reports row-count figures.
+  assert.doesNotThrow(() => assertListAllComplete({
+    items: [{ id: "x" }],
+    truncated: false,
+    has_more: false,
+    completeness: { status: "complete", unreadable_item_count: 0, unreadable_directory_count: 0 },
+    omission_receipt: { has_omissions: false },
+  }));
+});
+
+test("readPmItems surfaces child failures through the seam", () => {
+  // Every case below answers through an injected seam, so the real child process
+  // is never reached and `pmRoot` is only a path string. Using a temp directory
+  // instead of `realEnvelope()` keeps this test running on hosts without the pm
+  // CLI, where `realEnvelope()` would fail its `init.status === 0` assertion
+  // rather than skip.
+  const pmRoot = mkdtempSync(join(tmpdir(), "beads-seam-"));
+  // Nonzero exit passes stderr through.
+  assert.throws(
+    () => buildBeadsFromWorkspace(pmRoot, { preserveIds: false, filter: NO_FILTER },
+      () => ({ status: 1, stdout: "", stderr: "tracker exploded" })),
+    /tracker exploded/,
+  );
+  // Unparseable stdout is classified, not silently emptied.
+  assert.throws(
+    () => buildBeadsFromWorkspace(pmRoot, { preserveIds: false, filter: NO_FILTER },
+      () => ({ status: 0, stdout: "not json", stderr: "" })),
+    /Could not parse `pm list-all --json` output/,
+  );
+  // ENOBUFS (status null, empty stderr) names the buffer limit.
+  const enobufs = Object.assign(new Error("spawnSync pm ENOBUFS"), { code: "ENOBUFS" });
+  assert.throws(
+    () => buildBeadsFromWorkspace(pmRoot, { preserveIds: false, filter: NO_FILTER },
+      () => ({ status: null, stdout: "", stderr: "", error: enobufs })),
+    /exceeded the .* byte read buffer/,
+  );
+  // Any other spawn error names the real cause.
+  assert.throws(
+    () => buildBeadsFromWorkspace(pmRoot, { preserveIds: false, filter: NO_FILTER },
+      () => ({ status: null, stdout: "", stderr: "", error: new Error("boom") })),
+    /pm read failed: boom/,
+  );
+});
+
+test("export refuses a complete-receipt envelope whose items is not an array", { skip: !hasPmCli() }, () => {
+  const { pmRoot } = realEnvelope();
+  // Complete receipt, unusable row payload: must refuse, not report a
+  // successful zero-item export.
+  const stdout = mutatedEnvelope((env) => { env.items = null; });
+  assert.throws(
+    () => buildBeadsFromWorkspace(pmRoot, { preserveIds: false, filter: NO_FILTER }, seamFor(stdout)),
+    (err: unknown) => {
+      assert.ok(err instanceof CommandError);
+      assert.match(err.message, /items` is not an array/);
+      return true;
+    },
+  );
+});
+
+/**
+ * The workspace cross-check degrades ONLY when there is no workspace.
+ *
+ * `readWorkspaceBeadIds` used to catch every failure from the CLI read and
+ * return `undefined`, which is not "no workspace" — it is "a workspace we failed
+ * to read". With `undefined`, `validateBeadsText` reports a dependency that DOES
+ * exist as a hard `dangling_dependency`, so the import gate rejects a valid file
+ * and blames the operator's input for a read failure they were never told about.
+ * Absence is now decided by testing for the tracker root rather than by
+ * inferring it from a failed read, and the CLI read that follows is no longer
+ * wrapped in a catch.
+ */
+test("a missing workspace degrades the cross-check instead of failing the import", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "beads-no-ws-"));
+  const file = join(dir, "dep.jsonl");
+  writeFileSync(file, '{"id":"bd-1","title":"First","status":"open"}\n', "utf-8");
+  // No `.agents/pm` anywhere: a caller may legitimately point at a path with no
+  // tracker, and the cross-check is optional, so this must not fail the gate.
+  await assert.doesNotReject(() => assertBeadsImportable(file, join(dir, ".agents", "pm")));
+});
+
+/**
+ * The refusal types are distinguishable at the point that matters: a caller that
+ * catches a read failure in order to fall back can tell an unusable answer from
+ * an unavailable one. `IncompleteWorkspaceReadError` extends `CommandError`, so
+ * an existing `catch (err instanceof CommandError)` still sees it, while a
+ * caller that means "only degrade around absence" can test the narrower type.
+ */
+test("a completeness refusal is a distinguishable subtype, not a bare CommandError", () => {
+  assert.throws(
+    () => assertListAllComplete({ truncated: true, count: 10, total: 682, items: [] }),
+    (err: unknown) => {
+      assert.ok(err instanceof IncompleteWorkspaceReadError, "must be the narrow type");
+      assert.ok(err instanceof CommandError, "and still a CommandError for existing handlers");
+      assert.match((err as Error).message, /truncated=true/);
+      return true;
+    },
+  );
+});
+
+/**
+ * Pin the production `pm list-all` argv, including what must NOT be in it.
+ *
+ * `--full --include-body` is what keeps descriptions, tags and dependency edges
+ * in the export rather than the brief projection, and the absence of `--limit`
+ * is what makes the read the whole workspace. Both are invisible to the
+ * receipt-based refusals: every one of those injects its own envelope through
+ * the seam and never exercises the argv the real read would send.
+ */
+test("readPmItems asks pm for the whole workspace, with no row ceiling", { skip: !hasPmCli() }, () => {
+  const { pmRoot, stdout } = realEnvelope();
+  const capturing = capturingSeamFor(stdout);
+  buildBeadsFromWorkspace(pmRoot, { preserveIds: false, filter: NO_FILTER }, capturing.seam);
+  assert.deepStrictEqual(
+    capturing.args,
+    ["--path", pmRoot, "--json", "list-all", "--full", "--include-body"],
+    "the whole argv, so an added flag that changes what the CLI returns must be considered here",
+  );
+  assert.ok(
+    !capturing.args?.includes("--limit"),
+    "a row ceiling would turn every workspace past that size into a hard refusal, not a larger read",
+  );
 });

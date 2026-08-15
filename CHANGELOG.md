@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- A truncated list-all answer is consumed as if it were complete ([pm-beads-vulo](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-vulo.toon))
+
 ## 2026.8.14 - 2026-08-14
 
 ### Fixed
