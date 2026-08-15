@@ -1718,14 +1718,162 @@ function describePmReadFailure(error: Error, limitBytes: number): string {
   return `pm read failed: ${error.message}`;
 }
 
-function readPmItems(pmRoot: string): PmItem[] {
+/** Subset of the `pm list-all --json` envelope the completeness gate reads.
+ *
+ * `items` is typed loosely (`PmItem[]`) because the CLI is the authority on its
+ * own row shape; the fields below it are the completeness receipt (2026.8.15
+ * envelope) whose signals this package refuses to consume silently. */
+export interface ListAllEnvelope {
+  /** Rows the CLI actually returned. Length can be less than {@link ListAllEnvelope.total}. */
+  items?: PmItem[];
+  /** Number of rows in `items` as reported by the CLI. */
+  count?: number;
+  /** Number of rows that exist in the workspace. */
+  total?: number;
+  /** True when the row list was cut short (output budget, `--limit`, cursor). */
+  truncated?: boolean;
+  /** True when more rows exist past a cursor boundary. */
+  has_more?: boolean;
+  /** Readability receipt for the directories/items backing the list. */
+  completeness?: {
+    status?: string;
+    unreadable_item_count?: number;
+    unreadable_directory_count?: number;
+  };
+  /** Receipt for field groups omitted from the projection. */
+  omission_receipt?: {
+    has_omissions?: boolean;
+    omitted_field_group_count?: number;
+    omitted_field_groups?: string[];
+  };
+}
+
+/**
+ * Refuse an incomplete `pm list-all` envelope instead of consuming it.
+ *
+ * Reads `.items` without consulting the envelope's completeness receipt is how
+ * this package once shipped a 10-item "successful" export from a 682-item
+ * workspace: pm 2026.8.14 defaulted to a truncated list and nothing here
+ * checked. The 2026.8.15 envelope carries four independent incompleteness
+ * signals, and any one of them means the rows in `items` are NOT the whole
+ * workspace — so this throws (never returns a partial list, never logs and
+ * continues) naming the signal that tripped plus the `count`/`total` figures:
+ *
+ * - `truncated === true` — the row list was cut short (output budget, limit);
+ * - `has_more === true` — rows exist past the returned cursor boundary;
+ * - `completeness.status !== "complete"` — items/directories were unreadable
+ *   (a missing receipt also trips this: an unverifiable answer is not complete);
+ * - `omission_receipt.has_omissions === true` — field groups were dropped from
+ *   the projection, so rows are present but degraded.
+ *
+ * Thrown errors are {@link CommandError} so pm's runtime turns them into a
+ * clean nonzero exit. Paging is deliberately NOT attempted: this package has
+ * no legitimate use for a partial page, so refusing loudly is both simpler and
+ * safer than a paging loop that could itself silently drop rows.
+ *
+ * @param envelope - Parsed `pm list-all --json` output (any shape; non-envelope
+ *                  input trips the completeness signal).
+ * @throws {@link CommandError} naming the first tripped signal and the counts.
+ */
+export function assertListAllComplete(envelope: unknown): void {
+  const env = (envelope ?? {}) as ListAllEnvelope;
+  // count/total are reported straight from the envelope when present; fall
+  // back to counting rows so a hand-shaped envelope still reports honest
+  // figures instead of `undefined`.
+  const count = typeof env.count === "number"
+    ? env.count
+    : Array.isArray(env.items) ? env.items.length : 0;
+  const total = typeof env.total === "number" ? env.total : count;
+  const counts = `count ${count} of total ${total}`;
+  if (env.truncated === true) {
+    throw new CommandError(
+      `Refusing incomplete \`pm list-all\` answer: truncated=true (${counts}). `
+      + "The item list was cut short (output budget or limit); a partial export "
+      + "would report success while missing items. Narrow the operation or "
+      + "raise the output budget, then retry.",
+    );
+  }
+  if (env.has_more === true) {
+    throw new CommandError(
+      `Refusing incomplete \`pm list-all\` answer: has_more=true (${counts}). `
+      + "Rows exist beyond the returned page; consuming the page as the whole "
+      + "workspace would silently drop them.",
+    );
+  }
+  if (env.completeness?.status !== "complete") {
+    const status = env.completeness?.status === undefined ? "(missing)" : JSON.stringify(env.completeness.status);
+    const unreadable = `unreadable_item_count=${env.completeness?.unreadable_item_count ?? 0}`
+      + `, unreadable_directory_count=${env.completeness?.unreadable_directory_count ?? 0}`;
+    throw new CommandError(
+      `Refusing incomplete \`pm list-all\` answer: completeness.status=${status} `
+      + `(${unreadable}; ${counts}). Some workspace items could not be read, so `
+      + "the returned list is not the whole workspace.",
+    );
+  }
+  if (env.omission_receipt?.has_omissions === true) {
+    const groups = env.omission_receipt?.omitted_field_groups ?? [];
+    throw new CommandError(
+      `Refusing incomplete \`pm list-all\` answer: omission_receipt.has_omissions=true `
+      + `(omitted_field_groups: ${groups.length ? groups.join(", ") : "(none listed)"}; ${counts}). `
+      + "Field groups were dropped from the projection, so the rows are present "
+      + "but degraded; re-read without the field-omitting options.",
+    );
+  }
+}
+
+/** Minimal spawn result the list-all seam needs (subset of spawnSync's). */
+export interface PmListAllSpawnResult {
+  /** Child exit status; `null` when the child was killed (e.g. ENOBUFS). */
+  status: number | null;
+  /** Decoded stdout of the `pm` child. */
+  stdout: string;
+  /** Decoded stderr of the `pm` child. */
+  stderr: string;
+  /** Spawn error (ENOBUFS and friends), when one occurred. */
+  error?: Error;
+}
+
+/**
+ * Injectable seam over the `pm list-all` shell-out inside {@link readPmItems}.
+ *
+ * A parameter defaulting to the real {@link spawnPmListAll}, so production
+ * callers are unchanged while tests can substitute a canned envelope —
+ * captured from the real CLI and mutated — instead of mocking child_process.
+ */
+export type PmListAllSpawn = (args: string[], maxBuffer: number) => PmListAllSpawnResult;
+
+/** Real {@link PmListAllSpawn} over `child_process.spawnSync`, forwarding the
+ * read-buffer cap so a large workspace cannot die as an unattributable
+ * null-status/empty-stderr spawn. Default seam for {@link readPmItems}. */
+function spawnPmListAll(args: string[], maxBuffer: number): PmListAllSpawnResult {
+  const result = spawnSync("pm", args, { encoding: "utf-8", maxBuffer });
+  return {
+    status: result.status,
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? "",
+    error: result.error,
+  };
+}
+
+/**
+ * Read every pm item in a workspace via `pm list-all --json`.
+ *
+ * Returns the envelope's `items` ONLY after {@link assertListAllComplete}
+ * verifies the completeness receipt, so a truncated, paged, partially-read or
+ * field-omitted answer throws instead of yielding a silent partial list — the
+ * exact 2026.8.14 failure mode this package refuses to reintroduce.
+ *
+ * @param pmRoot - Tracker storage path passed to `pm --path`.
+ * @param spawn - Injectable shell-out seam (tests substitute a canned real
+ *               envelope); defaults to the real {@link spawnPmListAll}.
+ */
+function readPmItems(pmRoot: string, spawn: PmListAllSpawn = spawnPmListAll): PmItem[] {
   const maxBuffer = pmJsonMaxBuffer();
   // `--full --include-body` so descriptions, tags and dependency edges survive
   // the export instead of the brief projection (which omits them).
-  const result = spawnSync(
-    "pm",
+  const result = spawn(
     ["--path", pmRoot, "--json", "list-all", "--full", "--include-body", "--limit", "10000"],
-    { encoding: "utf-8", maxBuffer },
+    maxBuffer,
   );
   if (result.error) {
     throw new CommandError(describePmReadFailure(result.error, maxBuffer));
@@ -1734,16 +1882,21 @@ function readPmItems(pmRoot: string): PmItem[] {
     throw new CommandError(result.stderr || "pm list failed");
   }
   try {
-    const parsed = JSON.parse(result.stdout);
-    const items = Array.isArray(parsed) ? parsed : parsed.items ?? parsed.results ?? [];
-    return items as PmItem[];
-  } catch {
+    const parsed: unknown = JSON.parse(result.stdout);
+    assertListAllComplete(parsed);
+    return ((parsed as ListAllEnvelope).items ?? []) as PmItem[];
+  } catch (err) {
+    if (err instanceof CommandError) throw err;
     throw new CommandError("Could not parse `pm list-all --json` output.");
   }
 }
 
-// Turn one pm item into a Beads record, preserving the original bead id (when
-// known) and re-emitting blocker edges as a Beads `dependencies` array.
+/**
+ * Convert one pm item into a Beads record.
+ *
+ * Preserves the original bead id (when known and requested) and re-emits
+ * blocker edges as a Beads `dependencies` array keyed on native bead ids.
+ */
 export function pmItemToBead(item: PmItem, pmToBead: Map<string, string>, preserveIds: boolean): BeadsItem {
   const beadId = preserveIds ? decodeBeadId(item) : undefined;
   const id = beadId || item.id;
@@ -1782,16 +1935,24 @@ export function pmItemToBead(item: PmItem, pmToBead: Map<string, string>, preser
   return bead;
 }
 
-// Serialize the current pm workspace into Beads records IN MEMORY, applying the
-// same id-preservation, dependency translation and row filtering the on-disk
-// exporter uses. Extracted from `runExport` so the diff command can compare a
-// file against the live workspace without writing to stdout/a file or
-// duplicating any mapping logic.
+/**
+ * Serialize the current pm workspace into Beads records IN MEMORY.
+ *
+ * Applies the same id-preservation, dependency translation and row filtering
+ * the on-disk exporter uses. Extracted from `runExport` so the diff command
+ * can compare a file against the live workspace without writing to stdout/a
+ * file or duplicating any mapping logic.
+ *
+ * @param spawn - Injectable shell-out seam over the `pm list-all` read (tests
+ *                substitute a canned real envelope); defaults to the real
+ *                {@link spawnPmListAll}.
+ */
 export function buildBeadsFromWorkspace(
   pmRoot: string,
   opts: { preserveIds: boolean; filter: RowFilter },
+  spawn: PmListAllSpawn = spawnPmListAll,
 ): BeadsItem[] {
-  const allItems = readPmItems(pmRoot);
+  const allItems = readPmItems(pmRoot, spawn);
   const hasFilter = Boolean(opts.filter.statuses || opts.filter.types);
   const items = hasFilter ? allItems.filter((it) => pmItemPassesFilter(it, opts.filter)) : allItems;
 
@@ -1810,6 +1971,12 @@ export function buildBeadsFromWorkspace(
   return items.map((item) => pmItemToBead(item, pmToBead, opts.preserveIds));
 }
 
+/**
+ * Run the `beads export` pipeline: read the whole workspace, serialize it to
+ * Beads JSONL, and emit to stdout or `--output` (or just report counts under
+ * `--dry-run`). Delegates the workspace read to {@link buildBeadsFromWorkspace},
+ * so an incomplete `list-all` answer refuses here before any bytes are written.
+ */
 function runExport(pmRoot: string, opts: { dryRun: boolean; preserveIds: boolean; output?: string; filter: RowFilter }) {
   const beads = buildBeadsFromWorkspace(pmRoot, { preserveIds: opts.preserveIds, filter: opts.filter });
   const jsonl = beads.map((b) => JSON.stringify(b)).join("\n") + (beads.length ? "\n" : "");
@@ -1843,9 +2010,13 @@ function runExport(pmRoot: string, opts: { dryRun: boolean; preserveIds: boolean
 // Diff core — audit round-trip fidelity between two Beads sources
 // ---------------------------------------------------------------------------
 
-// The set of bead fields the diff classifier compares, in display order. These
-// are exactly the fields a `pm beads import` → `pm beads export` cycle is meant
-// to preserve, so a drift in any of them flags a round-trip fidelity loss.
+/**
+ * The set of bead fields the diff classifier compares, in display order.
+ *
+ * These are exactly the fields a `pm beads import` → `pm beads export` cycle
+ * is meant to preserve, so a drift in any of them flags a round-trip
+ * fidelity loss.
+ */
 export const DIFF_FIELDS = [
   "title",
   "status",
