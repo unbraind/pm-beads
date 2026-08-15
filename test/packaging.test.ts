@@ -117,7 +117,7 @@ test("the host CLI dev dependency is pinned to an exact version at or above the 
     "the peer range must be concrete for the dev pin to be checked against it",
   );
   assert.ok(
-    compareVersions(declared, peer) >= 0,
-    `${HOST_CLI} is pinned at ${declared}, below the peer pin of ${peer} this package declares: the gates would run against a CLI consumers are told is too old`,
+    compareVersions(declared, peer) === 0,
+    `${HOST_CLI} dev pin ${declared} and peer pin ${peer} must be the SAME exact version: a dev pin above the peer pin would gate against a CLI this package tells consumers is too old, and below it would advertise a floor the gates never ran against`,
   );
 });

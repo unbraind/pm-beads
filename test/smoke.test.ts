@@ -1753,3 +1753,18 @@ test("readPmItems surfaces child failures through the seam", () => {
     /pm read failed: boom/,
   );
 });
+
+test("export refuses a complete-receipt envelope whose items is not an array", { skip: !hasPmCli() }, () => {
+  const { pmRoot } = realEnvelope();
+  // Complete receipt, unusable row payload: must refuse, not report a
+  // successful zero-item export.
+  const stdout = mutatedEnvelope((env) => { env.items = null; });
+  assert.throws(
+    () => buildBeadsFromWorkspace(pmRoot, { preserveIds: false, filter: NO_FILTER }, seamFor(stdout)),
+    (err: unknown) => {
+      assert.ok(err instanceof CommandError);
+      assert.match(err.message, /items` is not an array/);
+      return true;
+    },
+  );
+});

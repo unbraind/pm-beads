@@ -1884,7 +1884,18 @@ function readPmItems(pmRoot: string, spawn: PmListAllSpawn = spawnPmListAll): Pm
   try {
     const parsed: unknown = JSON.parse(result.stdout);
     assertListAllComplete(parsed);
-    return ((parsed as ListAllEnvelope).items ?? []) as PmItem[];
+    // A complete receipt with a missing/non-array `items` would otherwise flow
+    // through as a successful zero-item export (or crash downstream with an
+    // unclassified TypeError) — the same silent-partial failure this gate
+    // exists to prevent, so classify and refuse it here.
+    const items = (parsed as ListAllEnvelope).items;
+    if (!Array.isArray(items)) {
+      throw new CommandError(
+        "Refusing invalid `pm list-all` answer: envelope `items` is not an array "
+        + "(completeness receipt said complete). The CLI's row payload is unusable.",
+      );
+    }
+    return items as PmItem[];
   } catch (err) {
     if (err instanceof CommandError) throw err;
     throw new CommandError("Could not parse `pm list-all --json` output.");
