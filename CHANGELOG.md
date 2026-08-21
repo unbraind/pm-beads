@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Canonicalize complete workspace reads and adopt the current pm host contract ([pm-beads-1uz3](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-1uz3.toon))
 - Keep beads export stdout as pure JSONL without host summary output ([pm-beads-y76h](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-y76h.toon))
 
 ## 2026.8.16 - 2026-08-16
