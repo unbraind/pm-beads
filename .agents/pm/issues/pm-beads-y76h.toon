@@ -6,7 +6,7 @@ status: closed
 priority: 0
 tags[5]: agent-ux,jsonl,packed-acceptance,stdout,tdd
 created_at: "2026-08-21T05:30:16.511Z"
-updated_at: "2026-08-21T05:37:48.298Z"
+updated_at: "2026-08-21T05:46:28.390Z"
 closed_at: "2026-08-21T05:37:48.276Z"
 completed_at: "2026-08-21T05:37:48.276Z"
 author: codex
@@ -33,5 +33,7 @@ files[3]{path,scope,note}:
   test/smoke.test.ts,project,Real extension-dispatch regression for pure stdout
 tests[1]{command,scope,timeout_seconds,note}:
   "PM_PATH=/tmp/pm-beads-test PM_GLOBAL_PATH=/tmp/pm-beads-test-global node --test --test-name-pattern \"stdout export returns no second host-renderable payload\" test/smoke.test.ts",project,30,Real SDK dispatcher preserves the JSONL bytes and returns the public suppression marker
+docs[1]{path,scope,note}:
+  "https://github.com/unbraind/pm-beads/pull/74",global,Implementation and review PR
 close_reason: Default stdout export now uses the public SDK suppressHostOutput contract after writing JSONL; red-first dispatch coverage and fresh packed npm+npx plus Bun+bunx acceptance prove a single parseable row without --quiet or alias diagnostics.
 body: ""

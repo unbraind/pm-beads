@@ -6,7 +6,7 @@ status: in_progress
 priority: 0
 tags[5]: agent-ux,compatibility,completeness,latest-cli,tdd
 created_at: "2026-08-21T05:20:59.581Z"
-updated_at: "2026-08-21T05:45:04.645Z"
+updated_at: "2026-08-21T05:46:27.942Z"
 assignee: codex
 claim_principal: codex
 author: codex
@@ -25,10 +25,11 @@ customer_impact: Import and export agents depend on a complete tracker corpus; d
 dependencies[2]{id,kind,created_at,author,source_kind,author_source}:
   pm-beads-cjey,related,"2026-08-21T05:20:59.581Z",codex,"cli:create:dep",detected
   pm-beads-lajb,related,"2026-08-21T05:20:59.581Z",codex,"cli:create:dep",detected
-comments[3]{created_at,author,text}:
+comments[4]{created_at,author,text}:
   "2026-08-21T05:36:31.005Z",codex,"Implementation state before PR: canonical pm list --all now requests JSON plus unbounded output budget and limit and output-include full; the decoder rejects missing or malformed completeness, omission, count, total, row, blank-ID, and duplicate-ID receipts. The complete raw manifest validates through the public SDK at both the 2026.8.20 floor and exact 2026.8.21 development host. All package/workflow changelog reads use the local CLI with both bounds disabled. Real packed npm+npx and Bun+bunx acceptance against separate one-item trackers is clean. The latest full gate must still be rerun after the final SDK suppression edit; the distinct pm-beads-cjey 100/100/100/100 blocker and pm-beads-lajb reachable-history privacy blocker remain open and prohibit merge/publication."
   "2026-08-21T05:37:48.771Z",codex,"Final local gate after the SDK suppression edit: 120 tests passed; typecheck/build/docstring gate passed with 50/50 declarations; coverage reported 93.16% lines, 80.58% branches, and 95.28% functions over the single configured source index.ts; coverage thresholds passed but this is explicitly not 100/100/100/100 and pm-beads-cjey remains the blocker. Production audit found zero vulnerabilities, the nine-file pack dry-run passed, and changelog check was current. Fresh packed npm+npx and Bun+bunx acceptance each emitted one parseable row with no default-host payload or alias diagnostic."
   "2026-08-21T05:45:04.645Z",codex,"Superseding the earlier pre-hardening gate note: the final decoder now also rejects a non-null cursor, nonzero unreadable item/directory counts, non-full projection, missing/wrong output contract or command, over-budget/compacted/omitted output, missing include+amount+cost proof, and budget truncation/omission disclosures. The exact final local gate passed 121 tests with 50/50 documented declarations, zero production vulnerabilities, and a nine-file pack. Literal configured-source coverage is 93.32% lines, 81.00% branches, and 95.33% functions, so pm-beads-cjey remains open and this is not a 100/100/100/100 claim. Final fresh packed npm+npx and Bun+bunx trackers on pm 2026.8.21 each emitted one JSONL row, 35 stderr bytes, and no host summary or alias diagnostic."
+  "2026-08-21T05:46:27.942Z",codex,"PR #74 opened at exact initial head e8c1ef0bf1d1e93b084a9db87fb6001ce441cf7b. The PR body links this item, the packed-stdout regression, and both independent release blockers through durable post-merge main-branch .toon URLs."
 files[8]{path,scope,note}:
   .github/workflows/release.yml,project,Canonical local changelog commands
   index.ts,project,Canonical complete workspace read and fail-closed receipts
@@ -40,7 +41,8 @@ files[8]{path,scope,note}:
   test/smoke.test.ts,project,Completeness and real host regressions
 tests[1]{command,scope,timeout_seconds,note}:
   "npm run release:check",project,300,Full repository release gate including typecheck build docstrings coverage audit pack and changelog
-docs[2]{path,scope,note}:
+docs[3]{path,scope,note}:
+  "https://github.com/unbraind/pm-beads/pull/74",global,Implementation and review PR
   "https://github.com/unbraind/pm-cli-companion/blob/main/.agents/pm/issues/pm-cli-website-cbyb.toon",global,Fleet canonical list migration
   "https://github.com/unbraind/pm-cli-companion/blob/main/.agents/pm/issues/pm-cli-website-rz49.toon",global,Fleet manifest compatibility remediation
 body: ""
