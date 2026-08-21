@@ -175,7 +175,7 @@ the workspace (from a prior import, matched on its `[bead_id]` provenance) is
 downgraded from an error to a `cross_workspace_dependency` warning, since it
 will resolve at import time. A dependency present in neither the file nor the
 workspace stays a hard error. The workspace is read via the SDK item-store
-(`listAllFrontMatter`), falling back to canonical `pm list --all --json` with a
+(`listAllItemMetadata`), falling back to canonical `pm list --all --json` with a
 full projection and explicit unbounded output budget and row limit for
 standalone installs. The fallback rejects incomplete, malformed, omitted,
 count-inconsistent, identity-less, or duplicate-ID envelopes before import,
