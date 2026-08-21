@@ -6,7 +6,7 @@
   "entry": "./dist/index.js",
   "priority": 50,
   "manifest_version": 1,
-  "pm_min_version": "2026.8.15",
+  "pm_min_version": "2026.8.20",
   "trusted": true,
   "sandbox_profile": "restricted",
   "permissions": {
@@ -21,8 +21,5 @@
     "commands",
     "schema",
     "importers"
-  ],
-  "pm": {
-    "compatibility": "v2"
-  }
+  ]
 }

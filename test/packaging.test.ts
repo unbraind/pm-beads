@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import {
+  checkExtensionManifestCompatibility,
+  type ExtensionManifestCompatibilityManifest,
+} from "@unbrained/pm-cli/sdk";
 
 /**
  * Shape of the fields this suite asserts on. Only the three dependency maps
@@ -11,15 +15,25 @@ interface DependencyManifest {
   readonly dependencies?: Readonly<Record<string, string>>;
   readonly devDependencies?: Readonly<Record<string, string>>;
   readonly peerDependencies?: Readonly<Record<string, string>>;
+  readonly scripts?: Readonly<Record<string, string>>;
 }
 
 /** The published manifest, read from disk rather than imported so the assertions run against the same bytes npm publishes. */
 const manifest = JSON.parse(
   readFileSync(new URL("../package.json", import.meta.url), "utf8"),
 ) as DependencyManifest;
+/** Release workflow text inspected for host-owned changelog read controls. */
+const releaseWorkflow = readFileSync(
+  new URL("../.github/workflows/release.yml", import.meta.url),
+  "utf8",
+);
 
 /** The host CLI package whose placement in the manifest this suite governs. */
 const HOST_CLI = "@unbrained/pm-cli";
+/** Canonical-list behavior floor advertised to consumers. */
+const REQUIRED_MINIMUM_VERSION = "2026.8.20";
+/** Exact host version exercised by this checkout's gates. */
+const REQUIRED_DEVELOPMENT_VERSION = "2026.8.21";
 
 /**
  * An exact version: digits and dots only, with no range operator, so npm
@@ -89,16 +103,16 @@ test("the host CLI is declared as a peer dependency and never as a runtime depen
   // statement into a lockstep release dependency.
   //
   // The thing actually worth excluding is the known-bad 2026.8.14, whose
-  // `list-all` silently returned 10 of 682 items. A floor expresses exactly that
+  // Hosts before the canonical complete-read contract could silently truncate.
   // and nothing more.
   assert.match(
     peer,
     MINIMUM_VERSION_RANGE,
-    `${HOST_CLI} must declare a ">=x.y.z" floor, not "${peer}": an exact peer pin makes every later CLI patch a peer conflict for consumers, while a floor still excludes the 2026.8.14 truncated-\`list-all\` regression`,
+    `${HOST_CLI} must declare a ">=x.y.z" floor, not "${peer}": an exact peer pin makes every later CLI patch a peer conflict for consumers`,
   );
   assert.ok(
-    compareVersions(peer.replace(/^>=/, ""), "2026.8.15") >= 0,
-    `${HOST_CLI} peer floor "${peer}" must be at least 2026.8.15: 2026.8.14 and earlier either truncate \`list-all\` to 10 items or predate the completeness receipt this package refuses on`,
+    compareVersions(peer.replace(/^>=/, ""), REQUIRED_MINIMUM_VERSION) >= 0,
+    `${HOST_CLI} peer floor "${peer}" must be at least ${REQUIRED_MINIMUM_VERSION}: older hosts predate the canonical complete-read contract`,
   );
 });
 
@@ -131,6 +145,7 @@ test("the host CLI dev dependency is pinned to an exact version at or above the 
     EXACT_VERSION,
     `${HOST_CLI} must be pinned exactly, not declared as the range "${declared}": the gate verdict depends on which CLI version runs it`,
   );
+  assert.equal(declared, REQUIRED_DEVELOPMENT_VERSION, "development must exercise the currently approved exact host");
 
   // The dev pin must SATISFY the peer floor, not equal it. Equality would force
   // a lockstep edit of the consumer-facing floor on every routine Dependabot
@@ -157,7 +172,8 @@ test("the host CLI dev dependency is pinned to an exact version at or above the 
  * disagrees. This package shipped exactly that: a manifest still advertising
  * `2026.7.28` while the code refused on a completeness receipt that only exists
  * from `2026.8.15`, meaning a 2026.7.28 host would load an extension that
- * cannot work against it. This test binds the two declarations together.
+ * cannot work against it. The current 2026.8.20 floor additionally guarantees
+ * the canonical complete-read contract. This test binds the declarations.
  */
 test("the manifest host floor matches the package peer floor", () => {
   const extensionManifest = JSON.parse(
@@ -170,4 +186,36 @@ test("the manifest host floor matches the package peer floor", () => {
     peer.replace(/^>=/, ""),
     `manifest.json pm_min_version "${extensionManifest.pm_min_version}" must equal the ${HOST_CLI} peer floor "${peer}": they are the same claim to two different installers`,
   );
+  assert.equal(extensionManifest.pm_min_version, REQUIRED_MINIMUM_VERSION);
+});
+
+test("the complete raw manifest satisfies the public SDK at minimum and development hosts", () => {
+  const rawManifest = JSON.parse(
+    readFileSync(new URL("../manifest.json", import.meta.url), "utf8"),
+  ) as ExtensionManifestCompatibilityManifest;
+  assert.deepEqual(
+    checkExtensionManifestCompatibility(rawManifest, { pmVersion: REQUIRED_MINIMUM_VERSION }),
+    { compatible: true, findings: [], pmVersion: REQUIRED_MINIMUM_VERSION },
+  );
+  assert.deepEqual(
+    checkExtensionManifestCompatibility(rawManifest, { pmVersion: REQUIRED_DEVELOPMENT_VERSION }),
+    { compatible: true, findings: [], pmVersion: REQUIRED_DEVELOPMENT_VERSION },
+  );
+});
+
+test("every changelog and release-note read uses the local CLI with unbounded host controls", () => {
+  for (const name of ["changelog", "changelog:full", "changelog:check", "release:notes"]) {
+    const script = manifest.scripts?.[name];
+    assert.ok(script, `package.json must declare ${name}`);
+    assert.match(script, /--pm-bin \.\/node_modules\/\.bin\/pm/u);
+    assert.match(script, /--pm-arg=--output-budget\s+--pm-arg=unbounded/u);
+    assert.match(script, /--pm-arg=--output-limit\s+--pm-arg=unbounded/u);
+  }
+  const commands = releaseWorkflow.split("\n").filter((line) => line.includes("npx pm-changelog"));
+  assert.equal(commands.length, 3);
+  for (const command of commands) {
+    assert.match(command, /--pm-bin \.\/node_modules\/\.bin\/pm/u);
+    assert.match(command, /--pm-arg=--output-budget\s+--pm-arg=unbounded/u);
+    assert.match(command, /--pm-arg=--output-limit\s+--pm-arg=unbounded/u);
+  }
 });

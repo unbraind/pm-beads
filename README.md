@@ -175,7 +175,11 @@ the workspace (from a prior import, matched on its `[bead_id]` provenance) is
 downgraded from an error to a `cross_workspace_dependency` warning, since it
 will resolve at import time. A dependency present in neither the file nor the
 workspace stays a hard error. The workspace is read via the SDK item-store
-(`listAllFrontMatter`), falling back to `pm list-all` for standalone installs.
+(`listAllFrontMatter`), falling back to canonical `pm list --all --json` with a
+full projection and explicit unbounded output budget and row limit for
+standalone installs. The fallback rejects incomplete, malformed, omitted,
+count-inconsistent, identity-less, or duplicate-ID envelopes before import,
+export, or workspace diff consumes any row.
 Pass `--no-workspace` to restrict the check to the file alone.
 
 ```bash
@@ -206,6 +210,10 @@ pm beads export --filter-status open         # only export open items
 pm beads export --filter-type Issue          # only export items of a given type
 pm beads export --no-preserve-ids            # emit pm ids instead of the original Beads ids
 ```
+
+The default stdout stream contains only Beads JSONL records, so it can be
+piped directly into JSONL consumers. The human-readable export count is sent
+to stderr; no global `--quiet` flag is required for correctness.
 
 **Flags**
 

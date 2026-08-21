@@ -1,0 +1,37 @@
+id: pm-beads-y76h
+title: Keep beads export stdout as pure JSONL without host summary output
+description: "A real packed npm acceptance run against pm CLI 2026.8.21 showed that default pm beads export writes valid Beads JSONL directly and then returns an export summary object. The host renders that object as a second non-JSON line on stdout, so the documented machine-readable stream is not valid JSONL unless callers know to add the unrelated global --quiet flag."
+type: Issue
+status: closed
+priority: 0
+tags[5]: agent-ux,jsonl,packed-acceptance,stdout,tdd
+created_at: "2026-08-21T05:30:16.511Z"
+updated_at: "2026-08-21T05:37:48.298Z"
+closed_at: "2026-08-21T05:37:48.276Z"
+completed_at: "2026-08-21T05:37:48.276Z"
+author: codex
+estimated_minutes: 90
+acceptance_criteria: Add a red-first real SDK-dispatch regression test proving the stdout exporter returns no renderable host result while direct JSONL bytes remain the sole stdout payload; preserve structured summary returns for dry-run and --output modes; rerun the full release gate; prove packed npm and Bun commands without --quiet each emit exactly one parseable JSONL record and no rendered summary; link the originating canonical-host item and exact evidence.
+risk: high
+confidence: high
+reporter: codex
+severity: high
+environment: pm-beads branch fix/canonical-complete-read-current-host-2026-8-21; packed pm-beads with pm CLI 2026.8.21 installed through npm
+repro_steps: Pack pm-beads; install it and @unbrained/pm-cli@2026.8.21 in a fresh project; initialize a tracker; create one item; run npx pm beads export without --quiet; parse every nonblank stdout line as JSON.
+resolution: Return the public SDK host-suppression marker only for direct stdout mode; preserve structured results for dry-run and file output.
+expected_result: Default stdout contains only Beads JSONL records; informational counts stay on stderr and host rendering adds no second payload.
+actual_result: The real SDK-dispatch regression is green and separate packed npm and Bun projects each emitted exactly one JSONL row with only the 35-byte informational stderr line.
+component: Beads exporter command result contract
+customer_impact: Agents piping the documented default export into JSONL consumers receive corrupt machine-readable output.
+dependencies[1]{id,kind,created_at,author,source_kind,author_source}:
+  pm-beads-1uz3,discovered_from,"2026-08-21T05:30:16.511Z",codex,"cli:create:dep",detected
+comments[1]{created_at,author,text}:
+  "2026-08-21T05:36:29.463Z",codex,"Red-first evidence: with the prior exporter result, the new SDK-dispatch test failed because the handler returned { exported: 1 }. Returning undefined made the in-process test green but packed npm acceptance still emitted a trailing {} line. Replacing that guess with the public SDK suppressHostOutput() primitive made both the dispatch test and installed-host behavior correct. Fresh packed npm+npx and Bun+bunx projects, each using pm CLI 2026.8.21 and one independent real tracker item, emitted exactly one parseable JSONL row without --quiet, no host summary payload, 35 stderr bytes for the legitimate export count, and no deprecated/legacy alias diagnostic."
+files[3]{path,scope,note}:
+  index.ts,project,Use the SDK suppression contract after direct JSONL stdout
+  README.md,project,Document the clean default stdout contract
+  test/smoke.test.ts,project,Real extension-dispatch regression for pure stdout
+tests[1]{command,scope,timeout_seconds,note}:
+  "PM_PATH=/tmp/pm-beads-test PM_GLOBAL_PATH=/tmp/pm-beads-test-global node --test --test-name-pattern \"stdout export returns no second host-renderable payload\" test/smoke.test.ts",project,30,Real SDK dispatcher preserves the JSONL bytes and returns the public suppression marker
+close_reason: Default stdout export now uses the public SDK suppressHostOutput contract after writing JSONL; red-first dispatch coverage and fresh packed npm+npx plus Bun+bunx acceptance prove a single parseable row without --quiet or alias diagnostics.
+body: ""
