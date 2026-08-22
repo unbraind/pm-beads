@@ -1,0 +1,23 @@
+id: pm-beads-rgm0
+title: Alert on daily release failure and require merge drivers in CI
+description: "Two CI fixes motivated by five unnoticed failed daily releases across the fleet (expired npm token, 2026-08-17..2026-08-22): (1) release.yml gains an if:failure() job that opens or updates one deduplicated tracking issue (label release-failure, stable title) with failing job, run URL, commit SHA and date; issues:write only; can never block a release. (2) ci.yml installs clone-local pm merge drivers before the health gate and passes --require-merge-drivers so a fresh clone without driver config fails the gate instead of silently passing."
+type: Chore
+status: closed
+priority: 1
+tags: []
+created_at: "2026-08-22T19:01:34.144Z"
+updated_at: "2026-08-22T19:02:53.956Z"
+closed_at: "2026-08-22T19:02:53.923Z"
+completed_at: "2026-08-22T19:02:53.923Z"
+claim_principal: ox-alpha
+author: ox-alpha
+notes[1]{created_at,author,text}:
+  "2026-08-22T19:02:08.435Z",ox-alpha,"Gate proof: removed all five merge.pm-* sections, ./node_modules/.bin/pm health --strict-exit --require-merge-drivers exited 1; after ./node_modules/.bin/pm merge install it exited 0; plain --strict-exit 0 both ways."
+files[2]{path,scope}:
+  .github/workflows/ci.yml,project
+  .github/workflows/release.yml,project
+tests[2]{command,path,scope,note}:
+  python3 .agents/pm/verify-release-yaml.py,.github/workflows/release.yml,project,"release.yml parses; alert job has if: failure(), needs release, issues:write; ci gate installs drivers before health and passes --require-merge-drivers"
+  "grep -q -- --require-merge-drivers .github/workflows/ci.yml && grep -q \"merge=pm-item-toon\" .gitattributes && ./node_modules/.bin/pm merge install >/dev/null 2>&1 && git config --local --get-regexp ^merge\\\\.pm | grep -q merge.pm-item-toon",.,project,ci gate requires merge drivers; .gitattributes declares them; install provisions clone-local config
+close_reason: "Alert job added to release.yml; ci.yml installs merge drivers and passes --require-merge-drivers; gate proven RC=1 without drivers, RC=0 after install; recorded linked tests pass"
+body: ""

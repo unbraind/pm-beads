@@ -14,6 +14,7 @@
 
 ### Other
 
+- Alert on daily release failure and require merge drivers in CI ([pm-beads-rgm0](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-rgm0.toon))
 - Resolve CodeRabbit findings on PR 75 ([pm-beads-bfw8](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-bfw8.toon))
 - Resolve PR 75 review thread and history drift on lajb ([pm-beads-1bgo](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-1bgo.toon))
 
