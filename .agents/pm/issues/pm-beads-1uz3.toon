@@ -1,0 +1,53 @@
+id: pm-beads-1uz3
+title: Canonicalize complete workspace reads and adopt the current pm host contract
+description: "pm-beads still invokes deprecated list-all with legacy full/include-body aliases, accepts some unverifiable completeness receipts, keeps ignored manifest.pm metadata, exact-pins development to pm 2026.8.15, and leaves most pm-changelog reads bounded or host-ambiguous. Migrate the import/export reference to the current canonical CLI/SDK contract without conflating independent privacy or full-coverage blockers."
+type: Issue
+status: closed
+priority: 0
+tags[5]: agent-ux,compatibility,completeness,latest-cli,tdd
+created_at: "2026-08-21T05:20:59.581Z"
+updated_at: "2026-08-21T06:02:17.791Z"
+closed_at: "2026-08-21T06:02:17.773Z"
+completed_at: "2026-08-21T06:02:17.773Z"
+claim_principal: codex
+author: codex
+estimated_minutes: 360
+acceptance_criteria: Create red-first tests for exact canonical pm list --all argv with output-include full plus unbounded output budget and limit; fail closed on absent or malformed completeness omission count total row identity and duplicate receipts; remove only ignored manifest metadata and validate the complete raw manifest through the public SDK at the minimum and current development hosts; exact-pin development to pm CLI/SDK 2026.8.21 while retaining a justified minimum behavior floor; route every package and release-workflow changelog read through the project CLI with both output bounds disabled; update dependencies to latest compatible published versions; run the full repository release gate and report its literal non-100 coverage dimensions; prove packed npm and Bun behavior on separate real trackers with empty alias-deprecation stderr; link CI PR and exact-head reviewer outcomes; do not merge or publish while pm-beads-lajb or pm-beads-cjey remains open
+risk: high
+confidence: high
+reporter: codex
+severity: high
+environment: pm-beads main d4f36b5; installed and npm-latest pm CLI/SDK 2026.8.21; npm pm-beads 2026.8.16
+repro_steps: Run the real workspace read and inspect child stderr for list-all deprecation; inspect readPmItems argv and receipt decoder; pass complete manifest.json to the public 2026.8.21 SDK; inspect package and workflow changelog invocations.
+resolution: "Replaced deprecated workspace reads with the current fail-closed complete-list contract, adopted pm CLI/SDK 2026.8.21 with a 2026.8.20 floor, removed ignored manifest metadata, unbounded every changelog read, and used the SDK output-suppression primitive for direct JSONL."
+expected_result: pm-beads consumes only verifiably complete workspace corpora on the current CLI/SDK contract and provides clean installed npm/Bun behavior without weakening independent release gates.
+actual_result: "121 tests and all repository release checks pass; fresh packed npm+npx and Bun+bunx trackers each emitted one clean JSONL row; exact-head Greptile passed twice, first-round CodeRabbit findings were fully dispositioned and resolved, and unavailable/silent reviewers are documented without being counted as approval."
+component: Beads workspace integration and release plumbing
+customer_impact: Import and export agents depend on a complete tracker corpus; deprecated or unverifiable reads can silently omit work or pollute machine-readable stderr.
+dependencies[2]{id,kind,created_at,author,source_kind,author_source}:
+  pm-beads-cjey,related,"2026-08-21T05:20:59.581Z",codex,"cli:create:dep",detected
+  pm-beads-lajb,related,"2026-08-21T05:20:59.581Z",codex,"cli:create:dep",detected
+comments[6]{created_at,author,text}:
+  "2026-08-21T05:36:31.005Z",codex,"Implementation state before PR: canonical pm list --all now requests JSON plus unbounded output budget and limit and output-include full; the decoder rejects missing or malformed completeness, omission, count, total, row, blank-ID, and duplicate-ID receipts. The complete raw manifest validates through the public SDK at both the 2026.8.20 floor and exact 2026.8.21 development host. All package/workflow changelog reads use the local CLI with both bounds disabled. Real packed npm+npx and Bun+bunx acceptance against separate one-item trackers is clean. The latest full gate must still be rerun after the final SDK suppression edit; the distinct pm-beads-cjey 100/100/100/100 blocker and pm-beads-lajb reachable-history privacy blocker remain open and prohibit merge/publication."
+  "2026-08-21T05:37:48.771Z",codex,"Final local gate after the SDK suppression edit: 120 tests passed; typecheck/build/docstring gate passed with 50/50 declarations; coverage reported 93.16% lines, 80.58% branches, and 95.28% functions over the single configured source index.ts; coverage thresholds passed but this is explicitly not 100/100/100/100 and pm-beads-cjey remains the blocker. Production audit found zero vulnerabilities, the nine-file pack dry-run passed, and changelog check was current. Fresh packed npm+npx and Bun+bunx acceptance each emitted one parseable row with no default-host payload or alias diagnostic."
+  "2026-08-21T05:45:04.645Z",codex,"Superseding the earlier pre-hardening gate note: the final decoder now also rejects a non-null cursor, nonzero unreadable item/directory counts, non-full projection, missing/wrong output contract or command, over-budget/compacted/omitted output, missing include+amount+cost proof, and budget truncation/omission disclosures. The exact final local gate passed 121 tests with 50/50 documented declarations, zero production vulnerabilities, and a nine-file pack. Literal configured-source coverage is 93.32% lines, 81.00% branches, and 95.33% functions, so pm-beads-cjey remains open and this is not a 100/100/100/100 claim. Final fresh packed npm+npx and Bun+bunx trackers on pm 2026.8.21 each emitted one JSONL row, 35 stderr bytes, and no host summary or alias diagnostic."
+  "2026-08-21T05:46:27.942Z",codex,"PR #74 opened at exact initial head e8c1ef0bf1d1e93b084a9db87fb6001ce441cf7b. The PR body links this item, the packed-stdout regression, and both independent release blockers through durable post-merge main-branch .toon URLs."
+  "2026-08-21T05:57:37.883Z",codex,"First exact-head review at 425c30b: Greptile returned 5/5 with no actionable defect. CodeRabbit posted four findings: the no-merge gate was confirmed; the stale README listAllFrontMatter name was accepted and corrected to listAllItemMetadata; accepting null/false budget disclosure sentinels was declined because the installed SDK types only permit a truncation object or omitted_result:true and its complete-list inspector treats any defined truncation disclosure as compaction; a direct doesNotThrow test was declined as duplicate because the named real-envelope happy-path test already traverses assertListAllComplete through production and proves all rows. Sourcery was weekly-quota unavailable, Cubic monthly-quota unavailable, and Gemini remained silent; none count as approval. Node 22/26, Semgrep, DeepScan, Hound, and Greptile checks were green; CodeRabbit completed with the dispositions above."
+  "2026-08-21T06:02:17.393Z",codex,"Second review round at cfede69727570c458956cfbe9d90468f3ac371d1 after the README correction: Greptile returned a second exact-head 5/5 with no blocking failure. Node 22/26, Semgrep, DeepScan, and Hound were green. CodeRabbit's second-round check was explicitly rate-limited, not approval; its first-round four findings were all replied to and up/down-voted, the stale SDK name was fixed, the no-merge gate retained, both evidence-backed declines were accepted by CodeRabbit, and all four threads are resolved. Sourcery and Cubic remained quota-unavailable; Gemini remained silent. Every bot artifact was individually reacted to and answered. This review state is sufficient to close this implementation tranche but not to merge or publish while pm-beads-lajb or pm-beads-cjey remains open."
+files[8]{path,scope,note}:
+  .github/workflows/release.yml,project,Canonical local changelog commands
+  index.ts,project,Canonical complete workspace read and fail-closed receipts
+  manifest.json,project,Current host floor and recognized metadata
+  package-lock.json,project,Resolved current dependency graph
+  package.json,project,Current SDK and unbounded changelog reads
+  README.md,project,Complete-read and JSONL behavior documentation
+  test/packaging.test.ts,project,Raw manifest and exact host floor assertions
+  test/smoke.test.ts,project,Completeness and real host regressions
+tests[1]{command,scope,timeout_seconds,note}:
+  "npm run release:check",project,300,Full repository release gate including typecheck build docstrings coverage audit pack and changelog
+docs[3]{path,scope,note}:
+  "https://github.com/unbraind/pm-beads/pull/74",global,Implementation and review PR
+  "https://github.com/unbraind/pm-cli-companion/blob/main/.agents/pm/issues/pm-cli-website-cbyb.toon",global,Fleet canonical list migration
+  "https://github.com/unbraind/pm-cli-companion/blob/main/.agents/pm/issues/pm-cli-website-rz49.toon",global,Fleet manifest compatibility remediation
+close_reason: "Canonical complete reads, current host compatibility, unbounded changelog plumbing, clean JSONL stdout, full local gates, packed npm/Bun acceptance, and reviewer dispositions are implemented and recorded; merge/publication remain prohibited by pm-beads-lajb and pm-beads-cjey."
+body: ""

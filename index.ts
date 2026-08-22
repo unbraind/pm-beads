@@ -38,6 +38,7 @@ import type {
   Importer,
   SchemaFieldDefinition,
 } from "@unbrained/pm-cli/sdk/authoring";
+import { suppressHostOutput } from "@unbrained/pm-cli/sdk";
 // Top-level SDK runtime import. This fleet once believed extensions could not
 // resolve `@unbrained/pm-cli` at runtime and hid SDK access behind inline
 // dynamic-import shims laundered through `any`; that premise was disproven (a
@@ -976,7 +977,7 @@ export function validateBeadsText(
 // `beads validate` to cross-check dependency references against the workspace.
 //
 // Prefers the SDK item-store (`listAllItemMetadata`) per the SDK contract and
-// falls back to spawning `pm list-all` (the same data path the exporter uses)
+// falls back to spawning canonical `pm list --all` (the exporter data path)
 // when the store read fails. Either way a failure degrades to "no workspace
 // data" so validation still runs.
 //
@@ -1745,14 +1746,14 @@ function describePmReadFailure(error: Error, limitBytes: number): string {
   return `pm read failed: ${error.message}`;
 }
 
-/** Subset of the `pm list-all --json` envelope the completeness gate reads.
+/** Subset of the `pm list --all --json` envelope the completeness gate reads.
  *
- * `items` is typed loosely (`PmItem[]`) because the CLI is the authority on its
- * own row shape; the fields below it are the completeness receipt (2026.8.15
- * envelope) whose signals this package refuses to consume silently. */
+ * `items` is typed as unknown rows because the subprocess boundary is untrusted;
+ * the fields below it are canonical completeness receipts whose signals this
+ * package refuses to consume silently. */
 export interface ListAllEnvelope {
   /** Rows the CLI actually returned. Length can be less than {@link ListAllEnvelope.total}. */
-  items?: PmItem[];
+  items?: unknown[];
   /** Number of rows in `items` as reported by the CLI. */
   count?: number;
   /** Number of rows that exist in the workspace. */
@@ -1761,6 +1762,8 @@ export interface ListAllEnvelope {
   truncated?: boolean;
   /** True when more rows exist past a cursor boundary. */
   has_more?: boolean;
+  /** Continuation cursor; a complete unpaged response has none. */
+  next_cursor?: unknown;
   /** Readability receipt for the directories/items backing the list. */
   completeness?: {
     status?: string;
@@ -1771,60 +1774,79 @@ export interface ListAllEnvelope {
   omission_receipt?: {
     has_omissions?: boolean;
     omitted_field_group_count?: number;
-    omitted_field_groups?: string[];
+    omitted_field_groups?: unknown[];
   };
+  /** Projection receipt proving the requested complete row shape. */
+  projection?: { mode?: unknown };
+  /** Universal output receipt proving the host did not compact the response. */
+  read_output?: {
+    contract_version?: unknown;
+    command?: unknown;
+    requested_dimensions?: unknown;
+    within_budget?: unknown;
+    strings_compacted?: unknown;
+    rows_compacted?: unknown;
+    result_omitted?: unknown;
+  };
+  /** Budget truncation disclosure, which must be absent for this consumer. */
+  output_budget_truncation?: unknown;
+  /** Budget omission disclosure, which must be absent for this consumer. */
+  output_budget_exceeded?: unknown;
 }
 
 /**
- * Refuse an incomplete `pm list-all` envelope instead of consuming it.
+ * Refuse an incomplete `pm list --all` envelope instead of consuming it.
  *
  * Reads `.items` without consulting the envelope's completeness receipt is how
  * this package once shipped a 10-item "successful" export from a 682-item
  * workspace: pm 2026.8.14 defaulted to a truncated list and nothing here
- * checked. The 2026.8.15 envelope carries four independent incompleteness
+ * checked. The envelope carries independent incompleteness
  * signals, and any one of them means the rows in `items` are NOT the whole
  * workspace — so this throws (never returns a partial list, never logs and
  * continues) naming the signal that tripped plus the `count`/`total` figures:
  *
- * - `truncated === true` — the row list was cut short (output budget, limit);
- * - `has_more === true` — rows exist past the returned cursor boundary;
- * - `completeness.status !== "complete"` — items/directories were unreadable
- *   (a missing receipt also trips this: an unverifiable answer is not complete);
- * - `omission_receipt.has_omissions === true` — field groups were dropped from
- *   the projection, so rows are present but degraded.
+ * - pagination and count receipts prove every row is present exactly once;
+ * - completeness receipts prove no item or directory was unreadable;
+ * - projection and omission receipts prove every requested field is present;
+ * - output receipts prove the response was not budget-compacted or omitted.
  *
  * Thrown errors are {@link CommandError} so pm's runtime turns them into a
  * clean nonzero exit. Paging is deliberately NOT attempted: this package has
  * no legitimate use for a partial page, so refusing loudly is both simpler and
  * safer than a paging loop that could itself silently drop rows.
  *
- * @param envelope - Parsed `pm list-all --json` output (any shape; non-envelope
+ * @param envelope - Parsed `pm list --all --json` output (any shape; non-envelope
  *                  input trips the completeness signal).
  * @throws {@link CommandError} naming the first tripped signal and the counts.
  */
 export function assertListAllComplete(envelope: unknown): void {
-  const env = (envelope ?? {}) as ListAllEnvelope;
-  // count/total are reported straight from the envelope when present; fall
-  // back to counting rows so a hand-shaped envelope still reports honest
-  // figures instead of `undefined`.
-  const count = typeof env.count === "number"
-    ? env.count
-    : Array.isArray(env.items) ? env.items.length : 0;
-  const total = typeof env.total === "number" ? env.total : count;
-  const counts = `count ${count} of total ${total}`;
-  if (env.truncated === true) {
+  if (typeof envelope !== "object" || envelope === null || Array.isArray(envelope)) {
     throw new IncompleteWorkspaceReadError(
-      `Refusing incomplete \`pm list-all\` answer: truncated=true (${counts}). `
+      "Refusing unverifiable `pm list --all` answer: the response must be a top-level object with completeness receipts.",
+    );
+  }
+  const env = envelope as ListAllEnvelope;
+  const count = env.count;
+  const total = env.total;
+  const counts = `count ${count} of total ${total}`;
+  if (env.truncated !== false) {
+    throw new IncompleteWorkspaceReadError(
+      `Refusing incomplete \`pm list --all\` answer: truncated=${JSON.stringify(env.truncated) ?? "(missing)"} (${counts}). `
       + "The item list was cut short (output budget or limit); a partial export "
       + "would report success while missing items. Narrow the operation or "
       + "raise the output budget, then retry.",
     );
   }
-  if (env.has_more === true) {
+  if (env.has_more !== false) {
     throw new IncompleteWorkspaceReadError(
-      `Refusing incomplete \`pm list-all\` answer: has_more=true (${counts}). `
+      `Refusing incomplete \`pm list --all\` answer: has_more=${JSON.stringify(env.has_more) ?? "(missing)"} (${counts}). `
       + "Rows exist beyond the returned page; consuming the page as the whole "
       + "workspace would silently drop them.",
+    );
+  }
+  if (env.next_cursor !== null) {
+    throw new IncompleteWorkspaceReadError(
+      `Refusing unverifiable \`pm list --all\` answer: next_cursor must be exactly null; received ${JSON.stringify(env.next_cursor) ?? "(missing)"}.`,
     );
   }
   if (env.completeness?.status !== "complete") {
@@ -1832,19 +1854,120 @@ export function assertListAllComplete(envelope: unknown): void {
     const unreadable = `unreadable_item_count=${env.completeness?.unreadable_item_count ?? 0}`
       + `, unreadable_directory_count=${env.completeness?.unreadable_directory_count ?? 0}`;
     throw new IncompleteWorkspaceReadError(
-      `Refusing incomplete \`pm list-all\` answer: completeness.status=${status} `
+      `Refusing incomplete \`pm list --all\` answer: completeness.status=${status} `
       + `(${unreadable}; ${counts}). Some workspace items could not be read, so `
       + "the returned list is not the whole workspace.",
     );
   }
-  if (env.omission_receipt?.has_omissions === true) {
-    const groups = env.omission_receipt?.omitted_field_groups ?? [];
+  if (env.completeness.unreadable_item_count !== 0) {
     throw new IncompleteWorkspaceReadError(
-      `Refusing incomplete \`pm list-all\` answer: omission_receipt.has_omissions=true `
-      + `(omitted_field_groups: ${groups.length ? groups.join(", ") : "(none listed)"}; ${counts}). `
+      "Refusing unverifiable `pm list --all` answer: completeness.unreadable_item_count must be exactly 0.",
+    );
+  }
+  if (env.completeness.unreadable_directory_count !== 0) {
+    throw new IncompleteWorkspaceReadError(
+      "Refusing unverifiable `pm list --all` answer: completeness.unreadable_directory_count must be exactly 0.",
+    );
+  }
+  if (typeof env.omission_receipt !== "object" || env.omission_receipt === null) {
+    throw new IncompleteWorkspaceReadError(
+      `Refusing unverifiable \`pm list --all\` answer: omission_receipt must be an object (${counts}).`,
+    );
+  }
+  if (env.omission_receipt.has_omissions !== false) {
+    const groups = Array.isArray(env.omission_receipt.omitted_field_groups)
+      ? env.omission_receipt.omitted_field_groups.map(String)
+      : [];
+    throw new IncompleteWorkspaceReadError(
+      `Refusing unverifiable \`pm list --all\` answer: omission_receipt.has_omissions must be exactly false; `
+      + `received ${JSON.stringify(env.omission_receipt.has_omissions) ?? "(missing)"}; `
+      + `omitted_field_groups: ${groups.length ? groups.join(", ") : "(none listed)"} (${counts}). `
       + "Field groups were dropped from the projection, so the rows are present "
       + "but degraded; re-read without the field-omitting options.",
     );
+  }
+  if (env.omission_receipt.omitted_field_group_count !== 0) {
+    throw new IncompleteWorkspaceReadError(
+      "Refusing unverifiable `pm list --all` answer: omission_receipt.omitted_field_group_count must be exactly 0.",
+    );
+  }
+  if (!Array.isArray(env.omission_receipt.omitted_field_groups)
+    || env.omission_receipt.omitted_field_groups.length !== 0) {
+    throw new IncompleteWorkspaceReadError(
+      "Refusing unverifiable `pm list --all` answer: omission_receipt.omitted_field_groups must be an empty array.",
+    );
+  }
+  if (env.projection?.mode !== "full") {
+    throw new IncompleteWorkspaceReadError(
+      `Refusing unverifiable \`pm list --all\` answer: projection.mode must be exactly full; received ${JSON.stringify(env.projection?.mode) ?? "(missing)"}.`,
+    );
+  }
+  if (env.read_output?.contract_version !== 1) {
+    throw new IncompleteWorkspaceReadError(
+      "Refusing unverifiable `pm list --all` answer: read_output.contract_version must be exactly 1.",
+    );
+  }
+  if (env.read_output.command !== "list") {
+    throw new IncompleteWorkspaceReadError(
+      "Refusing unverifiable `pm list --all` answer: read_output.command must be exactly list.",
+    );
+  }
+  if (env.read_output.within_budget !== true) {
+    throw new IncompleteWorkspaceReadError(
+      "Refusing unverifiable `pm list --all` answer: read_output.within_budget must be exactly true.",
+    );
+  }
+  for (const field of ["strings_compacted", "rows_compacted", "result_omitted"] as const) {
+    if (env.read_output[field] !== false) {
+      throw new IncompleteWorkspaceReadError(
+        `Refusing unverifiable \`pm list --all\` answer: read_output.${field} must be exactly false.`,
+      );
+    }
+  }
+  const requestedDimensions = env.read_output.requested_dimensions;
+  if (!Array.isArray(requestedDimensions)
+    || !["include", "amount", "cost"].every((dimension) => requestedDimensions.includes(dimension))) {
+    throw new IncompleteWorkspaceReadError(
+      "Refusing unverifiable `pm list --all` answer: read_output.requested_dimensions must include include, amount, and cost.",
+    );
+  }
+  if ("output_budget_truncation" in env || "output_budget_exceeded" in env) {
+    throw new IncompleteWorkspaceReadError(
+      "Refusing unverifiable `pm list --all` answer: a budget truncation or omission disclosure was present.",
+    );
+  }
+  if (!Number.isSafeInteger(count) || (count as number) < 0) {
+    throw new IncompleteWorkspaceReadError(
+      `Refusing unverifiable \`pm list --all\` answer: count must be a non-negative safe integer; received ${JSON.stringify(count) ?? "(missing)"}.`,
+    );
+  }
+  if (!Number.isSafeInteger(total) || (total as number) < 0) {
+    throw new IncompleteWorkspaceReadError(
+      `Refusing unverifiable \`pm list --all\` answer: total must be a non-negative safe integer; received ${JSON.stringify(total) ?? "(missing)"}.`,
+    );
+  }
+  if (!Array.isArray(env.items)) {
+    throw new IncompleteWorkspaceReadError(
+      "Refusing unverifiable `pm list --all` answer: envelope `items` is not an array.",
+    );
+  }
+  if (count !== total) {
+    throw new IncompleteWorkspaceReadError(`Refusing incomplete \`pm list --all\` answer: count ${count} must equal total ${total}.`);
+  }
+  if (env.items.length !== count) {
+    throw new IncompleteWorkspaceReadError(`Refusing unverifiable \`pm list --all\` answer: items.length ${env.items.length} must equal count ${count}.`);
+  }
+  const ids = new Set<string>();
+  for (const [index, item] of env.items.entries()) {
+    if (typeof item !== "object" || item === null || Array.isArray(item)) {
+      throw new IncompleteWorkspaceReadError(`Refusing unverifiable \`pm list --all\` answer: item ${index} must be an object.`);
+    }
+    const id = (item as { id?: unknown }).id;
+    if (typeof id !== "string" || id.trim().length === 0) {
+      throw new IncompleteWorkspaceReadError(`Refusing unverifiable \`pm list --all\` answer: item ${index} must have a non-empty id.`);
+    }
+    if (ids.has(id)) throw new IncompleteWorkspaceReadError(`Refusing unverifiable \`pm list --all\` answer: duplicate item id ${id}.`);
+    ids.add(id);
   }
 }
 
@@ -1861,7 +1984,7 @@ export interface PmListAllSpawnResult {
 }
 
 /**
- * Injectable seam over the `pm list-all` shell-out inside {@link readPmItems}.
+ * Injectable seam over the `pm list --all` shell-out inside {@link readPmItems}.
  *
  * A parameter defaulting to the real {@link spawnPmListAll}, so production
  * callers are unchanged while tests can substitute a canned envelope —
@@ -1883,7 +2006,7 @@ function spawnPmListAll(args: string[], maxBuffer: number): PmListAllSpawnResult
 }
 
 /**
- * Read every pm item in a workspace via `pm list-all --json`.
+ * Read every pm item in a workspace via `pm list --all --json`.
  *
  * Returns the envelope's `items` ONLY after {@link assertListAllComplete}
  * verifies the completeness receipt, so a truncated, paged, partially-read or
@@ -1896,17 +2019,16 @@ function spawnPmListAll(args: string[], maxBuffer: number): PmListAllSpawnResult
  */
 function readPmItems(pmRoot: string, spawn: PmListAllSpawn = spawnPmListAll): PmItem[] {
   const maxBuffer = pmJsonMaxBuffer();
-  // `--full --include-body` so descriptions, tags and dependency edges survive
-  // the export instead of the brief projection (which omits them).
+  // A full projection preserves descriptions, tags and dependency edges.
   //
-  // No `--limit`. Omitting it is what makes `pm list-all` return every row, and
-  // a limit here would be self-defeating: the completeness gate below refuses a
+  // Both host bounds are explicitly unbounded. A ceiling would be self-defeating:
+  // the completeness gate below refuses a
   // truncated envelope, so a hardcoded ceiling turns every workspace past that
   // size into a hard refusal of export, workspace diff and `--upsert` rather
   // than into a larger read. `opts.filter` is applied after this call, so the
   // ceiling would bound the rows read, not the rows kept.
   const result = spawn(
-    ["--path", pmRoot, "--json", "list-all", "--full", "--include-body"],
+    ["--path", pmRoot, "list", "--all", "--json", "--output-budget", "unbounded", "--output-limit", "unbounded", "--output-include", "full"],
     maxBuffer,
   );
   if (result.error) {
@@ -1922,17 +2044,10 @@ function readPmItems(pmRoot: string, spawn: PmListAllSpawn = spawnPmListAll): Pm
     // through as a successful zero-item export (or crash downstream with an
     // unclassified TypeError) — the same silent-partial failure this gate
     // exists to prevent, so classify and refuse it here.
-    const items = (parsed as ListAllEnvelope).items;
-    if (!Array.isArray(items)) {
-      throw new IncompleteWorkspaceReadError(
-        "Refusing invalid `pm list-all` answer: envelope `items` is not an array "
-        + "(completeness receipt said complete). The CLI's row payload is unusable.",
-      );
-    }
-    return items as PmItem[];
+    return (parsed as ListAllEnvelope).items as PmItem[];
   } catch (err) {
     if (err instanceof CommandError) throw err;
-    throw new CommandError("Could not parse `pm list-all --json` output.");
+    throw new CommandError("Could not parse `pm list --all --json` output.");
   }
 }
 
@@ -1988,7 +2103,7 @@ export function pmItemToBead(item: PmItem, pmToBead: Map<string, string>, preser
  * can compare a file against the live workspace without writing to stdout/a
  * file or duplicating any mapping logic.
  *
- * @param spawn - Injectable shell-out seam over the `pm list-all` read (tests
+ * @param spawn - Injectable shell-out seam over the `pm list --all` read (tests
  *                substitute a canned real envelope); defaults to the real
  *                {@link spawnPmListAll}.
  */
@@ -2020,7 +2135,7 @@ export function buildBeadsFromWorkspace(
  * Run the `beads export` pipeline: read the whole workspace, serialize it to
  * Beads JSONL, and emit to stdout or `--output` (or just report counts under
  * `--dry-run`). Delegates the workspace read to {@link buildBeadsFromWorkspace},
- * so an incomplete `list-all` answer refuses here before any bytes are written.
+ * so an incomplete `list --all` answer refuses here before any bytes are written.
  */
 function runExport(pmRoot: string, opts: { dryRun: boolean; preserveIds: boolean; output?: string; filter: RowFilter }) {
   const beads = buildBeadsFromWorkspace(pmRoot, { preserveIds: opts.preserveIds, filter: opts.filter });
@@ -2048,7 +2163,9 @@ function runExport(pmRoot: string, opts: { dryRun: boolean; preserveIds: boolean
 
   if (jsonl) process.stdout.write(jsonl);
   console.error(`Exported ${beads.length} item(s) as Beads JSONL.`);
-  return { exported: beads.length };
+  // Direct stdout is already the command's machine-readable result. Tell the
+  // host not to render a second payload after the JSONL stream.
+  return suppressHostOutput();
 }
 
 // ---------------------------------------------------------------------------

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createExtensionTestHarness, type ExtensionTestHarness } from "@unbrained/pm-cli/sdk/testing";
-import type { GlobalOptions } from "@unbrained/pm-cli/sdk";
+import { isHostOutputSuppressed, type GlobalOptions } from "@unbrained/pm-cli/sdk";
 
 import extension, {
   CommandError,
@@ -92,9 +92,9 @@ async function runImport(
 async function runExport(
   ext: ExtensionTestHarness,
   opts: { args?: readonly string[]; options?: Record<string, unknown>; pmRoot?: string; global?: Partial<GlobalOptions> },
-): Promise<Record<string, unknown>> {
+): Promise<unknown> {
   const { result } = await ext.runExporter({ exporter: "beads", ...opts, global: opts.global ?? { json: false } });
-  return result as Record<string, unknown>;
+  return result;
 }
 
 test("extension has required shape", () => {
@@ -1413,6 +1413,39 @@ test("exporter registration advertises dry-run and combined filter flags", async
   await ext.deactivate();
 });
 
+test("stdout export returns no second host-renderable payload", { skip: !hasPmCli() }, async () => {
+  const root = mkdtempSync(join(tmpdir(), "beads-stdout-"));
+  const pmRoot = join(root, ".agents", "pm");
+  mkdirSync(pmRoot, { recursive: true });
+  assert.strictEqual(spawnSync("pm", ["--path", pmRoot, "init"], { encoding: "utf-8" }).status, 0);
+  const created = spawnSync(
+    "pm",
+    ["--path", pmRoot, "create", "Task", "Machine-readable export", "--status", "open"],
+    { encoding: "utf-8" },
+  );
+  assert.strictEqual(created.status, 0, `pm create failed: ${created.stderr}`);
+
+  const ext = await harness();
+  const chunks: string[] = [];
+  const originalWrite = process.stdout.write;
+  process.stdout.write = ((chunk: string | Uint8Array) => {
+    chunks.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf-8"));
+    return true;
+  }) as typeof process.stdout.write;
+  try {
+    const result = await runExport(ext, { pmRoot, options: {} });
+    assert.ok(isHostOutputSuppressed(result), "direct JSONL output must carry the SDK host-suppression marker");
+  } finally {
+    process.stdout.write = originalWrite;
+    await ext.deactivate();
+  }
+
+  const lines = chunks.join("").trim().split("\n");
+  assert.strictEqual(lines.length, 1, "stdout must contain exactly the one exported JSONL record");
+  const bead = JSON.parse(lines[0]) as { title?: string };
+  assert.strictEqual(bead.title, "Machine-readable export");
+});
+
 test("diff registration advertises the combined filter flag", async () => {
   const ext = await harness();
   const contract = ext.assertCommandContract({ command: "beads diff", flags: ["--filter"] });
@@ -1526,9 +1559,9 @@ test("no command redeclares a host-owned global flag", async () => {
   await ext.deactivate();
 });
 
-// --- list-all completeness refusal ------------------------------------------
+// --- canonical whole-workspace completeness refusal -------------------------
 //
-// The 2026.8.14 regression this section pins: pm's `list-all --json` defaulted
+// The historical regression this section pins: a whole-workspace read defaulted
 // to a truncated answer (10 of 682 items on this host's fixture workspace) and
 // this package's exporter consumed `.items` without consulting the envelope's
 // completeness receipt — shipping a 10-row export that reported success. The
@@ -1540,7 +1573,7 @@ test("no command redeclares a host-owned global flag", async () => {
 // through the buildBeadsFromWorkspace spawn seam — not a hand-written mock of
 // the envelope shape, so a CLI-side envelope change shows up here too.
 
-/** Captured real `pm list-all --json` envelope plus the pm root it came from. */
+/** Captured real canonical `pm list --all --json` envelope plus its pm root. */
 interface EnvelopeFixture {
   pmRoot: string;
   envelope: Record<string, unknown>;
@@ -1569,10 +1602,10 @@ function realEnvelope(): EnvelopeFixture {
   // production read path would have parsed.
   const read = spawnSync(
     "pm",
-    ["--path", pmRoot, "--json", "list-all", "--full", "--include-body"],
+    ["--path", pmRoot, "list", "--all", "--json", "--output-budget", "unbounded", "--output-limit", "unbounded", "--output-include", "full"],
     { encoding: "utf-8" },
   );
-  assert.strictEqual(read.status, 0, `pm list-all failed: ${read.stderr}`);
+  assert.strictEqual(read.status, 0, `pm list --all failed: ${read.stderr}`);
   const envelope = JSON.parse(read.stdout) as Record<string, unknown>;
   cachedEnvelope = { pmRoot, envelope, stdout: read.stdout };
   return cachedEnvelope;
@@ -1692,7 +1725,7 @@ test("export refuses a list-all envelope with omission_receipt.has_omissions=tru
     () => buildBeadsFromWorkspace(pmRoot, { preserveIds: false, filter: NO_FILTER }, seamFor(stdout)),
     (err: unknown) => {
       assert.ok(err instanceof CommandError);
-      assert.match(err.message, /omission_receipt\.has_omissions=true/, "message must name the tripped signal");
+      assert.match(err.message, /omission_receipt\.has_omissions.*received true/, "message must name the tripped signal");
       assert.match(err.message, /count 3 of total 3/, "message must name the counts");
       return true;
     },
@@ -1721,7 +1754,7 @@ test("happy path: a complete envelope flows every item through unchanged", { ski
 
 test("assertListAllComplete rejects an envelope with no completeness receipt", () => {
   assert.throws(
-    () => assertListAllComplete({ items: [], count: 0, total: 0, truncated: false, has_more: false }),
+    () => assertListAllComplete({ items: [], count: 0, total: 0, truncated: false, has_more: false, next_cursor: null }),
     (err: unknown) => {
       assert.ok(err instanceof CommandError);
       assert.match(err.message, /completeness\.status=\(missing\)/);
@@ -1738,6 +1771,7 @@ test("assertListAllComplete names listed omitted field groups", () => {
       total: 0,
       truncated: false,
       has_more: false,
+      next_cursor: null,
       completeness: { status: "complete", unreadable_item_count: 0, unreadable_directory_count: 0 },
       omission_receipt: { has_omissions: true, omitted_field_group_count: 1, omitted_field_groups: ["body"] },
     }),
@@ -1749,15 +1783,94 @@ test("assertListAllComplete names listed omitted field groups", () => {
   );
 });
 
-test("assertListAllComplete accepts a complete envelope and tolerates missing counts", () => {
-  // A bare-but-complete receipt (no count/total) reports row-count figures.
-  assert.doesNotThrow(() => assertListAllComplete({
+test("assertListAllComplete rejects missing count and total receipts", () => {
+  assert.throws(() => assertListAllComplete({
     items: [{ id: "x" }],
     truncated: false,
     has_more: false,
+    next_cursor: null,
     completeness: { status: "complete", unreadable_item_count: 0, unreadable_directory_count: 0 },
-    omission_receipt: { has_omissions: false },
-  }));
+    omission_receipt: { has_omissions: false, omitted_field_group_count: 0, omitted_field_groups: [] },
+    projection: { mode: "full" },
+    read_output: { contract_version: 1, command: "list", requested_dimensions: ["include", "amount", "cost"], within_budget: true, strings_compacted: false, rows_compacted: false, result_omitted: false },
+  }), /count.*non-negative safe integer/);
+});
+
+test("assertListAllComplete rejects unreadable, paginated, projected, or compacted receipts", () => {
+  const baseline = realEnvelope().envelope;
+  const cases: ReadonlyArray<readonly [string, (value: Record<string, unknown>) => void, RegExp]> = [
+    ["cursor", (value) => { value.next_cursor = "next"; }, /next_cursor.*exactly null/],
+    ["unreadable item", (value) => {
+      (value.completeness as Record<string, unknown>).unreadable_item_count = 1;
+    }, /unreadable_item_count.*exactly 0/],
+    ["unreadable directory", (value) => {
+      (value.completeness as Record<string, unknown>).unreadable_directory_count = 1;
+    }, /unreadable_directory_count.*exactly 0/],
+    ["brief projection", (value) => { value.projection = { mode: "brief" }; }, /projection\.mode.*exactly full/],
+    ["missing output receipt", (value) => { delete value.read_output; }, /contract_version.*exactly 1/],
+    ["future contract", (value) => {
+      (value.read_output as Record<string, unknown>).contract_version = 2;
+    }, /contract_version.*exactly 1/],
+    ["wrong command", (value) => {
+      (value.read_output as Record<string, unknown>).command = "context";
+    }, /read_output\.command.*exactly list/],
+    ["over budget", (value) => {
+      (value.read_output as Record<string, unknown>).within_budget = false;
+    }, /within_budget.*exactly true/],
+    ["strings compacted", (value) => {
+      (value.read_output as Record<string, unknown>).strings_compacted = true;
+    }, /strings_compacted.*exactly false/],
+    ["rows compacted", (value) => {
+      (value.read_output as Record<string, unknown>).rows_compacted = true;
+    }, /rows_compacted.*exactly false/],
+    ["result omitted", (value) => {
+      (value.read_output as Record<string, unknown>).result_omitted = true;
+    }, /result_omitted.*exactly false/],
+    ["missing cost proof", (value) => {
+      (value.read_output as Record<string, unknown>).requested_dimensions = ["include", "amount"];
+    }, /requested_dimensions.*include, amount, and cost/],
+    ["budget truncation", (value) => {
+      value.output_budget_truncation = { reason: "output_budget_reached" };
+    }, /budget truncation or omission disclosure/],
+    ["budget omission", (value) => {
+      value.output_budget_exceeded = { omitted_result: true };
+    }, /budget truncation or omission disclosure/],
+  ];
+  for (const [name, mutate, pattern] of cases) {
+    const value = JSON.parse(JSON.stringify(baseline)) as Record<string, unknown>;
+    mutate(value);
+    assert.throws(() => assertListAllComplete(value), pattern, name);
+  }
+});
+
+test("assertListAllComplete rejects absent or malformed omission receipts", () => {
+  const complete = {
+    items: [{ id: "x" }], count: 1, total: 1, truncated: false, has_more: false, next_cursor: null,
+    completeness: { status: "complete", unreadable_item_count: 0, unreadable_directory_count: 0 },
+  };
+  assert.throws(() => assertListAllComplete(complete), /omission_receipt/);
+  assert.throws(
+    () => assertListAllComplete({ ...complete, omission_receipt: { has_omissions: "false" } }),
+    /has_omissions.*exactly false/,
+  );
+  assert.throws(
+    () => assertListAllComplete({ ...complete, omission_receipt: { has_omissions: false, omitted_field_group_count: 1, omitted_field_groups: [] } }),
+    /omitted_field_group_count.*exactly 0/,
+  );
+});
+
+test("assertListAllComplete rejects count disagreement and unusable identities", () => {
+  const complete = {
+    items: [{ id: "x" }], count: 1, total: 1, truncated: false, has_more: false, next_cursor: null,
+    completeness: { status: "complete", unreadable_item_count: 0, unreadable_directory_count: 0 },
+    omission_receipt: { has_omissions: false, omitted_field_group_count: 0, omitted_field_groups: [] },
+    projection: { mode: "full" },
+    read_output: { contract_version: 1, command: "list", requested_dimensions: ["include", "amount", "cost"], within_budget: true, strings_compacted: false, rows_compacted: false, result_omitted: false },
+  };
+  assert.throws(() => assertListAllComplete({ ...complete, total: 2 }), /count 1 must equal total 2/);
+  assert.throws(() => assertListAllComplete({ ...complete, count: 2, total: 2 }), /items.length 1 must equal count 2/);
+  assert.throws(() => assertListAllComplete({ ...complete, items: [{ id: " " }] }), /non-empty id/);
+  assert.throws(() => assertListAllComplete({ ...complete, items: [{ id: "x" }, { id: "x" }], count: 2, total: 2 }), /duplicate item id x/);
 });
 
 test("readPmItems surfaces child failures through the seam", () => {
@@ -1777,7 +1890,7 @@ test("readPmItems surfaces child failures through the seam", () => {
   assert.throws(
     () => buildBeadsFromWorkspace(pmRoot, { preserveIds: false, filter: NO_FILTER },
       () => ({ status: 0, stdout: "not json", stderr: "" })),
-    /Could not parse `pm list-all --json` output/,
+    /Could not parse `pm list --all --json` output/,
   );
   // ENOBUFS (status null, empty stderr) names the buffer limit.
   const enobufs = Object.assign(new Error("spawnSync pm ENOBUFS"), { code: "ENOBUFS" });
@@ -1850,25 +1963,25 @@ test("a completeness refusal is a distinguishable subtype, not a bare CommandErr
 });
 
 /**
- * Pin the production `pm list-all` argv, including what must NOT be in it.
+ * Pin the production `pm list --all` argv, including what must NOT be in it.
  *
- * `--full --include-body` is what keeps descriptions, tags and dependency edges
- * in the export rather than the brief projection, and the absence of `--limit`
- * is what makes the read the whole workspace. Both are invisible to the
+ * `--output-include full` keeps descriptions, tags and dependency edges while
+ * both explicit unbounded controls prevent host defaults from truncating the
+ * workspace. These are invisible to the
  * receipt-based refusals: every one of those injects its own envelope through
  * the seam and never exercises the argv the real read would send.
  */
-test("readPmItems asks pm for the whole workspace, with no row ceiling", { skip: !hasPmCli() }, () => {
+test("readPmItems asks pm for the canonical complete unbounded workspace", { skip: !hasPmCli() }, () => {
   const { pmRoot, stdout } = realEnvelope();
   const capturing = capturingSeamFor(stdout);
   buildBeadsFromWorkspace(pmRoot, { preserveIds: false, filter: NO_FILTER }, capturing.seam);
   assert.deepStrictEqual(
     capturing.args,
-    ["--path", pmRoot, "--json", "list-all", "--full", "--include-body"],
+    ["--path", pmRoot, "list", "--all", "--json", "--output-budget", "unbounded", "--output-limit", "unbounded", "--output-include", "full"],
     "the whole argv, so an added flag that changes what the CLI returns must be considered here",
   );
   assert.ok(
-    !capturing.args?.includes("--limit"),
-    "a row ceiling would turn every workspace past that size into a hard refusal, not a larger read",
+    !capturing.args?.includes("list-all") && !capturing.args?.includes("--full") && !capturing.args?.includes("--include-body"),
+    "deprecated command and projection aliases must not return",
   );
 });
