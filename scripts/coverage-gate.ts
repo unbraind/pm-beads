@@ -446,9 +446,14 @@ export function evaluateRun(
   // diagnostic below would then describe a coverage-configuration problem the
   // author does not have — burying the failure they need to act on. A spawn
   // error surfaces its own message because status alone is null and stderr empty.
+  //
+  // The exit code is forced non-zero whenever a spawn error is present even if
+  // the child reported status 0: a gate that could exit 0 without measuring is
+  // exactly the silent-pass outcome this module forbids, and some platforms
+  // have been observed to report both an error object and a zero status.
   if (runner.error || runner.status !== 0) {
     return {
-      exitCode: runner.status ?? 1,
+      exitCode: runner.error ? runner.status || 1 : runner.status ?? 1,
       stdout: runner.stdout,
       stderr: runner.stderr || runner.error?.message || "",
     };

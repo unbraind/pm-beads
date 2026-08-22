@@ -705,6 +705,27 @@ test("evaluateRun propagates a failed runner before reading any report", () => {
   }
 });
 
+test("a spawn error paired with exit status 0 still fails the gate closed", () => {
+  const root = fixtureRoot("spawn-error-zero-status");
+  writeFixture(root);
+  try {
+    // Some platforms report both a spawn error and a zero child status. The
+    // gate must never translate that combination into a pass: nothing was
+    // measured, so exit code 0 would be the silent-pass outcome this module
+    // documents as forbidden.
+    const result = evaluateRun(root, join(root, "coverage", "lcov.info"), ["covered.ts"], {
+      status: 0,
+      error: new Error("spawn node ENOMEM"),
+      stdout: "",
+      stderr: "",
+    });
+    assert.notEqual(result.exitCode, 0);
+    assert.match(result.stderr, /ENOMEM/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 function spawnFileSync(command: string, args: readonly string[], opts: { cwd: string }): { status: number | null; stdout: string; stderr: string } {
   const r = spawnSync(command, [...args], { ...opts, encoding: "utf8" });
   return { status: r.status, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };

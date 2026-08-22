@@ -1,0 +1,13 @@
+id: pm-beads-bfw8
+title: Resolve CodeRabbit findings on PR 75
+description: "Address all 23 open CodeRabbit review threads on PR 75 (branch fix/exact-coverage-gate): fail-closed coverage gate on spawn error, undefined title fallback, hoisted tsc probe, closed-item history immutability, root-safe failure-injection tests, plus remaining minor/trivial threads. Reply in-thread to each finding."
+type: Task
+status: in_progress
+priority: 2
+tags: []
+created_at: "2026-08-22T10:01:08.507Z"
+updated_at: "2026-08-22T10:01:56.970Z"
+assignee: pi-agent
+claim_principal: pi-agent
+author: pi-agent
+body: ""
