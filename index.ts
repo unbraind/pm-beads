@@ -99,6 +99,22 @@ export class CommandError extends Error {
 }
 
 /**
+ * Extract a human-readable message from an unknown thrown value.
+ *
+ * Spawn and fs failures surface as `Error` instances, but this package sits at
+ * a process boundary where a thrown non-Error (a string from a shell snippet,
+ * a rejected non-Error promise) must still render as text rather than
+ * "[object Undefined]". Centralized so every call site reports both shapes
+ * identically.
+ *
+ * @param err - The thrown value to render.
+ * @returns `err.message` for Error instances, `String(err)` otherwise.
+ */
+export function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+/**
  * A workspace read that SUCCEEDED but cannot be trusted as the whole workspace.
  *
  * Distinct from every other read failure, because callers must treat the two
@@ -405,6 +421,24 @@ export function normalizeBeadKey(id: unknown): string | undefined {
 }
 
 /**
+ * Resolve a Beads record's display title from either accepted spelling.
+ *
+ * The trailing `|| ""` is load-bearing, not stylistic: without it,
+ * `String(undefined)` on a record missing both fields would yield the literal
+ * string `"undefined"`, and a record reaching the import loop unvalidated
+ * would be created under that title instead of an empty one. The fail-fast
+ * gate (`assertBeadsImportable`) rejects blank titles using this same helper,
+ * so the gate and the import loop cannot drift apart on the definition of a
+ * usable title.
+ *
+ * @param item - The Beads record to read a title from.
+ * @returns The trimmed title, or the empty string when both spellings are absent.
+ */
+export function beadTitle(item: BeadsItem): string {
+  return String(item.title || item.name || "").trim();
+}
+
+/**
  * Flatten the many ways a Beads record can express blocker edges into one list.
  *
  * Reads `dependencies` (string or object form, honoring `depends_on_id` and the
@@ -608,7 +642,7 @@ function applyTimestamps(
   try {
     text = readFileSync(file, "utf-8");
   } catch (err: unknown) {
-    console.error(`  timestamp skipped: cannot read ${file}: ${err instanceof Error ? err.message : String(err)}`);
+    console.error(`  timestamp skipped: cannot read ${file}: ${errorMessage(err)}`);
     return false;
   }
   const patched = patchTimestampLines(text, { created_at, updated_at });
@@ -616,7 +650,7 @@ function applyTimestamps(
   try {
     writeFileSync(file, patched, "utf-8");
   } catch (err: unknown) {
-    console.error(`  timestamp skipped: cannot write ${file}: ${err instanceof Error ? err.message : String(err)}`);
+    console.error(`  timestamp skipped: cannot write ${file}: ${errorMessage(err)}`);
     return false;
   }
   // Re-anchor the item's history chain so the raw patch does not surface as
@@ -632,7 +666,7 @@ function applyTimestamps(
     { encoding: "utf-8" },
   );
   if (repair.error || repair.status !== 0) {
-    const why = repair.error?.message || repair.stderr?.trim() || `exit ${repair.status}`;
+    const why = describeRepairFailure(repair);
     try {
       writeFileSync(file, text, "utf-8");
       console.error(
@@ -642,7 +676,7 @@ function applyTimestamps(
     } catch (revertErr: unknown) {
       console.error(
         `  timestamp warning: pm history-repair failed for ${pmId} (${why}) and the patch could not be ` +
-          `reverted (${revertErr instanceof Error ? revertErr.message : String(revertErr)}); ` +
+          `reverted (${errorMessage(revertErr)}); ` +
           `run \`pm history-repair ${pmId}\` manually`,
       );
     }
@@ -816,8 +850,9 @@ export function detectDependencyCycles(adj: Map<string, string[]>): string[][] {
     // with tens of thousands of dependencies cannot exhaust the JS call stack.
     const path: string[] = [start];
     const pathIndex = new Map<string, number>([[start, 0]]);
+    // start comes from adj.keys(), so its neighbor list always exists.
     const frames: Array<{ node: string; neighbors: string[]; nextIndex: number }> = [
-      { node: start, neighbors: adj.get(start) ?? [], nextIndex: 0 },
+      { node: start, neighbors: adj.get(start)!, nextIndex: 0 },
     ];
     color.set(start, 1);
 
@@ -904,7 +939,7 @@ export function validateBeadsText(
   }
 
   for (const { line, item } of parsed) {
-    const title = String(item.title || item.name || "").trim();
+    const title = beadTitle(item);
     if (!title) {
       issues.push({ line, severity: "error", code: "missing_title", message: "missing required field: title" });
     }
@@ -990,14 +1025,50 @@ export function validateBeadsText(
 // fallback for every item this extension writes. `bead_id`/`body` arrive via
 // the ItemMetadata index signature as `unknown`, so they are narrowed with
 // typeof guards rather than trusted blindly.
+/**
+ * Project SDK item metadata onto the minimal {@link PmItem} shape the bead-id
+ * cross-check reads.
+ *
+ * `bead_id`/`body` arrive via the ItemMetadata index signature as `unknown`,
+ * so they are narrowed with typeof guards rather than trusted blindly; a
+ * non-string value degrades to "absent" and the description/body marker scan
+ * still applies.
+ *
+ * @param metas - Metadata rows returned by the SDK item store.
+ * @returns One narrowed item per row.
+ */
+export function metadataToPmItems(
+  metas: Array<{ bead_id?: unknown; description?: unknown; body?: unknown }>,
+): PmItem[] {
+  return metas.map((meta) => ({
+    bead_id: typeof meta.bead_id === "string" ? meta.bead_id : undefined,
+    description: typeof meta.description === "string" ? meta.description : undefined,
+    body: typeof meta.body === "string" ? meta.body : undefined,
+  }));
+}
+
+/**
+ * Name why a spawned `pm` child failed, preferring the most specific signal.
+ *
+ * A spawn error (the child never started) outranks captured stderr, which
+ * outranks a bare exit status — the last being the only signal a killed child
+ * leaves.
+ *
+ * @param repair - The finished spawn result to summarize.
+ * @returns The most specific failure message available.
+ */
+export function describeRepairFailure(repair: {
+  error?: Error | null;
+  stderr?: string | null;
+  status: number | null;
+}): string {
+  return repair.error?.message || repair.stderr?.trim() || `exit ${repair.status ?? "unknown"}`;
+}
+
 async function readWorkspaceBeadIds(pmRoot: string): Promise<Set<string> | undefined> {
   let items: PmItem[] | undefined;
   try {
-    items = (await listAllItemMetadata(pmRoot)).map((meta) => ({
-      bead_id: typeof meta.bead_id === "string" ? meta.bead_id : undefined,
-      description: meta.description,
-      body: typeof meta.body === "string" ? meta.body : undefined,
-    }));
+    items = metadataToPmItems(await listAllItemMetadata(pmRoot));
   } catch {
     /* SDK store read failed — fall back to the CLI read path below. */
   }
@@ -1054,8 +1125,7 @@ async function runValidate(
     console.error(`OK: ${report.records} record(s), no issues.`);
   } else {
     for (const iss of report.issues) {
-      const where = iss.line ? `line ${iss.line}` : "file";
-      console.error(`  ${iss.severity.toUpperCase()} [${iss.code}] ${where}: ${iss.message}`);
+      console.error(`  ${iss.severity.toUpperCase()} [${iss.code}] line ${iss.line}: ${iss.message}`);
     }
     const warns = report.issues.length - errors;
     console.error(`${report.records} record(s): ${errors} error(s), ${warns} warning(s).`);
@@ -1120,7 +1190,7 @@ function readFileOrThrow(absolutePath: string): string {
   try {
     return readFileSync(absolutePath, "utf-8");
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = errorMessage(err);
     const code = typeof (err as NodeJS.ErrnoException)?.code === "string" ? (err as NodeJS.ErrnoException).code : "";
     const exitCode = code === "ENOENT" ? EXIT_CODE.NOT_FOUND : EXIT_CODE.GENERIC_FAILURE;
     throw new CommandError(`Failed to read file: ${msg}`, exitCode);
@@ -1221,8 +1291,14 @@ type ParsedBeadsRecord = BeadsItem & { __invalid?: boolean };
  *
  * @param filePath - Path to the JSONL file (resolved to absolute).
  * @returns The parsed records, including `__invalid` sentinels.
+ *
+ * The fail-fast gate (`assertBeadsImportable`) rejects any file with an
+ * invalid line before this parser runs, so the sentinel path is unreachable
+ * through the CLI import command; the export exists so tests can drive the
+ * parser's defensive behavior directly instead of leaving it dead and
+ * uncovered.
  */
-function parseBeadsFile(filePath: string): ParsedBeadsRecord[] {
+export function parseBeadsFile(filePath: string): ParsedBeadsRecord[] {
   const absolutePath = resolve(filePath);
   const raw = readFileOrThrow(absolutePath);
   const lines = raw.split("\n").filter((l) => l.trim());
@@ -1301,7 +1377,7 @@ export async function assertBeadsImportable(filePath: string, pmRoot?: string): 
 
   const detail = errors
     .slice(0, 10)
-    .map((iss) => `  - ${iss.line ? `line ${iss.line}` : "file"} [${iss.code}]: ${iss.message}`)
+    .map((iss) => `  - line ${iss.line} [${iss.code}]: ${iss.message}`)
     .join("\n");
   const more = errors.length > 10 ? `\n  …and ${errors.length - 10} more error(s)` : "";
   throw new CommandError(
@@ -1400,7 +1476,7 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
     const inputKeys = new Map<string, number>();
     for (let i = 0; i < records.length; i++) {
       const item = records[i];
-      const title = String(item.title || item.name || "").trim();
+      const title = beadTitle(item);
       if (!title || (hasFilter && !beadPassesFilter(item, opts.typeOverride, opts.filter))) continue;
 
       const beadId = opts.preserveIds ? normalizeBeadKey(item.id) : undefined;
@@ -1431,7 +1507,11 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
   // large imports report progress per batch (and so a caller can throttle).
   // Writes remain per-record (pm exposes no batch create), so batching is a
   // progress/throughput concern, not a transactional one. Unset = one batch.
-  const batchSize = opts.batchSize && opts.batchSize > 0 ? opts.batchSize : (records.length || 1);
+  // parsed.length >= 1 here: an empty file returned above. records (parsed
+  // rows minus __invalid sentinel rows) can still be empty when every row was
+  // a sentinel, so the fallback below floors the batch size at 1 to keep the
+  // batch arithmetic total — batchSize 0 would make batchCount NaN.
+  const batchSize = opts.batchSize && opts.batchSize > 0 ? opts.batchSize : Math.max(1, records.length);
   const batchCount = Math.max(1, Math.ceil(records.length / batchSize));
   const multiBatch = batchCount > 1;
 
@@ -1443,13 +1523,13 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
     }
     for (let i = batchStart; i < batchEnd; i++) {
       const item = records[i];
-      const title = String(item.title || item.name || "").trim();
-      if (!title) {
-        console.error(`Record ${i + 1}: missing title — skipping`);
-        skipped++;
-        failed++;
-        continue;
-      }
+      // No per-record title check here: the fail-fast gate above rejects any
+      // record whose title AND name are blank (via the same beadTitle helper
+      // used below) before a single write, so every record reaching this loop
+      // has a usable title. The empty-string fallback inside the helper is
+      // still required as defense in depth: a record that somehow reached this
+      // loop unvalidated must degrade to "", never to the literal "undefined".
+      const title = beadTitle(item);
 
       if (hasFilter && !beadPassesFilter(item, opts.typeOverride, opts.filter)) {
         filtered++;
@@ -1589,7 +1669,7 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
         if (beadId) beadToPm.set(beadId, pmId);
         touched.push({ beadId, pmId, blockers, upserted: Boolean(existingPmId), bead: item });
       } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
+        const msg = errorMessage(err);
         console.error(`Record ${i + 1}: ${existingPmId ? "update" : "create"} failed — ${msg}`);
         // A matched item still EXISTS even when its update failed. Record the
         // bead id -> pm id mapping anyway so other records' dependency edges to
@@ -1975,11 +2055,11 @@ export function assertListAllComplete(envelope: unknown): void {
 export interface PmListAllSpawnResult {
   /** Child exit status; `null` when the child was killed (e.g. ENOBUFS). */
   status: number | null;
-  /** Decoded stdout of the `pm` child. */
+  /** Decoded stdout of the `pm` child; empty when the child wrote nothing or never started. */
   stdout: string;
-  /** Decoded stderr of the `pm` child. */
+  /** Decoded stderr of the `pm` child; empty when the child wrote nothing or never started. */
   stderr: string;
-  /** Spawn error (ENOBUFS and friends), when one occurred. */
+  /** Spawn error (ENOENT, ENOBUFS and friends), when one occurred. */
   error?: Error;
 }
 
@@ -1994,9 +2074,16 @@ export type PmListAllSpawn = (args: string[], maxBuffer: number) => PmListAllSpa
 
 /** Real {@link PmListAllSpawn} over `child_process.spawnSync`, forwarding the
  * read-buffer cap so a large workspace cannot die as an unattributable
- * null-status/empty-stderr spawn. Default seam for {@link readPmItems}. */
-function spawnPmListAll(args: string[], maxBuffer: number): PmListAllSpawnResult {
+ * null-status/empty-stderr spawn. Default seam for {@link readPmItems}.
+ * Exported for tests: the ENOENT normalisation arms are unreachable through
+ * the injected-seam tests, which never touch the real spawn. */
+export function spawnPmListAll(args: string[], maxBuffer: number): PmListAllSpawnResult {
   const result = spawnSync("pm", args, { encoding: "utf-8", maxBuffer });
+  // With `encoding: "utf-8"`, spawnSync reports stdout/stderr as decoded
+  // strings — but a failed start (ENOENT and friends) leaves them `undefined`
+  // at runtime even though TypeScript's overload types say `string`. The seam
+  // normalises both to the empty string so its declared contract holds for
+  // every spawn outcome; consumers already treat empty as no output.
   return {
     status: result.status,
     stdout: result.stdout ?? "",
@@ -2154,7 +2241,7 @@ function runExport(pmRoot: string, opts: { dryRun: boolean; preserveIds: boolean
     try {
       writeFileSync(absolute, jsonl, "utf-8");
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = errorMessage(err);
       throw new CommandError(`Failed to write ${absolute}: ${msg}`);
     }
     console.error(`Exported ${beads.length} item(s) to ${absolute}.`);
@@ -2392,13 +2479,11 @@ function printDiffSummary(diff: BeadsDiff, labelA: string, labelB: string): void
 //     (serialized to beads in memory via the shared export core).
 // Pure read-only — never mutates the workspace or any file. Exits nonzero only
 // under --strict when drift is found; otherwise always exits 0.
-function runDiff(args: string[] | undefined, opts: DiffOptions) {
+function runDiff(args: string[], opts: DiffOptions) {
   // ctx.args can carry flag tokens (e.g. boolean flags like --against-workspace)
   // alongside the positional file paths, so extract the positionals explicitly
   // rather than indexing raw args — mirrors resolveImportInputFile.
-  const files = (Array.isArray(args) ? args : []).filter(
-    (a): a is string => typeof a === "string" && a.length > 0 && !a.startsWith("-"),
-  );
+  const files = args.filter((a) => a.length > 0 && !a.startsWith("-"));
   const fileA = files[0];
   if (!fileA) {
     throw new CommandError(
@@ -2774,8 +2859,8 @@ export default defineExtension({
     api.registerImporter(
       "beads",
       defineImporter(async (ctx: ImportExportContext) => {
-        const file = resolveImportInputFile(ctx.args) ?? optionString(ctx.options || {}, "file");
-        return runImport(file, ctx.pm_root, parseImportOptions(ctx.options || {}));
+        const file = resolveImportInputFile(ctx.args) ?? optionString(ctx.options, "file");
+        return runImport(file, ctx.pm_root, parseImportOptions(ctx.options));
       }),
       {
         description:
@@ -2810,7 +2895,7 @@ export default defineExtension({
     api.registerExporter(
       "beads",
       defineExporter(async (ctx: ImportExportContext) => {
-        return runExport(ctx.pm_root, parseExportOptions(ctx.options || {}));
+        return runExport(ctx.pm_root, parseExportOptions(ctx.options));
       }),
       {
         description:
@@ -2859,7 +2944,7 @@ export default defineExtension({
       ],
       flags: IMPORT_FLAGS,
       async run(ctx: CommandHandlerContext) {
-        const file = resolveImportInputFile(ctx.args) ?? optionString(ctx.options || {}, "file");
+        const file = resolveImportInputFile(ctx.args) ?? optionString(ctx.options, "file");
         return runImport(file, ctx.pm_root, parseImportOptions(ctx.options));
       },
     }));
@@ -2884,7 +2969,7 @@ export default defineExtension({
       ],
       flags: EXPORT_FLAGS,
       async run(ctx: CommandHandlerContext) {
-        return runExport(ctx.pm_root, parseExportOptions(ctx.options || {}));
+        return runExport(ctx.pm_root, parseExportOptions(ctx.options));
       },
     });
 
@@ -2914,15 +2999,14 @@ export default defineExtension({
       ],
       flags: VALIDATE_FLAGS,
       async run(ctx: CommandHandlerContext) {
-        const options = ctx.options || {};
+        const options = ctx.options;
         // `--json` is a host-owned global flag: extensions must not redeclare
         // it (the host rejects the registration) and must read it from
         // ctx.global so the structured report is returned (and rendered by
-        // the runtime) instead of the human listing.
-        // The spread keeps this runtime-tolerant if a host ever omits
-        // ctx.global (spreading undefined yields {}) and yields a fresh object
-        // literal, which — unlike the GlobalOptions interface — is assignable
-        // to the Record<string, unknown> readBoolOption reads through.
+        // the runtime) instead of the human listing. The spread yields a fresh
+        // object literal, which — unlike the GlobalOptions interface — is
+        // assignable to the Record<string, unknown> readBoolOption reads
+        // through; spreading undefined still yields {} if a host omits it.
         const json = readBoolOption({ ...ctx.global }, "json");
         // Cross-workspace dependency check is ON by default; --no-workspace opts out.
         const workspace = resolveWorkspaceCheck(options);
@@ -2971,7 +3055,7 @@ export default defineExtension({
         // See the validate handler for why ctx.global is spread: `--json` is a
         // host-owned global read through ctx.global, and the spread keeps the
         // read runtime-tolerant and assignable to Record<string, unknown>.
-        return runDiff(ctx.args, parseDiffOptions(ctx.options || {}, { ...ctx.global }, ctx.pm_root));
+        return runDiff(ctx.args, parseDiffOptions(ctx.options, { ...ctx.global }, ctx.pm_root));
       },
     });
     api.registerCommand(makeDiffCommand("beads diff"));

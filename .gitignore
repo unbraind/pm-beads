@@ -11,3 +11,4 @@ dist-test/
 .agents/pm/search/
 .agents/pm/extensions/
 coverage/
+.tmp-coverage-fixtures/

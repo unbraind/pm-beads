@@ -35,9 +35,9 @@
     "release:check": "npm run typecheck && npm run build && npm run docstring && npm run coverage && npm run audit:prod && npm run pack:dry-run && npm run changelog:check",
     "prepublishOnly": "npm run release:check",
     "release:notes": "pm-changelog --pm-root .agents/pm --stdout --since-previous-tag --until-release-tag --release-version-from-package --item-url-base https://github.com/unbraind/pm-beads/blob/main/.agents/pm --respect-item-release --pm-bin ./node_modules/.bin/pm --pm-arg=--output-budget --pm-arg=unbounded --pm-arg=--output-limit --pm-arg=unbounded --github-step-summary",
-    "prepare": "node scripts/prepare-merge-driver.mjs",
+    "prepare": "node scripts/prepare-merge-driver.ts",
     "merge:install": "pm merge install",
-    "coverage": "npm run build && npm run build:test && node scripts/coverage-gate.ts"
+    "coverage": "npm run build && npm run build:test && node scripts/coverage-gate.ts ."
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
@@ -99,15 +99,16 @@
   },
   "coverageGate": {
     "sources": [
-      "."
+      ".",
+      "scripts"
     ],
     "tests": [
       "test/*.test.ts"
     ],
     "thresholds": {
-      "lines": 91,
-      "branches": 77,
-      "functions": 93
+      "lines": 100,
+      "branches": 100,
+      "functions": 100
     },
     "ignore": []
   }

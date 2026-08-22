@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "id": "41391b22-e254-4c29-b1bf-6d83086b619b",
+  "item_path": ".agents/pm/issues/pm-beads-lajb.toon",
+  "item_id": "pm-beads-lajb",
+  "requested_preference": "ours",
+  "conflict_resolution": "stable_value_order",
+  "fields_from_theirs": [],
+  "union_fields": [],
+  "decisions": [
+    {
+      "field": "status",
+      "base": null,
+      "ours": null,
+      "theirs": null,
+      "retained": {
+        "pm_value_hash": "02e31f51aa8b1b6a622c4f7c30fab328d711cad4c9da74b9965ada8aa15d9df2"
+      },
+      "discarded": {
+        "pm_value_hash": "35ff74aeea25311f4fe759a6b762c8cd41a79adb23dd5615b92cf215175a63e5"
+      }
+    },
+    {
+      "field": "title",
+      "base": null,
+      "ours": null,
+      "theirs": null,
+      "retained": {
+        "pm_value_hash": "86aef05b66f99e6a3544041c26751a14a8a63732295b7509b1e43a829298ec98"
+      },
+      "discarded": {
+        "pm_value_hash": "1a2e71a49d0aae2cb4b8b88f14bfc52175654078fac67d3c96674f3fa0aa7216"
+      }
+    }
+  ],
+  "state": "reconciled",
+  "created_at": "2026-08-22T09:37:08.841Z",
+  "value_availability": "hash_only",
+  "reconciled_at": "2026-08-22T09:42:27.382Z"
+}

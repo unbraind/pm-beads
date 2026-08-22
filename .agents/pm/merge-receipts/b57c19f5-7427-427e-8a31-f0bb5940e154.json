@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "id": "b57c19f5-7427-427e-8a31-f0bb5940e154",
+  "item_path": ".agents/pm/issues/pm-beads-1uz3.toon",
+  "item_id": "pm-beads-1uz3",
+  "requested_preference": "ours",
+  "conflict_resolution": "stable_value_order",
+  "fields_from_theirs": [],
+  "union_fields": [],
+  "decisions": [],
+  "state": "reconciled",
+  "created_at": "2026-08-22T09:41:17.515Z",
+  "value_availability": "hash_only",
+  "reconciled_at": "2026-08-22T09:42:27.382Z"
+}
