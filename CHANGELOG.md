@@ -14,6 +14,7 @@
 
 ### Other
 
+- Resolve CodeRabbit findings on PR 75 ([pm-beads-bfw8](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-bfw8.toon))
 - Resolve PR 75 review thread and history drift on lajb ([pm-beads-1bgo](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-1bgo.toon))
 
 ## 2026.8.16 - 2026-08-16
