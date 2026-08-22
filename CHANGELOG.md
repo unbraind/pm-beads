@@ -2,10 +2,6 @@
 
 ## Unreleased
 
-### Security
-
-- Remove absolute host paths and non-public identities from the entire reachable Git history ([pm-beads-lajb](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-lajb.toon))
-
 ### Fixed
 
 - Canonicalize complete workspace reads and adopt the current pm host contract ([pm-beads-1uz3](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-1uz3.toon))
