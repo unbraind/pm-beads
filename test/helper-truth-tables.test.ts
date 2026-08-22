@@ -11,6 +11,7 @@ import test from "node:test";
 
 import {
   beadCloseReason,
+  beadTitle,
   describeRepairFailure,
   beadPassesFilter,
   buildBeadIndex,
@@ -32,17 +33,46 @@ import { isHostOutputSuppressed } from "@unbrained/pm-cli/sdk";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-test("mapStatus normalizes every alias and degrades unknown/blank/absent values to open", () => {
+// Exact alias → canonical-status pairs, driven from the mapStatus table so a
+// wrong mapping cannot pass by landing in the valid set.
+const MAP_STATUS_TABLE: ReadonlyArray<readonly [string, string]> = [
+  ["open", "open"],
+  ["todo", "open"],
+  ["new", "open"],
+  ["in_progress", "in_progress"],
+  ["wip", "in_progress"],
+  ["doing", "in_progress"],
+  ["blocked", "blocked"],
+  ["on_hold", "blocked"],
+  ["closed", "closed"],
+  ["done", "closed"],
+  ["complete", "closed"],
+  ["canceled", "canceled"],
+  ["cancelled", "canceled"],
+  ["draft", "draft"],
+];
+
+test("mapStatus normalizes every alias to its exact canonical status and degrades unknown/blank/absent values to open", () => {
   assert.equal(mapStatus(undefined), "open");
   assert.equal(mapStatus(null), "open");
   assert.equal(mapStatus(""), "open");
   assert.equal(mapStatus("   "), "open");
-  for (const alias of ["open", "todo", "new", "in_progress", "wip", "doing", "blocked", "on_hold",
-    "closed", "done", "complete", "canceled", "cancelled", "draft"]) {
-    assert.ok(["open", "in_progress", "blocked", "closed", "canceled", "draft"].includes(mapStatus(alias)), alias);
-    assert.ok(["open", "in_progress", "blocked", "closed", "canceled", "draft"].includes(mapStatus(` ${alias.toUpperCase()} `)), alias);
+  for (const [alias, expected] of MAP_STATUS_TABLE) {
+    assert.equal(mapStatus(alias), expected, `mapStatus(${JSON.stringify(alias)})`);
+    assert.equal(mapStatus(` ${alias.toUpperCase()} `), expected, `mapStatus(${JSON.stringify(alias)}) with padding/case`);
   }
   assert.equal(mapStatus("wat"), "open", "unknown statuses never invent a state");
+});
+
+test("beadTitle resolves either title spelling and degrades missing fields to an empty string, never 'undefined'", () => {
+  assert.equal(beadTitle({}), "");
+  assert.equal(beadTitle({ title: undefined, name: undefined }), "");
+  assert.equal(beadTitle({ title: "", name: "" }), "");
+  const nullish = { title: null, name: null } as unknown as Parameters<typeof beadTitle>[0];
+  assert.equal(beadTitle(nullish), "");
+  assert.equal(beadTitle({ title: "  T  ", name: "N" }), "T");
+  assert.equal(beadTitle({ name: "  N  " }), "N");
+  assert.equal(beadTitle({ title: "T", name: "N" }), "T", "title wins over name");
 });
 
 test("pmStatusToBeads inverts every canonical pm status and defaults to open", () => {

@@ -421,6 +421,24 @@ export function normalizeBeadKey(id: unknown): string | undefined {
 }
 
 /**
+ * Resolve a Beads record's display title from either accepted spelling.
+ *
+ * The trailing `|| ""` is load-bearing, not stylistic: without it,
+ * `String(undefined)` on a record missing both fields would yield the literal
+ * string `"undefined"`, and a record reaching the import loop unvalidated
+ * would be created under that title instead of an empty one. The fail-fast
+ * gate (`assertBeadsImportable`) rejects blank titles using this same helper,
+ * so the gate and the import loop cannot drift apart on the definition of a
+ * usable title.
+ *
+ * @param item - The Beads record to read a title from.
+ * @returns The trimmed title, or the empty string when both spellings are absent.
+ */
+export function beadTitle(item: BeadsItem): string {
+  return String(item.title || item.name || "").trim();
+}
+
+/**
  * Flatten the many ways a Beads record can express blocker edges into one list.
  *
  * Reads `dependencies` (string or object form, honoring `depends_on_id` and the
@@ -921,7 +939,7 @@ export function validateBeadsText(
   }
 
   for (const { line, item } of parsed) {
-    const title = String(item.title || item.name || "").trim();
+    const title = beadTitle(item);
     if (!title) {
       issues.push({ line, severity: "error", code: "missing_title", message: "missing required field: title" });
     }
@@ -1458,7 +1476,7 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
     const inputKeys = new Map<string, number>();
     for (let i = 0; i < records.length; i++) {
       const item = records[i];
-      const title = String(item.title || item.name || "").trim();
+      const title = beadTitle(item);
       if (!title || (hasFilter && !beadPassesFilter(item, opts.typeOverride, opts.filter))) continue;
 
       const beadId = opts.preserveIds ? normalizeBeadKey(item.id) : undefined;
@@ -1489,8 +1507,11 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
   // large imports report progress per batch (and so a caller can throttle).
   // Writes remain per-record (pm exposes no batch create), so batching is a
   // progress/throughput concern, not a transactional one. Unset = one batch.
-  // records.length >= 1 here: an empty file returned above.
-  const batchSize = opts.batchSize && opts.batchSize > 0 ? opts.batchSize : records.length;
+  // parsed.length >= 1 here: an empty file returned above. records (parsed
+  // rows minus __invalid sentinel rows) can still be empty when every row was
+  // a sentinel, so the fallback below floors the batch size at 1 to keep the
+  // batch arithmetic total — batchSize 0 would make batchCount NaN.
+  const batchSize = opts.batchSize && opts.batchSize > 0 ? opts.batchSize : Math.max(1, records.length);
   const batchCount = Math.max(1, Math.ceil(records.length / batchSize));
   const multiBatch = batchCount > 1;
 
@@ -1503,10 +1524,12 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
     for (let i = batchStart; i < batchEnd; i++) {
       const item = records[i];
       // No per-record title check here: the fail-fast gate above rejects any
-      // record whose title AND name are blank (same expression as below)
-      // before a single write, so every record reaching this loop has a
-      // usable title.
-      const title = String(item.title || item.name).trim();
+      // record whose title AND name are blank (via the same beadTitle helper
+      // used below) before a single write, so every record reaching this loop
+      // has a usable title. The empty-string fallback inside the helper is
+      // still required as defense in depth: a record that somehow reached this
+      // loop unvalidated must degrade to "", never to the literal "undefined".
+      const title = beadTitle(item);
 
       if (hasFilter && !beadPassesFilter(item, opts.typeOverride, opts.filter)) {
         filtered++;
