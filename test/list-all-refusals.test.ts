@@ -16,6 +16,7 @@ import {
   buildBeadsFromWorkspace,
   IncompleteWorkspaceReadError,
   CommandError,
+  spawnPmListAll,
   type ListAllEnvelope,
   type PmListAllSpawnResult,
 } from "../index.ts";
@@ -286,4 +287,21 @@ test("a completeness refusal propagates as its own subtype through the workspace
     },
     IncompleteWorkspaceReadError,
   );
+});
+
+test("the real spawn seam normalises a failed start's undefined stdout/stderr to empty strings", () => {
+  // With no PATH there is no `pm` to resolve, so the real spawnSync reports a
+  // spawn error with undefined stdout/stderr — the runtime shape TypeScript's
+  // overload types do not model. The seam must coalesce both to "".
+  const savedPath = process.env.PATH;
+  process.env.PATH = "";
+  try {
+    const result = spawnPmListAll(["list", "--all", "--json"], 1024 * 1024);
+    assert.notEqual(result.error, undefined, "a PATH-less spawn reports its error");
+    assert.equal(result.status, null);
+    assert.equal(result.stdout, "");
+    assert.equal(result.stderr, "");
+  } finally {
+    process.env.PATH = savedPath;
+  }
 });

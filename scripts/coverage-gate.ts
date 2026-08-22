@@ -38,8 +38,10 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
-import { realpathSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+
+import { isMainInvocation } from "./main-invocation.ts";
+
+export { isMainInvocation };
 
 /**
  * Minimum acceptable percentage for each coverage dimension Node reports.
@@ -566,30 +568,8 @@ export function main(root: string): void {
   process.exitCode = result.exitCode;
 }
 
-/**
- * Whether this module is the process entry point rather than a test import.
- *
- * Both sides are canonicalised through `realpathSync` before comparison, so a
- * launcher reaching this file through a symlink (an npm bin shim, a linked
- * workspace) still compares equal. An unresolvable `argv[1]` propagates rather
- * than returning false: returning false here means `npm run coverage` exits 0
- * having measured nothing — the one silent skip this gate must never produce.
- * See the sibling docstring gate for the full rationale; the two gates share
- * the contract deliberately.
- *
- * @param argv - The process argv to inspect.
- * @param moduleUrl - The `import.meta.url` of the module that might be main.
- * @returns True when `argv[1]` and `moduleUrl` canonicalise to the same path.
- * @throws Whatever `realpathSync` throws when either path cannot be resolved.
- */
-export function isMainInvocation(argv: readonly string[], moduleUrl: string): boolean {
-  const entry = argv[1];
-  if (entry === undefined) return false;
-  return realpathSync(entry) === realpathSync(fileURLToPath(moduleUrl));
-}
-
-const repoRoot = resolve(import.meta.dirname, "..");
-
+// Run the gate only as main; see scripts/main-invocation.ts for the guard's
+// rationale.
 if (isMainInvocation(process.argv, import.meta.url)) {
   // An optional argv[2] overrides the measured root (the sibling fleet gate's
   // contract): the measured root is REQUIRED so the script can never silently

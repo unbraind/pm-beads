@@ -2074,8 +2074,10 @@ export type PmListAllSpawn = (args: string[], maxBuffer: number) => PmListAllSpa
 
 /** Real {@link PmListAllSpawn} over `child_process.spawnSync`, forwarding the
  * read-buffer cap so a large workspace cannot die as an unattributable
- * null-status/empty-stderr spawn. Default seam for {@link readPmItems}. */
-function spawnPmListAll(args: string[], maxBuffer: number): PmListAllSpawnResult {
+ * null-status/empty-stderr spawn. Default seam for {@link readPmItems}.
+ * Exported for tests: the ENOENT normalisation arms are unreachable through
+ * the injected-seam tests, which never touch the real spawn. */
+export function spawnPmListAll(args: string[], maxBuffer: number): PmListAllSpawnResult {
   const result = spawnSync("pm", args, { encoding: "utf-8", maxBuffer });
   // With `encoding: "utf-8"`, spawnSync reports stdout/stderr as decoded
   // strings — but a failed start (ENOENT and friends) leaves them `undefined`

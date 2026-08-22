@@ -17,7 +17,8 @@ import { resolve, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 
-import { isMainInvocation, main, runGate } from "../scripts/docstring-gate.ts";
+import { main, runGate } from "../scripts/docstring-gate.ts";
+import { isMainInvocation } from "../scripts/main-invocation.ts";
 
 test("docstring gate runGate returns success for the real repository root", () => {
   const root = resolve(import.meta.dirname, "..");

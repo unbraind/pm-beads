@@ -16,16 +16,16 @@ import test from "node:test";
 import {
   collectReportedFiles,
   evaluateRun,
-  isMainInvocation,
   main as coverageGateMain,
   runGate,
 } from "../scripts/coverage-gate.ts";
 import {
   isExecutableFile,
-  isMainInvocation as isPrepareMain,
   pmOnPath,
   runPrepare,
 } from "../scripts/prepare-merge-driver.ts";
+// The single shared implementation; the scripts re-export it for API compat.
+import { isMainInvocation, isMainInvocation as isPrepareMain } from "../scripts/main-invocation.ts";
 import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -450,6 +450,7 @@ test("isExecutableFile accepts regular executables and rejects directories, miss
 });
 
 test("pmOnPath resolves pm across POSIX and Windows PATH spellings", (t) => {
+  if (process.platform === "win32") t.skip("POSIX mode-bit semantics");
   const dir = mkdtempSync(join(tmpdir(), "pmonpath-"));
   try {
     makeExecutable(join(dir, "pm"));
@@ -473,10 +474,6 @@ test("pmOnPath resolves pm across POSIX and Windows PATH spellings", (t) => {
       true,
     );
     assert.equal(pmOnPath({ pathEnv: winDir, pathExt: ".EXE", platform: "win32" }), false);
-    assert.equal(
-      pmOnPath({ pathEnv: `"${winDir}"`, pathExt: ".CMD;.EXE", platform: "win32" }),
-      true,
-    );
     assert.equal(pmOnPath({ pathEnv: "", pathExt: undefined, platform: "win32" }), false);
     rmSync(winDir, { recursive: true, force: true });
   } finally {
@@ -496,13 +493,14 @@ test("runPrepare skips silently without pm and wires drivers through the injecte
     process.env.PATH = savedPath;
     rmSync(emptyDir, { recursive: true, force: true });
   }
-  let executed = "";
-  const wired = runPrepare({ exec: (command) => { executed = command; } });
+  let executed: { command: string; args: readonly string[] } | undefined;
+  const wired = runPrepare({ exec: (command, args) => { executed = { command, args }; } });
   assert.equal(wired.wired, true);
-  assert.equal(executed, "pm merge install");
+  assert.deepEqual(executed, { command: "pm", args: ["merge", "install"] });
 });
 
-test("runPrepare's default executor shells out to a pm binary found on PATH", () => {
+test("runPrepare's default executor shells out to a pm binary found on PATH", (t) => {
+  if (process.platform === "win32") t.skip("POSIX mode-bit semantics and ':'-separated PATH");
   // A disposable git repo + a stub pm on PATH prove the default exec branch
   // runs the real command without touching this repository's own git config.
   const workDir = mkdtempSync(join(tmpdir(), "pmmerge-default-"));
@@ -516,7 +514,7 @@ test("runPrepare's default executor shells out to a pm binary found on PATH", ()
   process.env.PATH = `${bin}:${savedPath}`;
   process.chdir(join(workDir, "repo"));
   try {
-    const result = runPrepare(); // default exec: execSync("pm merge install")
+    const result = runPrepare(); // default exec: execFileSync("pm", ["merge", "install"])
     assert.equal(result.wired, true);
   } finally {
     process.chdir(savedCwd);

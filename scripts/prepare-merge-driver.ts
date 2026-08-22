@@ -13,11 +13,13 @@
  * at the bottom runs the real wiring exactly once per invocation.
  */
 
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { accessSync, constants, statSync } from "node:fs";
 import { delimiter, join } from "node:path";
-import { realpathSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+
+import { isMainInvocation } from "./main-invocation.ts";
+
+export { isMainInvocation };
 
 /** The POSIX executable-mode bit, absent on Windows where PATHEXT rules instead. */
 const X_OK = constants.X_OK;
@@ -27,7 +29,7 @@ const X_OK = constants.X_OK;
  *
  * Mirrors how a shell resolves a bare command name: directories and (on POSIX)
  * non-executable files are rejected, so a stray `pm` directory or data file
- * never makes the downstream `execSync` fail the whole install. On Windows the
+ * never makes the downstream executor fail the whole install. On Windows the
  * executability question is keyed off PATHEXT by the shell, not a mode bit, so
  * any regular file counts.
  *
@@ -124,40 +126,32 @@ export interface PrepareResult {
  * install surfaces it instead of swallowing it.
  *
  * @param options.exec - Injectable executor over `pm merge install` (defaults
- *                       to a real `execSync`, inherited stdio).
+ *                       to a real `execFileSync` with an argument array — no
+ *                       intermediate shell on POSIX — inherited stdio).
+ * @param options.platform - Injected so tests can exercise the Windows shell
+ *                           fallback of the default executor.
  * @returns What the run decided, for callers that report it.
  */
 export function runPrepare(
-  options: { exec?: (command: string) => void } = {},
+  options: { exec?: (command: string, args: readonly string[]) => void; platform?: NodeJS.Platform } = {},
 ): PrepareResult {
-  if (!pmOnPath()) return { exitCode: 0, wired: false, detail: "pm not found on PATH; skipping merge-driver wiring" };
-  const exec = options.exec ?? ((command: string) => {
-    execSync(command, { stdio: "inherit" });
+  if (!pmOnPath({ platform: options.platform })) {
+    return { exitCode: 0, wired: false, detail: "pm not found on PATH; skipping merge-driver wiring" };
+  }
+  const isWindows = (options.platform ?? process.platform) === "win32";
+  const exec = options.exec ?? ((command: string, args: readonly string[]) => {
+    // An argument array instead of a command string: no shell interprets the
+    // invocation on POSIX, which removes the whole shell-injection surface.
+    // Windows still needs a shell because npm resolves `pm` there through a
+    // .CMD shim that execFileSync cannot start directly.
+    execFileSync(command, [...args], { stdio: "inherit", shell: isWindows });
   });
-  exec("pm merge install");
+  exec("pm", ["merge", "install"]);
   return { exitCode: 0, wired: true, detail: "wired pm merge drivers via `pm merge install`" };
 }
 
-/**
- * Whether this module is the process entry point rather than a test import.
- *
- * Same realpath-canonicalised comparison the sibling gates use: a launcher
- * reaching this file through a symlink still compares equal, a test import
- * declines to run the wiring, and an unresolvable `argv[1]` propagates rather
- * than silently skipping the wiring. See docstring-gate.ts for the full
- * rationale; the three scripts share the contract deliberately.
- *
- * @param argv - The process argv to inspect.
- * @param moduleUrl - The `import.meta.url` of this module.
- * @returns True when `argv[1]` and `moduleUrl` canonicalise to the same path.
- * @throws Whatever `realpathSync` throws when either path cannot be resolved.
- */
-export function isMainInvocation(argv: readonly string[], moduleUrl: string): boolean {
-  const entry = argv[1];
-  if (entry === undefined) return false;
-  return realpathSync(entry) === realpathSync(fileURLToPath(moduleUrl));
-}
-
+// Run the wiring only as main; see scripts/main-invocation.ts for the guard's
+// rationale.
 if (isMainInvocation(process.argv, import.meta.url)) {
   const result = runPrepare();
   if (result.wired) process.stdout.write(`${result.detail}\n`);
