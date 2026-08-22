@@ -249,10 +249,12 @@ test("a failing CLI fallback propagates instead of feeding the gate an empty cro
 test("the SDK store success path recovers bead ids from the persisted marker", async () => {
   const ext = await harness();
   const ws = mkdtempSync(join(tmpdir(), "beads-sdk-ws-")) + "/ws";
-  execFileSync(PM_BIN, ["--path", ws, "init"], { stdio: "ignore" });
-  execFileSync(PM_BIN, ["--path", ws, "create", "--title", "Real item", "--description", "[bead_id: bd-real]"], { stdio: "ignore" });
   const s = stubScenario({});
   try {
+    // Inside the try: if the real-CLI setup fails, the finally still cleans up
+    // the temp workspace and deactivates the extension.
+    execFileSync(PM_BIN, ["--path", ws, "init"], { stdio: "ignore" });
+    execFileSync(PM_BIN, ["--path", ws, "create", "--title", "Real item", "--description", "[bead_id: bd-real]"], { stdio: "ignore" });
     const file = s.jsonlPath("dep.jsonl");
     writeFileSync(file, jsonl([{ id: "bd-1", title: "Dependent", dependencies: ["bd-real"] }]), "utf-8");
     const report = (await runCommand(ext, {

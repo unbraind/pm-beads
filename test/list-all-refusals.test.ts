@@ -46,12 +46,23 @@ function completeEnvelope(overrides: Partial<ListAllEnvelope> = {}): ListAllEnve
   } as ListAllEnvelope;
 }
 
-/** Assert the mutated envelope is refused with an error naming the mutation. */
-function refuses(name: string, mutate: (env: ListAllEnvelope) => void): void {
+/**
+ * Assert the mutated envelope is refused with the refusal signal EXPECTED for
+ * this mutation. `assertListAllComplete` checks in a fixed order, so a mutated
+ * field could otherwise trip an earlier, unrelated refusal and still pass;
+ * the pattern pins which signal tripped.
+ */
+function refuses(name: string, mutate: (env: ListAllEnvelope) => void, expected: RegExp): void {
   test(`refuses an envelope whose ${name}`, () => {
     const env = completeEnvelope();
     mutate(env);
-    assert.throws(() => assertListAllComplete(env), IncompleteWorkspaceReadError);
+    try {
+      assertListAllComplete(env);
+      assert.fail(`expected an IncompleteWorkspaceReadError matching ${expected}`);
+    } catch (err: unknown) {
+      assert.ok(err instanceof IncompleteWorkspaceReadError, `wrong error type: ${err}`);
+      assert.match((err as Error).message, expected);
+    }
   });
 }
 
@@ -70,106 +81,106 @@ test("refuses a top-level array and a null answer outright", () => {
 });
 refuses("truncated flag is not exactly false", (env) => {
   env.truncated = true;
-});
+}, /truncated=true/);
 refuses("truncated flag is missing", (env) => {
   delete (env as Record<string, unknown>).truncated;
-});
+}, /truncated=\(missing\)/);
 refuses("has_more flag is not exactly false", (env) => {
   env.has_more = true;
-});
+}, /has_more=true/);
 refuses("has_more flag is missing", (env) => {
   delete (env as Record<string, unknown>).has_more;
-});
+}, /has_more=\(missing\)/);
 refuses("next_cursor is non-null", (env) => {
   env.next_cursor = "cursor-1";
-});
+}, /next_cursor must be exactly null/);
 refuses("next_cursor is missing", (env) => {
   delete (env as Record<string, unknown>).next_cursor;
-});
+}, /next_cursor must be exactly null; received \(missing\)/);
 refuses("completeness.status is not complete", (env) => {
   env.completeness = { status: "partial", unreadable_item_count: 2, unreadable_directory_count: 1 };
-});
+}, /completeness\.status="partial"/);
 refuses("completeness block is missing", (env) => {
   delete (env as Record<string, unknown>).completeness;
-});
+}, /completeness\.status=\(missing\)/);
 refuses("unreadable_item_count is nonzero", (env) => {
   if (env.completeness) env.completeness.unreadable_item_count = 3;
-});
+}, /unreadable_item_count must be exactly 0/);
 refuses("unreadable_directory_count is nonzero", (env) => {
   if (env.completeness) env.completeness.unreadable_directory_count = 1;
-});
+}, /unreadable_directory_count must be exactly 0/);
 refuses("omission_receipt is not an object", (env) => {
   env.omission_receipt = undefined;
-});
+}, /omission_receipt must be an object/);
 refuses("omission_receipt reports omissions", (env) => {
   env.omission_receipt = { has_omissions: true, omitted_field_group_count: 1, omitted_field_groups: ["body"] };
-});
+}, /has_omissions must be exactly false/);
 refuses("omitted_field_group_count is nonzero", (env) => {
   if (env.omission_receipt) env.omission_receipt.omitted_field_group_count = 2;
-});
+}, /omitted_field_group_count must be exactly 0/);
 refuses("omitted_field_groups is not an empty array", (env) => {
   env.omission_receipt = { has_omissions: false, omitted_field_group_count: 0, omitted_field_groups: undefined };
-});
+}, /omitted_field_groups must be an empty array/);
 refuses("projection.mode is not full", (env) => {
   env.projection = { mode: "brief" };
-});
+}, /projection\.mode must be exactly full; received "brief"/);
 refuses("read_output.contract_version is not 1", (env) => {
   if (env.read_output) env.read_output.contract_version = 2;
-});
+}, /contract_version must be exactly 1/);
 refuses("read_output.command is not list", (env) => {
   if (env.read_output) env.read_output.command = "show";
-});
+}, /read_output\.command must be exactly list/);
 refuses("read_output.within_budget is not true", (env) => {
   if (env.read_output) env.read_output.within_budget = false;
-});
+}, /within_budget must be exactly true/);
 refuses("strings_compacted is true", (env) => {
   if (env.read_output) env.read_output.strings_compacted = true;
-});
+}, /strings_compacted must be exactly false/);
 refuses("rows_compacted is true", (env) => {
   if (env.read_output) env.read_output.rows_compacted = true;
-});
+}, /rows_compacted must be exactly false/);
 refuses("result_omitted is true", (env) => {
   if (env.read_output) env.read_output.result_omitted = true;
-});
+}, /result_omitted must be exactly false/);
 refuses("requested_dimensions misses a required dimension", (env) => {
   if (env.read_output) env.read_output.requested_dimensions = ["include"];
-});
+}, /requested_dimensions must include/);
 refuses("requested_dimensions is not an array", (env) => {
   if (env.read_output) env.read_output.requested_dimensions = "include";
-});
+}, /requested_dimensions must include/);
 refuses("a budget truncation disclosure is present", (env) => {
   (env as Record<string, unknown>).output_budget_truncation = { note: "cut" };
-});
+}, /budget truncation or omission disclosure/);
 refuses("a budget omission disclosure is present", (env) => {
   (env as Record<string, unknown>).output_budget_exceeded = { note: "cut" };
-});
+}, /budget truncation or omission disclosure/);
 refuses("count is negative", (env) => {
   env.count = -1;
-});
+}, /count must be a non-negative safe integer/);
 refuses("count is not a safe integer", (env) => {
   env.count = Number.NaN;
-});
+}, /count must be a non-negative safe integer/);
 refuses("total is negative", (env) => {
   env.total = -5;
-});
+}, /total must be a non-negative safe integer/);
 refuses("total is missing", (env) => {
   delete (env as Record<string, unknown>).total;
-});
+}, /total must be a non-negative safe integer/);
 refuses("items is not an array", (env) => {
   env.items = undefined;
-});
+}, /`items` is not an array/);
 refuses("count disagrees with total", (env) => {
   env.total = 7;
-});
+}, /count 1 must equal total 7/);
 refuses("items.length disagrees with count", (env) => {
   env.items = [];
-});
+}, /items\.length 0 must equal count 1/);
 refuses("an item row is not an object", (env) => {
   env.items = ["nope"];
-});
+}, /item 0 must be an object/);
 refuses("an item row has an empty id", (env) => {
   env.items = [{ id: "   " }];
-});
+}, /item 0 must have a non-empty id/);
 refuses("two item rows share one id", (env) => {
   env.items = [
     { id: "pm-1", title: "One" },
@@ -177,7 +188,7 @@ refuses("two item rows share one id", (env) => {
   ];
   env.count = 2;
   env.total = 2;
-});
+}, /duplicate item id pm-1/);
 
 test("the refusal message carries the count/total figures for pagination signals", () => {
   const env = completeEnvelope({ truncated: true, total: 9 });

@@ -20,7 +20,13 @@ import {
 import {CHMOD_ROOT_SKIP, EXISTING_MARKER_ITEM, envelope, harness, jsonl, runCommand, runImport, stubScenario, type ImportResult} from "./helpers.ts";
 import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+// The repo-local real pm binary's directory, resolved against THIS file rather
+// than process.cwd(), so the test does not depend on the runner's working
+// directory being the repository root.
+const REPO_BIN_DIR = dirname(fileURLToPath(import.meta.resolve("../node_modules/.bin/pm")));
 
 test("an empty input file reports zero imports without spawning any pm command", async () => {
   const ext = await harness();
@@ -643,7 +649,7 @@ test("--tags overrides record labels; --no-preserve-timestamps skips pass three"
   }
 });
 
-test("a one-byte read buffer kills the real pm child and is reported as a buffer overrun", async () => {
+test("a one-byte read buffer kills the real pm child and is reported as a buffer overrun", { skip: CHMOD_ROOT_SKIP }, async () => {
   const ext = await harness();
   const dir = mkdtempSync(join(tmpdir(), "beads-enobufs-"));
   mkdirSync(dir, { recursive: true });
@@ -652,7 +658,7 @@ test("a one-byte read buffer kills the real pm child and is reported as a buffer
   // The repo-local CLI answers every list with more than one byte, so a 1-byte
   // cap kills the child mid-read — the exact unattributable failure the cap
   // exists to name.
-  process.env.PATH = `${join(process.cwd(), "node_modules", ".bin")}:${savedPath}`;
+  process.env.PATH = `${REPO_BIN_DIR}:${savedPath}`;
   process.env.PM_JSON_MAX_BUFFER = "1";
   try {
     // The input file itself must be readable; the overrun then happens in the
