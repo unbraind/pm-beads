@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Release coverage gate is below 100 percent and omits executable tooling ([pm-beads-cjey](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-cjey.toon))
 - Canonicalize complete workspace reads and adopt the current pm host contract ([pm-beads-1uz3](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-1uz3.toon))
 - Keep beads export stdout as pure JSONL without host summary output ([pm-beads-y76h](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-y76h.toon))
 

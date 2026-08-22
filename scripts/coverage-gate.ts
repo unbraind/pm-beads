@@ -21,6 +21,14 @@
  * gate enforces are visible in the same file that declares the scripts, and a
  * threshold change shows up in review as a deliberate diff.
  *
+ * Like the sibling docstring gate, the logic lives in the pure {@link runGate}
+ * (it touches neither the process streams nor `process.exit`, so a test imports
+ * it against a fixture repository and asserts on the returned outcome), while
+ * the thin {@link main} entry point writes the streams and sets the exit code.
+ * The gate is measured by its own suite: `coverageGate.sources` includes
+ * `scripts/`, so this file must itself be exercised to 100% — the fixture-based
+ * {@link runGate} tests are that exercise.
+ *
  * @example
  * ```bash
  * node scripts/coverage-gate.ts
@@ -30,15 +38,19 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 /**
  * Minimum acceptable percentage for each coverage dimension Node reports.
  *
  * Statement coverage is not listed because V8 reports statements as lines; the
- * line figure is the statement figure for this runtime.
+ * line figure IS the statement figure for this runtime, so a `lines` threshold
+ * of 100 is simultaneously the statements and lines requirement the release
+ * contract demands.
  */
 interface CoverageThresholds {
-  /** Minimum percentage of executable lines that must be covered. */
+  /** Minimum percentage of executable lines (V8 statements) that must be covered. */
   readonly lines: number;
   /** Minimum percentage of branch arms that must be taken. */
   readonly branches: number;
@@ -78,21 +90,34 @@ interface CoverageGateConfig {
 
 /** Shape of the `package.json` fields this script reads. */
 interface PackageManifest {
+  /** The `coverageGate` block, when the manifest declares one. */
   readonly coverageGate?: CoverageGateConfig;
-}
-
-const repoRoot = resolve(import.meta.dirname, "..");
-const manifest = JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")) as PackageManifest;
-const config = manifest.coverageGate;
-
-if (!config) {
-  console.error("coverage-gate: package.json has no `coverageGate` block.");
-  process.exit(1);
 }
 
 /** Compiler paths used to locate a source file's emitted output. */
 interface TsConfig {
+  /** The compiler's effective output directory (`dist` when unset). */
   readonly compilerOptions?: { readonly outDir?: string; readonly rootDir?: string };
+}
+
+/**
+ * Outcome of one gate run, held as plain strings so a test can inspect it.
+ *
+ * The exit code and the newline-trimmed stdout/stderr content are captured here
+ * rather than written directly, mirroring the docstring gate's result contract:
+ * {@link main} appends the trailing newline as it writes each non-empty stream,
+ * so an assertion can compare whole strings without a trailing newline getting
+ * in the way. The child test runner's output is captured (not streamed) so it
+ * can be passed through in the outcome; `main` preserves the original ordering
+ * well enough for a release log while keeping {@link runGate} pure.
+ */
+export interface GateResult {
+  /** Process exit code the run would produce (0 on success; non-zero on failure). */
+  readonly exitCode: number;
+  /** Content the run would write to stdout, without a trailing newline. */
+  readonly stdout: string;
+  /** Content the run would write to stderr, without a trailing newline. */
+  readonly stderr: string;
 }
 
 /**
@@ -103,34 +128,32 @@ interface TsConfig {
  * a raw `JSON.parse` can either throw on a valid config or silently read the
  * wrong paths.
  *
- * Fails closed if the compiler cannot be reached. This feeds the check that
- * decides whether an exempted module is genuinely type-only, and guessing the
- * emit layout there could clear an executable module by looking at the wrong
- * file — the one outcome this gate must never produce. A package that cannot
- * run its own compiler has a problem worth stopping for.
+ * Returns `undefined` when the compiler cannot be reached. This feeds the check
+ * that decides whether an exempted module is genuinely type-only, and guessing
+ * the emit layout there could clear an executable module by looking at the wrong
+ * file — the one outcome this gate must never produce. A package that cannot run
+ * its own compiler has a problem worth stopping for.
+ *
+ * @param repoRoot - Absolute repository root whose `tsconfig.json` is resolved.
+ * @returns The effective `outDir`/`rootDir`, or `undefined` when the compiler
+ *          cannot be consulted.
  */
-function resolveEmitPaths(): { outDir: string; rootDir: string } {
+function resolveEmitPaths(repoRoot: string): { outDir: string; rootDir: string } | undefined {
   const shown = spawnSync("npx", ["tsc", "--showConfig", "-p", "tsconfig.json"], {
     cwd: repoRoot,
     encoding: "utf8",
     shell: process.platform === "win32",
   });
-  if (shown.status !== 0 || !shown.stdout) {
-    console.error(
-      [
-        "coverage-gate: could not resolve the effective tsconfig via `tsc --showConfig`,",
-        "so the emit layout is unknown and `coverageGate.ignore` entries cannot be verified",
-        "as type-only. Refusing to guess.",
-        shown.stderr?.trim() ? `\n${shown.stderr.trim()}` : "",
-      ].join("\n"),
-    );
-    process.exit(1);
+  if (shown.status !== 0 || !shown.stdout) return undefined;
+  try {
+    const parsed = JSON.parse(shown.stdout) as TsConfig;
+    return {
+      outDir: parsed.compilerOptions?.outDir ?? "dist",
+      rootDir: parsed.compilerOptions?.rootDir ?? ".",
+    };
+  } catch {
+    return undefined;
   }
-  const parsed = JSON.parse(shown.stdout) as TsConfig;
-  return {
-    outDir: parsed.compilerOptions?.outDir ?? "dist",
-    rootDir: parsed.compilerOptions?.rootDir ?? ".",
-  };
 }
 
 /**
@@ -140,6 +163,9 @@ function resolveEmitPaths(): { outDir: string; rootDir: string } {
  * These hold tests, build output, tooling and installed dependencies. None of
  * them contain shipped source, and several would otherwise make the required
  * set unsatisfiable — a test file cannot appear in its own coverage report.
+ * Executable gate tooling that IS shipped source lives in `scripts/` and is
+ * measured by listing `scripts` as an explicit `coverageGate.sources` entry,
+ * which bypasses the skip list for that entry only.
  */
 const DEFAULT_SKIP_DIRS: readonly string[] = [
   "node_modules",
@@ -155,53 +181,62 @@ const DEFAULT_SKIP_DIRS: readonly string[] = [
   ".github",
 ];
 
-const skipDirs = new Set([...DEFAULT_SKIP_DIRS, ...(config.skipDirs ?? [])]);
-
 /**
  * Collects every TypeScript source file at a configured location.
  *
  * A file entry resolves to itself; a directory entry is walked recursively with
- * {@link DEFAULT_SKIP_DIRS} pruned. Declaration files are skipped either way:
- * they carry no runtime code and so can never appear in a coverage report.
+ * the skip list (the {@link DEFAULT_SKIP_DIRS} union of the config's) pruned.
+ * Declaration files are skipped either way: they carry no runtime code and so
+ * can never appear in a coverage report.
  *
  * @param target - Absolute path to a source file or directory.
- * @returns Repository-relative POSIX paths, in directory order.
+ * @param repoRoot - Repository root the returned paths are relative to.
+ * @param skipDirs - Directory names pruned during the walk.
+ * @returns A failure message when the target is unusable (checked by the
+ *          caller), else repository-relative POSIX paths in directory order.
  */
-function collectSources(target: string): string[] {
+function collectSources(target: string, repoRoot: string, skipDirs: Set<string>): string[] | string {
   if (!existsSync(target)) {
-    console.error(
-      `coverage-gate: \`coverageGate.sources\` names ${relative(repoRoot, target)}, which does not exist.`,
-    );
-    process.exit(1);
+    return `coverage-gate: \`coverageGate.sources\` names ${relative(repoRoot, target)}, which does not exist.`;
   }
   if (!statSync(target).isDirectory()) {
     if (!target.endsWith(".ts") || target.endsWith(".d.ts")) {
-      console.error(
-        `coverage-gate: \`coverageGate.sources\` names ${relative(repoRoot, target)}, which is not a TypeScript source file. A declaration file or non-TypeScript entry can never appear in a coverage report, so requiring it would make the gate unsatisfiable.`,
-      );
-      process.exit(1);
+      return `coverage-gate: \`coverageGate.sources\` names ${relative(repoRoot, target)}, which is not a TypeScript source file. A declaration file or non-TypeScript entry can never appear in a coverage report, so requiring it would make the gate unsatisfiable.`;
     }
     return [relative(repoRoot, target).split(sep).join("/")];
   }
+  // Nested targets are recursed without re-checking existence: they were listed
+  // from a live readdir moments earlier, so a miss would mean a concurrent
+  // mutation, which readdirSync/statSync then surface as a loud throw — the
+  // fail-closed outcome — rather than a silently pruned subtree.
+  return walkDirectory(target, repoRoot, skipDirs);
+}
+
+/**
+ * Recurse a known directory for `.ts` source files.
+ *
+ * @param dir - Absolute directory already verified to exist.
+ * @param repoRoot - Repository root the returned paths are relative to.
+ * @param skipDirs - Directory names pruned during the walk.
+ * @returns Repository-relative POSIX paths in directory order.
+ */
+function walkDirectory(dir: string, repoRoot: string, skipDirs: Set<string>): string[] {
   const found: string[] = [];
-  for (const entry of readdirSync(target, { withFileTypes: true })) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (entry.isDirectory()) {
       if (!skipDirs.has(entry.name)) {
-        found.push(...collectSources(join(target, entry.name)));
+        found.push(...walkDirectory(join(dir, entry.name), repoRoot, skipDirs));
       }
     } else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".d.ts")) {
-      found.push(relative(repoRoot, join(target, entry.name)).split(sep).join("/"));
+      found.push(relative(repoRoot, join(dir, entry.name)).split(sep).join("/"));
     }
   }
   return found;
 }
 
-const expected = config.sources.flatMap((source) => collectSources(join(repoRoot, source)));
-const exempt = new Set(config.ignore ?? []);
-const required = expected.filter((file) => !exempt.has(file));
-
 /**
- * Rejects an `ignore` entry that still carries runtime code.
+ * Rejects an `ignore` entry that still carries runtime code, or whose emit
+ * layout cannot be verified.
  *
  * The exemption exists for type-only modules, which erase to nothing and so can
  * never appear in a coverage report. Left untested, it is also the one way to
@@ -209,13 +244,30 @@ const required = expected.filter((file) => !exempt.has(file));
  * exactly the escape this gate exists to prevent. TypeScript emits `export {};`
  * and nothing else for a module that erases completely, so the compiled output
  * settles the question rather than the author's say-so.
+ *
+ * @param file - Repository-relative source file listed in `coverageGate.ignore`.
+ * @param expected - The full walked source inventory (the entry must be under it).
+ * @param emitPaths - Effective compiler paths, or `undefined` when the compiler
+ *                    could not be consulted.
+ * @param repoRoot - Absolute repository root paths resolve against.
+ * @returns A failure message when the entry is not provably type-only, else
+ *          `undefined`.
  */
-const emitPaths = (config.ignore ?? []).length > 0 ? resolveEmitPaths() : { outDir: "dist", rootDir: "." };
-
-for (const file of config.ignore ?? []) {
+function verifyIgnoredFile(
+  file: string,
+  expected: readonly string[],
+  emitPaths: { outDir: string; rootDir: string } | undefined,
+  repoRoot: string,
+): string | undefined {
   if (!expected.includes(file)) {
-    console.error(`coverage-gate: \`coverageGate.ignore\` names ${file}, which is not under \`sources\`.`);
-    process.exit(1);
+    return `coverage-gate: \`coverageGate.ignore\` names ${file}, which is not under \`sources\`.`;
+  }
+  if (!emitPaths) {
+    return [
+      "coverage-gate: could not resolve the effective tsconfig via `tsc --showConfig`,",
+      "so the emit layout is unknown and `coverageGate.ignore` entries cannot be verified",
+      "as type-only. Refusing to guess.",
+    ].join("\n");
   }
   const emitted = join(
     repoRoot,
@@ -223,10 +275,7 @@ for (const file of config.ignore ?? []) {
     relative(join(repoRoot, emitPaths.rootDir), join(repoRoot, file)),
   ).replace(/\.ts$/, ".js");
   if (!existsSync(emitted)) {
-    console.error(
-      `coverage-gate: cannot verify that ignored file ${file} is type-only — no compiled output at ${relative(repoRoot, emitted)}. Build before running the gate, or correct \`outDir\`/\`rootDir\`.`,
-    );
-    process.exit(1);
+    return `coverage-gate: cannot verify that ignored file ${file} is type-only — no compiled output at ${relative(repoRoot, emitted)}. Build before running the gate, or correct \`outDir\`/\`rootDir\`.`;
   }
   // Block comments are stripped as well as line comments: tsc carries a
   // file-leading JSDoc into the emit, so a documented type-only module would
@@ -237,68 +286,209 @@ for (const file of config.ignore ?? []) {
     .replace(/export\s*\{\s*\}\s*;?/g, "")
     .trim();
   if (body.length > 0) {
-    console.error(
-      `coverage-gate: \`coverageGate.ignore\` names ${file}, but it emits runtime code to ${relative(repoRoot, emitted)}. Only type-only modules may be exempt; anything executable must be covered.`,
-    );
-    process.exit(1);
+    return `coverage-gate: \`coverageGate.ignore\` names ${file}, but it emits runtime code to ${relative(repoRoot, emitted)}. Only type-only modules may be exempt; anything executable must be covered.`;
   }
+  return undefined;
 }
 
-if (required.length === 0) {
-  console.error("coverage-gate: source walk found no files; check `coverageGate.sources`.");
-  process.exit(1);
+/**
+ * Run the coverage gate against a repository root and return what it would write.
+ *
+ * Pure by design: it touches neither the process streams nor `process.exit`, so
+ * a test imports this and asserts on the returned outcome, while the thin
+ * {@link main} entry point writes them and sets the exit code. The child test
+ * runner inherits the caller's stdout/stderr only through the returned strings
+ * (captured, then passed through by {@link main}).
+ *
+ * @param repoRoot - Absolute repository root whose `package.json` declares the
+ *                   `coverageGate` block and whose sources/tests are measured.
+ * @returns The exit code and the newline-free stdout/stderr content.
+ */
+export function runGate(repoRoot: string): GateResult {
+  let manifest: PackageManifest;
+  try {
+    manifest = JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")) as PackageManifest;
+  } catch (err: unknown) {
+    return {
+      exitCode: 1,
+      stdout: "",
+      stderr: `coverage-gate: could not read package.json in ${repoRoot}: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+  const config = manifest.coverageGate;
+  if (!config) {
+    return { exitCode: 1, stdout: "", stderr: "coverage-gate: package.json has no `coverageGate` block." };
+  }
+
+  const skipDirs = new Set([...DEFAULT_SKIP_DIRS, ...(config.skipDirs ?? [])]);
+  const expected: string[] = [];
+  for (const source of config.sources) {
+    const collected = collectSources(join(repoRoot, source), repoRoot, skipDirs);
+    if (typeof collected === "string") return { exitCode: 1, stdout: "", stderr: collected };
+    expected.push(...collected);
+  }
+  const exempt = new Set(config.ignore ?? []);
+  const required = expected.filter((file) => !exempt.has(file));
+
+  for (const file of config.ignore ?? []) {
+    const problem = verifyIgnoredFile(
+      file,
+      expected,
+      (config.ignore ?? []).length > 0 ? resolveEmitPaths(repoRoot) : undefined,
+      repoRoot,
+    );
+    if (problem) return { exitCode: 1, stdout: "", stderr: problem };
+  }
+
+  if (required.length === 0) {
+    return { exitCode: 1, stdout: "", stderr: "coverage-gate: source walk found no files; check `coverageGate.sources`." };
+  }
+
+  const lcovPath = join(repoRoot, "coverage", "lcov.info");
+  mkdirSync(join(repoRoot, "coverage"), { recursive: true });
+  // Delete any previous report first. If this run writes none, a leftover file
+  // from an earlier, broader run would satisfy the presence check on stale data —
+  // the gate would pass by reading history rather than by measuring anything.
+  rmSync(lcovPath, { force: true });
+
+  const result = spawnSync(
+    process.execPath,
+    [
+      "--test",
+      "--experimental-test-coverage",
+      // Scope the report to exactly the files the presence check requires. Passing
+      // the enumerated paths rather than a directory glob keeps the two in step by
+      // construction, and keeps test files and tooling out of the percentages even
+      // when the source root is the repository root.
+      ...required.map((file) => `--test-coverage-include=${file}`),
+      `--test-coverage-lines=${config.thresholds.lines}`,
+      `--test-coverage-branches=${config.thresholds.branches}`,
+      `--test-coverage-functions=${config.thresholds.functions}`,
+      "--test-reporter=spec",
+      "--test-reporter-destination=stdout",
+      "--test-reporter=lcov",
+      `--test-reporter-destination=${lcovPath}`,
+      ...config.tests,
+    ],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+      // Pin the timezone so the measurement is reproducible on any machine.
+      // Code that branches on a timestamp's UTC offset takes different paths under
+      // a local offset than under UTC, which moves the reported percentage between
+      // a contributor's machine and CI. A threshold pinned to one machine's number
+      // then fails on the other for reasons unrelated to the change under review.
+      //
+      // The runner-context variables are stripped deliberately: when this gate
+      // itself runs inside a test-runner process (its own suite measures it),
+      // NODE_TEST_CONTEXT marks this child as a nested runner and silently
+      // changes which reporters it starts — the lcov report this gate reads back
+      // is then never written. The measured child must always run standalone.
+      env: Object.fromEntries(
+        Object.entries({ ...process.env, TZ: "UTC" }).filter(
+          ([key]) => key !== "NODE_TEST_CONTEXT" && key !== "NODE_V8_COVERAGE",
+        ),
+      ),
+    },
+  );
+
+  return evaluateRun(repoRoot, lcovPath, required, {
+    status: result.status,
+    error: result.error ?? undefined,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  });
 }
 
-const lcovPath = join(repoRoot, "coverage", "lcov.info");
-mkdirSync(join(repoRoot, "coverage"), { recursive: true });
-// Delete any previous report first. If this run writes none, a leftover file
-// from an earlier, broader run would satisfy the presence check on stale data —
-// the gate would pass by reading history rather than by measuring anything.
-rmSync(lcovPath, { force: true });
-
-const result = spawnSync(
-  process.execPath,
-  [
-    "--test",
-    "--experimental-test-coverage",
-    // Scope the report to exactly the files the presence check requires. Passing
-    // the enumerated paths rather than a directory glob keeps the two in step by
-    // construction, and keeps test files and tooling out of the percentages even
-    // when the source root is the repository root.
-    ...required.map((file) => `--test-coverage-include=${file}`),
-    `--test-coverage-lines=${config.thresholds.lines}`,
-    `--test-coverage-branches=${config.thresholds.branches}`,
-    `--test-coverage-functions=${config.thresholds.functions}`,
-    "--test-reporter=spec",
-    "--test-reporter-destination=stdout",
-    "--test-reporter=lcov",
-    `--test-reporter-destination=${lcovPath}`,
-    ...config.tests,
-  ],
-  {
-    cwd: repoRoot,
-    stdio: "inherit",
-    // Pin the timezone so the measurement is reproducible on any machine.
-    // Code that branches on a timestamp's UTC offset takes different paths under
-    // a local offset than under UTC, which moves the reported percentage between
-    // a contributor's machine and CI. A threshold pinned to one machine's number
-    // then fails on the other for reasons unrelated to the change under review.
-    env: { ...process.env, TZ: "UTC" },
-  },
-);
-
-if (result.error) {
-  console.error(`coverage-gate: failed to start the test runner: ${result.error.message}`);
-  process.exit(1);
+/**
+ * What the spawned test-runner child reported back.
+ *
+ * Mirrors the subset of `spawnSync`'s result the gate reasons about, held as a
+ * plain object so {@link evaluateRun} can be driven directly by tests for the
+ * outcomes a real child rarely produces (a green run that wrote no report).
+ */
+export interface RunnerOutcome {
+  /** Child exit status; `null` when the child could not start or was killed. */
+  readonly status: number | null;
+  /** Spawn error (ENOENT, ENOBUFS and friends), when one occurred. */
+  readonly error?: Error;
+  /** Decoded child stdout. */
+  readonly stdout: string;
+  /** Decoded child stderr. */
+  readonly stderr: string;
 }
 
-// Surface a runner failure before touching the report at all. A failing suite,
-// an unmet threshold, or a test file that will not load can each leave the lcov
-// output absent or incomplete, and every diagnostic below would then describe a
-// coverage-configuration problem the author does not have — burying the test
-// failure they need to act on.
-if (result.status !== 0) {
-  process.exit(result.status ?? 1);
+/**
+ * Reconcile a finished runner outcome against the lcov report it should have
+ * written and the source inventory the walk required.
+ *
+ * The order of the checks is the diagnostic order: a failed or unstarted runner
+ * is surfaced before the report is read (its absence would otherwise be
+ * misdescribed as a configuration problem), then a missing report is refused,
+ * then files the run never loaded are named, and only a fully accounted run
+ * passes.
+ *
+ * @param repoRoot - Absolute repository root paths resolve against.
+ * @param lcovPath - Absolute path the child was told to write its lcov report to.
+ * @param required - Repository-relative source files the presence check requires.
+ * @param runner - What the spawned child reported.
+ * @returns The gate outcome for this run.
+ */
+export function evaluateRun(
+  repoRoot: string,
+  lcovPath: string,
+  required: readonly string[],
+  runner: RunnerOutcome,
+): GateResult {
+  // Surface a runner failure before touching the report at all. A runner that
+  // could not start, a failing suite, an unmet threshold, or a test file that
+  // will not load can each leave the lcov output absent or incomplete, and every
+  // diagnostic below would then describe a coverage-configuration problem the
+  // author does not have — burying the failure they need to act on. A spawn
+  // error surfaces its own message because status alone is null and stderr empty.
+  if (runner.error || runner.status !== 0) {
+    return {
+      exitCode: runner.status ?? 1,
+      stdout: runner.stdout,
+      stderr: runner.stderr || runner.error?.message || "",
+    };
+  }
+
+  // Source files the run actually reported on, read back from the lcov output
+  // (see {@link collectReportedFiles} for the normalisation rules).
+  const reported = collectReportedFiles(lcovPath, repoRoot);
+  if (reported === undefined) {
+    return {
+      exitCode: 1,
+      stdout: runner.stdout,
+      stderr: `coverage-gate: no coverage report was written to ${relative(repoRoot, lcovPath)}.`,
+    };
+  }
+
+  const missing = required.filter((file) => !reported.has(file));
+
+  if (missing.length > 0) {
+    return {
+      exitCode: 1,
+      stdout: runner.stdout,
+      stderr: [
+        "",
+        `coverage-gate: ${missing.length} source file(s) never loaded during the run and were`,
+        "omitted from the coverage report, so the reported percentages exclude them entirely:",
+        ...missing.map((file) => `  - ${file}`),
+        "",
+        "Import each file from a test (or exercise it through the CLI entrypoint under test).",
+        "A file that is genuinely type-only belongs in `coverageGate.ignore` in package.json.",
+        "",
+      ].join("\n"),
+    };
+  }
+
+  return {
+    exitCode: 0,
+    stdout: `${runner.stdout}\ncoverage-gate: ${required.length} source file(s) reported, thresholds met.`,
+    stderr: runner.stderr,
+  };
 }
 
 /**
@@ -310,37 +500,85 @@ if (result.status !== 0) {
  * have been seen to emit absolute paths; without normalising, the presence
  * check would invert into a permanently red build that blames every source file
  * for never loading.
+ *
+ * Returns `undefined` when the report cannot be read at all (absent, deleted,
+ * unreadable) so the caller can distinguish "ran and wrote nothing measurable"
+ * from any specific set of files.
+ *
+ * @param lcovPath - Absolute path of the lcov report the child was told to write.
+ * @param repoRoot - Repository root the SF paths are relativised against.
+ * @returns Repository-relative POSIX paths reported on, or `undefined`.
  */
-const reported = new Set<string>();
-try {
-  statSync(lcovPath);
-  for (const line of readFileSync(lcovPath, "utf8").split("\n")) {
+export function collectReportedFiles(lcovPath: string, repoRoot: string): Set<string> | undefined {
+  let text: string;
+  try {
+    statSync(lcovPath);
+    text = readFileSync(lcovPath, "utf8");
+  } catch {
+    return undefined;
+  }
+  const reported = new Set<string>();
+  for (const line of text.split("\n")) {
     if (!line.startsWith("SF:")) continue;
     const raw = line.slice(3).trim();
     const abs = isAbsolute(raw) ? raw : join(repoRoot, raw);
     reported.add(relative(repoRoot, abs).split(sep).join("/"));
   }
-} catch {
-  console.error(`coverage-gate: no coverage report was written to ${relative(repoRoot, lcovPath)}.`);
-  process.exit(1);
+  return reported;
 }
 
-const missing = required.filter((file) => !reported.has(file));
-
-if (missing.length > 0) {
-  console.error(
-    [
-      "",
-      `coverage-gate: ${missing.length} source file(s) never loaded during the run and were`,
-      "omitted from the coverage report, so the reported percentages exclude them entirely:",
-      ...missing.map((file) => `  - ${file}`),
-      "",
-      "Import each file from a test (or exercise it through the CLI entrypoint under test).",
-      "A file that is genuinely type-only belongs in `coverageGate.ignore` in package.json.",
-      "",
-    ].join("\n"),
-  );
-  process.exit(1);
+/**
+ * CLI entry point: run the gate and emit its result.
+ *
+ * Writes the exact stdout/stderr bytes {@link runGate} produced and appends a
+ * trailing newline to each non-empty stream so the next `release:check` step
+ * starts on its own line rather than butting against this gate's output. Sets
+ * `process.exitCode` rather than calling `process.exit`, so a test can invoke
+ * this in-process and restore the exit code.
+ *
+ * @param root - Absolute repository root to measure.
+ */
+export function main(root: string): void {
+  const result = runGate(root);
+  if (result.stdout) process.stdout.write(`${result.stdout}\n`);
+  if (result.stderr) process.stderr.write(`${result.stderr}\n`);
+  process.exitCode = result.exitCode;
 }
 
-console.log(`\ncoverage-gate: ${required.length} source file(s) reported, thresholds met.`);
+/**
+ * Whether this module is the process entry point rather than a test import.
+ *
+ * Both sides are canonicalised through `realpathSync` before comparison, so a
+ * launcher reaching this file through a symlink (an npm bin shim, a linked
+ * workspace) still compares equal. An unresolvable `argv[1]` propagates rather
+ * than returning false: returning false here means `npm run coverage` exits 0
+ * having measured nothing — the one silent skip this gate must never produce.
+ * See the sibling docstring gate for the full rationale; the two gates share
+ * the contract deliberately.
+ *
+ * @param argv - The process argv to inspect.
+ * @param moduleUrl - The `import.meta.url` of the module that might be main.
+ * @returns True when `argv[1]` and `moduleUrl` canonicalise to the same path.
+ * @throws Whatever `realpathSync` throws when either path cannot be resolved.
+ */
+export function isMainInvocation(argv: readonly string[], moduleUrl: string): boolean {
+  const entry = argv[1];
+  if (entry === undefined) return false;
+  return realpathSync(entry) === realpathSync(fileURLToPath(moduleUrl));
+}
+
+const repoRoot = resolve(import.meta.dirname, "..");
+
+if (isMainInvocation(process.argv, import.meta.url)) {
+  // An optional argv[2] overrides the measured root (the sibling fleet gate's
+  // contract): the measured root is REQUIRED so the script can never silently
+  // measure the wrong checkout, and so its own suite can execute it as main
+  // against a fast fixture instead of recursing into the package's full suite.
+  const rootArg = process.argv[2];
+  if (rootArg === undefined) {
+    throw new Error(
+      "coverage-gate: pass the repository root to measure as the first argument (the npm `coverage` script does).",
+    );
+  }
+  main(resolve(rootArg));
+}
