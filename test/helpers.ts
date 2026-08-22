@@ -109,6 +109,18 @@ export const EXISTING_MARKER_ITEM = {
   description: "[bead_id: bd-1]",
 };
 
+/**
+ * Skip reason for tests that force a failure by revoking permission bits
+ * (`chmod 0o000`). A root process ignores mode bits, so the injected failure
+ * never occurs and the test would fail for an environment reason rather than
+ * assert anything. Such tests declare `{ skip: CHMOD_ROOT_SKIP }`; on a
+ * non-root host this is `false` and the test runs.
+ */
+export const CHMOD_ROOT_SKIP: string | false =
+  process.getuid?.() === 0
+    ? "chmod 0o000 does not force a read failure for a root process (root ignores mode bits)"
+    : false;
+
 export interface StubScenario {
   dir: string;
   jsonlPath: (name: string) => string;

@@ -21,7 +21,7 @@ import {
   pmItemPassesFilter,
   pmItemToBead,
 } from "../index.ts";
-import { envelopeWith, harness, jsonl, runCommand, runExport, runImport, stubScenario } from "./helpers.ts";
+import { CHMOD_ROOT_SKIP, envelopeWith, harness, jsonl, runCommand, runExport, runImport, stubScenario } from "./helpers.ts";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -390,7 +390,7 @@ test("the legacy beads-export alias command runs the same export core", async ()
 
 const ISO = "2026-01-02T03:04:05.000Z";
 
-test("an unreadable item file is reported as a read failure, not a locate failure", async () => {
+test("an unreadable item file is reported as a read failure, not a locate failure", { skip: CHMOD_ROOT_SKIP }, async () => {
   const ext = await harness();
   const s = stubScenario({ listEnvelope: JSON.parse(envelopeWith([])) });
   try {

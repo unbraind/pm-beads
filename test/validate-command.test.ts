@@ -17,7 +17,7 @@ import {
   EXIT_CODE,
   validateBeadsText,
 } from "../index.ts";
-import { captureStderrAsync, envelopeWith, harness, jsonl, runCommand, stubScenario } from "./helpers.ts";
+import { captureStderrAsync, CHMOD_ROOT_SKIP, envelopeWith, harness, jsonl, runCommand, stubScenario } from "./helpers.ts";
 import { execFileSync } from "node:child_process";
 import { chmodSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -206,7 +206,7 @@ test("a nonexistent pm root legitimately degrades the cross-check instead of fai
   }
 });
 
-test("an unreadable root falls back to the CLI read and downgrades resolvable edges", async () => {
+test("an unreadable root falls back to the CLI read and downgrades resolvable edges", { skip: CHMOD_ROOT_SKIP }, async () => {
   const ext = await harness();
   const s = stubScenario({
     listEnvelope: JSON.parse(envelopeWith([
@@ -245,7 +245,7 @@ test("an unreadable root falls back to the CLI read and downgrades resolvable ed
   }
 });
 
-test("a failing CLI fallback propagates instead of feeding the gate an empty cross-check", async () => {
+test("a failing CLI fallback propagates instead of feeding the gate an empty cross-check", { skip: CHMOD_ROOT_SKIP }, async () => {
   const ext = await harness();
   const s = stubScenario({ listFail: { status: 7, stderr: "workspace exploded" } });
   try {

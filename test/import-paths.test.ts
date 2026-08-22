@@ -17,7 +17,7 @@ import {
   EXIT_CODE,
   parseBeadsFile,
 } from "../index.ts";
-import { EXISTING_MARKER_ITEM, envelopeWith, harness, jsonl, runCommand, runImport, stubScenario, type ImportResult } from "./helpers.ts";
+import { CHMOD_ROOT_SKIP, EXISTING_MARKER_ITEM, envelopeWith, harness, jsonl, runCommand, runImport, stubScenario, type ImportResult } from "./helpers.ts";
 import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -593,7 +593,7 @@ test("the legacy beads-import alias command runs the same import core", async ()
   }
 });
 
-test("a cross-workspace dependency that resolves in the workspace skips its edge with a warning", async () => {
+test("a cross-workspace dependency that resolves in the workspace skips its edge with a warning", { skip: CHMOD_ROOT_SKIP }, async () => {
   const ext = await harness();
   const s = stubScenario({
     listEnvelope: JSON.parse(envelopeWith([{ id: "pm-old", title: "Old", description: "[bead_id: bd-old]" }])),
