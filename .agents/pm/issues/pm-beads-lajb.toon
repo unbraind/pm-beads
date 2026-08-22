@@ -6,7 +6,7 @@ status: closed
 priority: 0
 tags[4]: history,privacy,publication-blocker,security
 created_at: "2026-08-21T05:20:31.002Z"
-updated_at: "2026-08-22T05:27:10.356Z"
+updated_at: "2026-08-22T10:29:46.405Z"
 closed_at: "2026-08-22T05:03:09.546Z"
 completed_at: "2026-08-22T05:03:09.546Z"
 claim_principal: ox-alpha
@@ -24,7 +24,8 @@ expected_result: "Public history and release artifacts contain no private host p
 actual_result: Twenty-two absolute-home-path patch lines occur across eleven reachable commits and six PM/runtime files; 106 commits use two non-noreply author identities. Common secret-token patterns and sensitive filenames returned zero matches in the bounded scan.
 component: public git history and release privacy
 customer_impact: Merging or publishing from the current lineage could preserve private host context or personal identity indefinitely in public history and registry provenance.
-notes[1]{created_at,author,text}:
+notes[2]{created_at,author,text}:
   "2026-08-22T05:03:09.107Z",ox-alpha,Executing maintainer-directed coordinated history rewrite per the pmc-t8tj precedent (pm-changelog PR #149).
+  "2026-08-22T10:29:46.405Z",pi-agent,"Clarification per CodeRabbit PR75 review (thread 3835761214): the two post-close title-replacement update events in this stream were a deviation from closed-item immutability, recorded then as plain updates and duplicated once. The stream has been compacted via the supported history-compact repair command (hashes recomputed by the CLI, chain verified), and this note is the durable clarification. Going forward, corrections to a closed item's content are recorded as appended clarification notes or the reopen/correct/close flow, never as title rewrites."
 close_reason: "Maintainer-directed coordinated history rewrite executed 2026-08-22 under Steve's standing release-privacy directive, replicating the pmc-t8tj precedent (pm-changelog PR #149). Disposable mirror /tmp/pmbeads-rewrite.git rewritten with git-filter-repo: email callback mapped both non-noreply identities to 1153461+unbraind@users.noreply.github.com across authors/committers/taggers; blob callback replaced the literal agent home path with $HOME in every blob. Pre-rewrite audit reproduced exactly: 22 host-path patch lines across 11 commits and 6 PM/runtime files, 106 commits on two non-noreply identities, zero credential-pattern matches. Post-rewrite verification: 0 host-path blobs across ALL objects (batch-all-objects scan), identity set noreply-only (unbraind, github-actions[bot], dependabot[bot]), ref-name inventory identical, HEAD tree byte-identical (ac2b86f). Force-push executed for all heads+tags via temporary admin protection lift, protection restored verbatim (test(22)/test(26) required, enforce_admins, conversation resolution). Fresh origin clone audit: all heads+tags clean, zero host-path objects, noreply-only identities. Residual risk documented: GitHub-managed refs/pull/* keep legacy objects fetchable by exact SHA until gc/support purge; normal clones never receive them."
 body: ""
