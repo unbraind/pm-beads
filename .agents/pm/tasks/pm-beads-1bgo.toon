@@ -1,0 +1,17 @@
+id: pm-beads-1bgo
+title: Resolve PR 75 review thread and history drift on lajb
+description: "Greptile P1 flagged literal non-noreply emails republished in the lajb closure record. Redacted the identity literals from the toon and the close history patch, re-anchored the chain with pm history-repair, reviewed and reconciled four stale merge receipts from the coordinated history-rewrite merge via pm merge reconcile --force. Verified coverage gate is genuine 100/100/100 over all four executable sources with thresholds exactly 100 and empty ignore list."
+type: Task
+status: closed
+priority: 2
+tags: []
+created_at: "2026-08-22T09:36:24.282Z"
+updated_at: "2026-08-22T09:36:48.114Z"
+closed_at: "2026-08-22T09:36:48.102Z"
+completed_at: "2026-08-22T09:36:48.102Z"
+claim_principal: pi-agent
+author: pi-agent
+comments[1]{created_at,author,text}:
+  "2026-08-22T09:36:47.482Z",pi-agent,"Gates: npm run release:check exit 0 (typecheck build docstring coverage audit pack changelog), npm test 289/289 pass, pm health --strict-exit exit 0 using pinned ./node_modules/.bin/pm, history verify ok for lajb."
+close_reason: "Privacy literals redacted, hash chain re-anchored, stale merge receipts reviewed and reconciled; full release gate green."
+body: ""
