@@ -2055,11 +2055,11 @@ export function assertListAllComplete(envelope: unknown): void {
 export interface PmListAllSpawnResult {
   /** Child exit status; `null` when the child was killed (e.g. ENOBUFS). */
   status: number | null;
-  /** Decoded stdout of the `pm` child. */
+  /** Decoded stdout of the `pm` child; empty when the child wrote nothing or never started. */
   stdout: string;
-  /** Decoded stderr of the `pm` child. */
+  /** Decoded stderr of the `pm` child; empty when the child wrote nothing or never started. */
   stderr: string;
-  /** Spawn error (ENOBUFS and friends), when one occurred. */
+  /** Spawn error (ENOENT, ENOBUFS and friends), when one occurred. */
   error?: Error;
 }
 
@@ -2077,12 +2077,15 @@ export type PmListAllSpawn = (args: string[], maxBuffer: number) => PmListAllSpa
  * null-status/empty-stderr spawn. Default seam for {@link readPmItems}. */
 function spawnPmListAll(args: string[], maxBuffer: number): PmListAllSpawnResult {
   const result = spawnSync("pm", args, { encoding: "utf-8", maxBuffer });
-  // With `encoding: "utf-8"`, spawnSync reports stdout/stderr as strings (empty
-  // when the child wrote nothing or was killed), never undefined.
+  // With `encoding: "utf-8"`, spawnSync reports stdout/stderr as decoded
+  // strings — but a failed start (ENOENT and friends) leaves them `undefined`
+  // at runtime even though TypeScript's overload types say `string`. The seam
+  // normalises both to the empty string so its declared contract holds for
+  // every spawn outcome; consumers already treat empty as no output.
   return {
     status: result.status,
-    stdout: result.stdout,
-    stderr: result.stderr,
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? "",
     error: result.error,
   };
 }
