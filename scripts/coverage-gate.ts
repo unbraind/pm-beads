@@ -139,9 +139,15 @@ export interface GateResult {
  *          cannot be consulted.
  */
 function resolveEmitPaths(repoRoot: string): { outDir: string; rootDir: string } | undefined {
-  const shown = spawnSync("npx", ["tsc", "--showConfig", "-p", "tsconfig.json"], {
+  const shown = spawnSync("npx", ["--no-install", "tsc", "--showConfig", "-p", "tsconfig.json"], {
     cwd: repoRoot,
     encoding: "utf8",
+    // `--no-install` disables npx's implicit registry fetch: a repository
+    // without a local `typescript` install now fails the probe (the fail-closed
+    // outcome this function documents) instead of blocking on a network
+    // download. The timeout bounds a hung compiler so the gate cannot stall a
+    // release check indefinitely.
+    timeout: 60_000,
     shell: process.platform === "win32",
   });
   if (shown.status !== 0 || !shown.stdout) return undefined;
@@ -330,13 +336,15 @@ export function runGate(repoRoot: string): GateResult {
   const exempt = new Set(config.ignore ?? []);
   const required = expected.filter((file) => !exempt.has(file));
 
-  for (const file of config.ignore ?? []) {
-    const problem = verifyIgnoredFile(
-      file,
-      expected,
-      (config.ignore ?? []).length > 0 ? resolveEmitPaths(repoRoot) : undefined,
-      repoRoot,
-    );
+  // Resolved once for the whole ignore list, not once per entry: every entry
+  // needs the same effective tsconfig, and each probe spawns the compiler, so
+  // probing per iteration made gate time grow linearly with the exemption
+  // count for no benefit. The length guard lives here (outside the loop) so an
+  // ignore-free config never pays for the probe at all.
+  const ignore = config.ignore ?? [];
+  const emitPaths = ignore.length > 0 ? resolveEmitPaths(repoRoot) : undefined;
+  for (const file of ignore) {
+    const problem = verifyIgnoredFile(file, expected, emitPaths, repoRoot);
     if (problem) return { exitCode: 1, stdout: "", stderr: problem };
   }
 
@@ -373,6 +381,14 @@ export function runGate(repoRoot: string): GateResult {
     {
       cwd: repoRoot,
       encoding: "utf8",
+      // The runner's spec output is captured, not streamed, so it must fit the
+      // spawn buffer: the 1 MiB default has been seen to overflow (ENOBUFS) on
+      // large suites, which would surface as a spawn error instead of a result.
+      // The timeout bounds a hung test process so a release check cannot block
+      // forever; a timed-out run is a spawn failure and fails closed (see
+      // {@link evaluateRun}).
+      maxBuffer: 64 * 1024 * 1024,
+      timeout: 15 * 60_000,
       // Pin the timezone so the measurement is reproducible on any machine.
       // Code that branches on a timestamp's UTC offset takes different paths under
       // a local offset than under UTC, which moves the reported percentage between
