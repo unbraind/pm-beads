@@ -77,8 +77,8 @@ export async function runCommand(
   return result;
 }
 
-/** A complete list envelope carrying one existing item behind a bead marker. */
-export function envelopeWith(items: Array<Record<string, unknown>>): string {
+/** A complete list envelope carrying exactly these items. */
+export function envelope(items: Array<Record<string, unknown>>): ListAllEnvelope {
   const env: ListAllEnvelope = {
     items,
     count: items.length,
@@ -99,7 +99,12 @@ export function envelopeWith(items: Array<Record<string, unknown>>): string {
       result_omitted: false,
     },
   };
-  return JSON.stringify(env);
+  return env;
+}
+
+/** JSON form of {@link envelope}, for callers that need the raw string. */
+export function envelopeWith(items: Array<Record<string, unknown>>): string {
+  return JSON.stringify(envelope(items));
 }
 
 export const EXISTING_MARKER_ITEM = {
@@ -149,6 +154,10 @@ export function stubScenario(scenario: Record<string, unknown>, files: Record<st
   writeFileSync(stubLink, stripTypeScriptTypes(readFileSync(STUB_PM, "utf8"), { mode: "strip" }), "utf-8");
   chmodSync(stubLink, 0o755);
   const originalPath = process.env.PATH ?? "";
+  // Captured so overlapping scenarios nest correctly: the inner teardown
+  // restores what the outer scenario had, rather than deleting it.
+  const originalScenario = process.env.PM_STUB_SCENARIO;
+  const originalLog = process.env.STUB_PM_LOG;
   process.env.PATH = `${binDir}${delimiter}${originalPath}`;
   process.env.PM_STUB_SCENARIO = scenarioFile;
   process.env.STUB_PM_LOG = logFile;
@@ -158,8 +167,12 @@ export function stubScenario(scenario: Record<string, unknown>, files: Record<st
     logLines: () => readFileSync(logFile, "utf-8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as string[]),
     restorePath: () => {
       process.env.PATH = originalPath;
-      delete process.env.PM_STUB_SCENARIO;
-      delete process.env.STUB_PM_LOG;
+      // Restore (not delete) the two stub variables the same way PATH is
+      // restored, so an outer scenario's wiring survives a nested teardown.
+      if (originalScenario === undefined) delete process.env.PM_STUB_SCENARIO;
+      else process.env.PM_STUB_SCENARIO = originalScenario;
+      if (originalLog === undefined) delete process.env.STUB_PM_LOG;
+      else process.env.STUB_PM_LOG = originalLog;
       rmSync(dir, { recursive: true, force: true });
     },
   };

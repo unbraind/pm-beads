@@ -17,7 +17,7 @@ import {
   EXIT_CODE,
   parseBeadsFile,
 } from "../index.ts";
-import { CHMOD_ROOT_SKIP, EXISTING_MARKER_ITEM, envelopeWith, harness, jsonl, runCommand, runImport, stubScenario, type ImportResult } from "./helpers.ts";
+import {CHMOD_ROOT_SKIP, EXISTING_MARKER_ITEM, envelope, harness, jsonl, runCommand, runImport, stubScenario, type ImportResult} from "./helpers.ts";
 import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -71,7 +71,7 @@ test("--merge-strategy without --upsert is a usage error", async () => {
 
 test("merge-strategy fail aborts before any write when a bead id already exists in the workspace", async () => {
   const ext = await harness();
-  const s = stubScenario({ listEnvelope: JSON.parse(envelopeWith([EXISTING_MARKER_ITEM])) });
+  const s = stubScenario({ listEnvelope: envelope([EXISTING_MARKER_ITEM]) });
   try {
     const file = s.jsonlPath("in.jsonl");
     writeFileSync(file, jsonl([{ id: "bd-1", title: "A" }]), "utf-8");
@@ -96,7 +96,7 @@ test("merge-strategy fail aborts before any write when a bead id already exists 
 
 test("merge-strategy fail aborts when the same bead id appears twice in the input", async () => {
   const ext = await harness();
-  const s = stubScenario({ listEnvelope: JSON.parse(envelopeWith([])) });
+  const s = stubScenario({ listEnvelope: envelope([]) });
   try {
     const file = s.jsonlPath("in.jsonl");
     writeFileSync(file, jsonl([
@@ -143,7 +143,7 @@ test("dry-run previews creates per batch without writing anything", async () => 
 test("a successful import wires blocker edges and parent links to the created ids", async () => {
   const ext = await harness();
   const s = stubScenario({
-    listEnvelope: JSON.parse(envelopeWith([])),
+    listEnvelope: envelope([]),
     create: {},
   });
   try {
@@ -175,7 +175,7 @@ test("a successful import wires blocker edges and parent links to the created id
 test("merge-strategy skip leaves matched items untouched but keeps their edges resolvable", async () => {
   const ext = await harness();
   const s = stubScenario({
-    listEnvelope: JSON.parse(envelopeWith([EXISTING_MARKER_ITEM])),
+    listEnvelope: envelope([EXISTING_MARKER_ITEM]),
   });
   try {
     const file = s.jsonlPath("in.jsonl");
@@ -203,10 +203,10 @@ test("merge-strategy skip leaves matched items untouched but keeps their edges r
 test("upsert update omits an unchanged status, routes closed through pm close, and replaces deps", async () => {
   const ext = await harness();
   const s = stubScenario({
-    listEnvelope: JSON.parse(envelopeWith([
+    listEnvelope: envelope([
       { ...EXISTING_MARKER_ITEM, status: "open" },
       { id: "pm-existing-2", title: "Second", status: "closed", description: "[bead_id: bd-2]" },
-    ])),
+    ]),
   });
   try {
     const file = s.jsonlPath("in.jsonl");
@@ -237,7 +237,7 @@ test("upsert update omits an unchanged status, routes closed through pm close, a
 test("a strict-type rejection on update retries once without --type and preserves the canonical type", async () => {
   const ext = await harness();
   const s = stubScenario({
-    listEnvelope: JSON.parse(envelopeWith([EXISTING_MARKER_ITEM])),
+    listEnvelope: envelope([EXISTING_MARKER_ITEM]),
     update: { invalidTypeTimes: 1 },
   });
   try {
@@ -261,7 +261,7 @@ test("a strict-type rejection on update retries once without --type and preserve
 test("a failed update counts the record as skipped and still resolves other records' edges to it", async () => {
   const ext = await harness();
   const s = stubScenario({
-    listEnvelope: JSON.parse(envelopeWith([EXISTING_MARKER_ITEM])),
+    listEnvelope: envelope([EXISTING_MARKER_ITEM]),
     update: { fail: true },
   });
   try {
@@ -287,7 +287,7 @@ test("a failed update counts the record as skipped and still resolves other reco
 
 test("when every attempted record fails the import throws instead of reporting success", async () => {
   const ext = await harness();
-  const s = stubScenario({ listEnvelope: JSON.parse(envelopeWith([])), create: { fail: true } });
+  const s = stubScenario({ listEnvelope: envelope([]), create: { fail: true } });
   try {
     const file = s.jsonlPath("in.jsonl");
     writeFileSync(file, jsonl([{ id: "bd-1", title: "Doomed" }]), "utf-8");
@@ -303,7 +303,7 @@ test("when every attempted record fails the import throws instead of reporting s
 
 test("a create that succeeds without a usable id fails that record, not the import", async () => {
   const ext = await harness();
-  const s = stubScenario({ listEnvelope: JSON.parse(envelopeWith([])), create: { noId: true } });
+  const s = stubScenario({ listEnvelope: envelope([]), create: { noId: true } });
   try {
     const file = s.jsonlPath("in.jsonl");
     writeFileSync(file, jsonl([{ id: "bd-1", title: "Ghost" }]), "utf-8");
@@ -322,7 +322,7 @@ test("a create that succeeds without a usable id fails that record, not the impo
 test("a failed terminal close on a fresh create counts the record as failed", async () => {
   const ext = await harness();
   const s = stubScenario({
-    listEnvelope: JSON.parse(envelopeWith([])),
+    listEnvelope: envelope([]),
     create: {},
     close: { fail: true },
   });
@@ -346,7 +346,7 @@ test("a failed terminal close on a fresh create counts the record as failed", as
 test("dependency-edge and parent-link failures degrade to warnings, not crashes", async () => {
   const ext = await harness();
   const s = stubScenario({
-    listEnvelope: JSON.parse(envelopeWith([])),
+    listEnvelope: envelope([]),
     depFail: true,
     parentFail: true,
   });
@@ -373,7 +373,7 @@ const ISO = "2026-01-02T03:04:05.000Z";
 /** Scenario preloaded with a persisted item file the stub-created id maps to. */
 function scenarioWithItem(itemBody: string): ReturnType<typeof stubScenario> {
   return stubScenario(
-    { listEnvelope: JSON.parse(envelopeWith([])) },
+    { listEnvelope: envelope([]) },
     { "tasks/pm-stub-1.toon": itemBody },
   );
 }
@@ -412,7 +412,7 @@ test("records without timestamps skip the timestamp pass entirely", async () => 
 
 test("timestamps whose item file cannot be located are skipped with a warning", async () => {
   const ext = await harness();
-  const s = stubScenario({ listEnvelope: JSON.parse(envelopeWith([])) }); // no item file on disk
+  const s = stubScenario({ listEnvelope: envelope([]) }); // no item file on disk
   try {
     const file = s.jsonlPath("in.jsonl");
     writeFileSync(file, jsonl([{ id: "bd-1", title: "Unlocatable", created_at: ISO }]), "utf-8");
@@ -426,7 +426,7 @@ test("timestamps whose item file cannot be located are skipped with a warning", 
 
 test("an unreadable item file skips its timestamp instead of failing the import", async () => {
   const ext = await harness();
-  const s = stubScenario({ listEnvelope: JSON.parse(envelopeWith([])) });
+  const s = stubScenario({ listEnvelope: envelope([]) });
   try {
     // A directory where the item file should be: statSync finds it, readFileSync throws EISDIR.
     mkdirSync(join(s.dir, "tasks", "pm-stub-1.toon"), { recursive: true });
@@ -474,7 +474,7 @@ test("an unwritable item file skips its timestamp instead of failing the import"
 test("a failed history-repair reverts the patch so no drift is left behind", async () => {
   const ext = await harness();
   const s = stubScenario(
-    { listEnvelope: JSON.parse(envelopeWith([])), historyRepair: { fail: true } },
+    { listEnvelope: envelope([]), historyRepair: { fail: true } },
     { "tasks/pm-stub-1.toon": 'id: pm-stub-1\ntitle: T\ncreated_at: "2000-01-01T00:00:00.000Z"\n' },
   );
   try {
@@ -492,7 +492,7 @@ test("a failed history-repair reverts the patch so no drift is left behind", asy
 test("a failed history-repair that also blocks the revert tells the operator to repair manually", async () => {
   const ext = await harness();
   const s = stubScenario(
-    { listEnvelope: JSON.parse(envelopeWith([])), historyRepair: { fail: true, chmodItemReadonly: true } },
+    { listEnvelope: envelope([]), historyRepair: { fail: true, chmodItemReadonly: true } },
     { "tasks/pm-stub-1.toon": 'id: pm-stub-1\ntitle: T\ncreated_at: "2000-01-01T00:00:00.000Z"\n' },
   );
   try {
@@ -524,7 +524,7 @@ test("parseBeadsFile substitutes an __invalid sentinel instead of dropping a mal
 
 test("a row filter excludes matching records from a real import and reports the count", async () => {
   const ext = await harness();
-  const s = stubScenario({ listEnvelope: JSON.parse(envelopeWith([])) });
+  const s = stubScenario({ listEnvelope: envelope([]) });
   try {
     const file = s.jsonlPath("in.jsonl");
     writeFileSync(file, jsonl([
@@ -549,7 +549,7 @@ test("a row filter excludes matching records from a real import and reports the 
 test("a failed dependency replace on an upserted item degrades to a warning", async () => {
   const ext = await harness();
   const s = stubScenario({
-    listEnvelope: JSON.parse(envelopeWith([{ ...EXISTING_MARKER_ITEM }])),
+    listEnvelope: envelope([{ ...EXISTING_MARKER_ITEM }]),
     depFail: true,
   });
   try {
@@ -576,7 +576,7 @@ test("a failed dependency replace on an upserted item degrades to a warning", as
 
 test("the legacy beads-import alias command runs the same import core", async () => {
   const ext = await harness();
-  const s = stubScenario({ listEnvelope: JSON.parse(envelopeWith([])) });
+  const s = stubScenario({ listEnvelope: envelope([]) });
   try {
     const file = s.jsonlPath("in.jsonl");
     writeFileSync(file, jsonl([{ id: "bd-alias", title: "Via alias" }]), "utf-8");
@@ -596,7 +596,7 @@ test("the legacy beads-import alias command runs the same import core", async ()
 test("a cross-workspace dependency that resolves in the workspace skips its edge with a warning", { skip: CHMOD_ROOT_SKIP }, async () => {
   const ext = await harness();
   const s = stubScenario({
-    listEnvelope: JSON.parse(envelopeWith([{ id: "pm-old", title: "Old", description: "[bead_id: bd-old]" }])),
+    listEnvelope: envelope([{ id: "pm-old", title: "Old", description: "[bead_id: bd-old]" }]),
   });
   try {
     // An unreadable root forces the SDK store to refuse so the CLI fallback
@@ -618,7 +618,7 @@ test("a cross-workspace dependency that resolves in the workspace skips its edge
 
 test("--tags overrides record labels; --no-preserve-timestamps skips pass three", async () => {
   const ext = await harness();
-  const s = stubScenario({ listEnvelope: JSON.parse(envelopeWith([])) });
+  const s = stubScenario({ listEnvelope: envelope([]) });
   try {
     const file = s.jsonlPath("in.jsonl");
     writeFileSync(file, jsonl([
@@ -683,7 +683,7 @@ test("a one-byte read buffer kills the real pm child and is reported as a buffer
 
 test("--no-preserve-ids imports without bead markers and --batch-size batches real writes", async () => {
   const ext = await harness();
-  const s = stubScenario({ listEnvelope: JSON.parse(envelopeWith([])) });
+  const s = stubScenario({ listEnvelope: envelope([]) });
   try {
     const file = s.jsonlPath("in.jsonl");
     writeFileSync(file, jsonl([
@@ -708,7 +708,7 @@ test("--no-preserve-ids imports without bead markers and --batch-size batches re
 
 test("the legacy beads-import alias also falls back to the --file option", async () => {
   const ext = await harness();
-  const s = stubScenario({ listEnvelope: JSON.parse(envelopeWith([])) });
+  const s = stubScenario({ listEnvelope: envelope([]) });
   try {
     const file = s.jsonlPath("opt.jsonl");
     writeFileSync(file, jsonl([{ id: "bd-opt2", title: "Via alias option" }]), "utf-8");

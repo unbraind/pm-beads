@@ -21,33 +21,20 @@ import {
   pmItemPassesFilter,
   pmItemToBead,
 } from "../index.ts";
-import { CHMOD_ROOT_SKIP, envelopeWith, harness, jsonl, runCommand, runExport, runImport, stubScenario } from "./helpers.ts";
+import {CHMOD_ROOT_SKIP, captureStderrAsync, envelope, harness, jsonl, runCommand, runExport, runImport, stubScenario} from "./helpers.ts";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-function captureStderr(fn: () => unknown): { lines: string[]; result: unknown } {
-  const lines: string[] = [];
-  const original = console.error;
-  console.error = (...args: unknown[]) => {
-    lines.push(args.map(String).join(" "));
-  };
-  try {
-    return { lines, result: fn() };
-  } finally {
-    console.error = original;
-  }
-}
 
 // --- Exporter --------------------------------------------------------------
 
 test("export writes JSONL to --output and reports the count", async () => {
   const ext = await harness();
   const s = stubScenario({
-    listEnvelope: JSON.parse(envelopeWith([
+    listEnvelope: envelope([
       { id: "pm-1", title: "One", description: "[bead_id: bd-1]", status: "open" },
       { id: "pm-2", title: "Two", status: "in_progress" },
-    ])),
+    ]),
   });
   try {
     const out = s.jsonlPath("out.jsonl");
@@ -67,7 +54,7 @@ test("export writes JSONL to --output and reports the count", async () => {
 
 test("export --dry-run serializes in memory but writes neither file nor stdout", async () => {
   const ext = await harness();
-  const s = stubScenario({ listEnvelope: JSON.parse(envelopeWith([{ id: "pm-1", title: "One", status: "open" }])) });
+  const s = stubScenario({ listEnvelope: envelope([{ id: "pm-1", title: "One", status: "open" }]) });
   try {
     const result = (await runExport(ext, {
       options: { "dry-run": true },
@@ -83,7 +70,7 @@ test("export --dry-run serializes in memory but writes neither file nor stdout",
 
 test("export to an unwritable output path fails with a semantic error naming the file", async () => {
   const ext = await harness();
-  const s = stubScenario({ listEnvelope: JSON.parse(envelopeWith([{ id: "pm-1", title: "One", status: "open" }])) });
+  const s = stubScenario({ listEnvelope: envelope([{ id: "pm-1", title: "One", status: "open" }]) });
   try {
     const bad = join(s.dir, "no-such-dir", "out.jsonl");
     await assert.rejects(
@@ -164,11 +151,11 @@ test("diff refuses --against-workspace when no workspace root can be resolved", 
 test("diff against the workspace classifies added/removed/changed drift under --json --strict", async () => {
   const ext = await harness();
   const s = stubScenario({
-    listEnvelope: JSON.parse(envelopeWith([
+    listEnvelope: envelope([
       { id: "pm-x", title: "A-renamed", status: "open", description: "[bead_id: bd-a]" },
       { id: "pm-z", title: "B-original", status: "open", description: "[bead_id: bd-b]" },
       { id: "pm-y", title: "C", status: "open", description: "[bead_id: bd-c]" },
-    ])),
+    ]),
   });
   try {
     // File has bd-a + bd-b (both title-drift vs workspace) and workspace adds bd-c.
@@ -206,17 +193,18 @@ test("diff prints a per-bead drift summary and throws under non-json --strict", 
   try {
     writeFileSync(s.jsonlPath("a.jsonl"), jsonl([BEAD_A, BEAD_B]), "utf-8");
     writeFileSync(s.jsonlPath("b.jsonl"), jsonl([{ ...BEAD_A, title: "Changed A" }]), "utf-8");
-    let summary: string[] = [];
-    await assert.rejects(
-      () => {
-        const captured = captureStderr(() =>
-          runCommand(ext, { command: "beads diff", args: [s.jsonlPath("a.jsonl"), s.jsonlPath("b.jsonl")], options: { strict: true }, pmRoot: undefined }),
-        );
-        summary = captured.lines;
-        return Promise.resolve(captured.result);
-      },
-      (err: unknown) => err instanceof CommandError && /Drift detected: 0 added, 1 removed, 1 changed\./.test(err.message),
-    );
+    // The error is captured as a value so the stderr capture spans the whole
+    // run (including output emitted after the handler's first await) and the
+    // summary lines remain assertable alongside the rejection.
+    const { lines: summary, result } = await captureStderrAsync(async () => {
+      try {
+        await runCommand(ext, { command: "beads diff", args: [s.jsonlPath("a.jsonl"), s.jsonlPath("b.jsonl")], options: { strict: true }, pmRoot: undefined });
+        return undefined;
+      } catch (err) {
+        return err;
+      }
+    });
+    assert.ok(result instanceof CommandError && /Drift detected: 0 added, 1 removed, 1 changed\./.test(result.message));
     assert.ok(summary.some((l) => l.includes("Removed (only in A): 1")));
     assert.ok(summary.some((l) => l.startsWith("    - bd-b")));
     assert.ok(summary.some((l) => l.includes("Changed: 1") || l.includes("~ bd-a (title)")));
@@ -342,7 +330,7 @@ test("pmItemToBead carries optional fields and translates dependencies back to b
 
 // --- locateItemFile edge arms ----------------------------------------------
 
-test("locateItemFile degrades on an unreadable root and skips entries that vanish mid-scan", () => {
+test("locateItemFile degrades on an unreadable root and skips entries that vanish mid-scan", async () => {
   assert.equal(locateItemFile("/nonexistent/pm-root-xyz", "pm-1"), undefined);
   const dir = mkdtempSync(join(tmpdir(), "beads-locate-"));
   try {
@@ -353,7 +341,9 @@ test("locateItemFile degrades on an unreadable root and skips entries that vanis
     assert.match(locateItemFile(dir, "pm-2") ?? "", /features[/\\]pm-2\.md$/);
     assert.equal(locateItemFile(dir, "pm-missing"), undefined);
   } finally {
-    void import("node:fs").then((fs) => fs.rmSync(dir, { recursive: true, force: true }));
+    // Synchronous and already imported at the top: the temp tree cannot
+    // outlive the test the way the old fire-and-forget dynamic import let it.
+    rmSync(dir, { recursive: true, force: true });
   }
 });
 
@@ -373,7 +363,7 @@ test("diff with no usable file argument is a usage error naming both forms", asy
 
 test("the legacy beads-export alias command runs the same export core", async () => {
   const ext = await harness();
-  const s = stubScenario({ listEnvelope: JSON.parse(envelopeWith([{ id: "pm-1", title: "One", status: "open" }])) });
+  const s = stubScenario({ listEnvelope: envelope([{ id: "pm-1", title: "One", status: "open" }]) });
   try {
     const result = (await runCommand(ext, {
       command: "beads-export",
@@ -392,7 +382,7 @@ const ISO = "2026-01-02T03:04:05.000Z";
 
 test("an unreadable item file is reported as a read failure, not a locate failure", { skip: CHMOD_ROOT_SKIP }, async () => {
   const ext = await harness();
-  const s = stubScenario({ listEnvelope: JSON.parse(envelopeWith([])) });
+  const s = stubScenario({ listEnvelope: envelope([]) });
   try {
     const itemFile = join(s.dir, "tasks", "pm-stub-1.toon");
     mkdirSync(join(s.dir, "tasks"), { recursive: true });

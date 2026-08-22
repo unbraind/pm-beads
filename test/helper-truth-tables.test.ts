@@ -28,7 +28,7 @@ import {
   metadataToPmItems,
   pmItemPassesFilter,
 } from "../index.ts";
-import { envelopeWith, harness, jsonl, runCommand, runExport, runImport, stubScenario } from "./helpers.ts";
+import {envelope, harness, jsonl, runCommand, runExport, runImport, stubScenario} from "./helpers.ts";
 import { isHostOutputSuppressed } from "@unbrained/pm-cli/sdk";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -135,7 +135,7 @@ test("resolveImportInputFile skips non-string tokens and the values of known fla
 
 // --- Handler fallback arms --------------------------------------------------
 
-const EMPTY_WS = { listEnvelope: JSON.parse(envelopeWith([])) };
+const EMPTY_WS = { listEnvelope: envelope([]) };
 
 test("the importer falls back to the --file option when args carry no positional", async () => {
   const ext = await harness();
@@ -158,7 +158,7 @@ test("the importer falls back to the --file option when args carry no positional
 
 test("handlers tolerate an entirely omitted options bag", async () => {
   const ext = await harness();
-  const s = stubScenario({ listEnvelope: JSON.parse(envelopeWith([{ id: "pm-1", title: "One", status: "open" }])) });
+  const s = stubScenario({ listEnvelope: envelope([{ id: "pm-1", title: "One", status: "open" }]) });
   try {
     const exported = (await runExport(ext, { pmRoot: join(s.dir, "ws") })) as { suppressed?: boolean };
     assert.ok(isHostOutputSuppressed(exported), "stdout export suppresses the host payload");
@@ -171,7 +171,7 @@ test("handlers tolerate an entirely omitted options bag", async () => {
 
 test("exporting an empty workspace writes nothing to stdout and still reports success", async () => {
   const ext = await harness();
-  const s = stubScenario({ listEnvelope: JSON.parse(envelopeWith([])) });
+  const s = stubScenario({ listEnvelope: envelope([]) });
   try {
     const exported = (await runExport(ext, { options: {}, pmRoot: join(s.dir, "ws") })) as { suppressed?: boolean };
     assert.ok(isHostOutputSuppressed(exported));
@@ -243,4 +243,27 @@ test("describeRepairFailure prefers spawn errors, then stderr, then the bare exi
   assert.equal(describeRepairFailure({ stderr: "  exploded \n", status: 2 }), "exploded");
   assert.equal(describeRepairFailure({ status: null }), "exit unknown");
   assert.equal(describeRepairFailure({ status: 9 }), "exit 9");
+});
+
+test("stubScenario restores pre-existing stub env vars on teardown, so nested scenarios compose", () => {
+  const outer = stubScenario({ listEnvelope: envelope([]) });
+  const outerScenario = process.env.PM_STUB_SCENARIO;
+  const outerLog = process.env.STUB_PM_LOG;
+  try {
+    assert.ok(outerScenario && outerLog, "the outer scenario wires its env");
+    const inner = stubScenario({ listEnvelope: envelope([]) });
+    try {
+      assert.notEqual(process.env.PM_STUB_SCENARIO, outerScenario);
+    } finally {
+      inner.restorePath();
+    }
+    // The inner teardown restored the OUTER wiring instead of clearing it.
+    assert.equal(process.env.PM_STUB_SCENARIO, outerScenario);
+    assert.equal(process.env.STUB_PM_LOG, outerLog);
+  } finally {
+    outer.restorePath();
+  }
+  // The outermost teardown, having captured undefined, clears the variables.
+  assert.equal(process.env.PM_STUB_SCENARIO, undefined);
+  assert.equal(process.env.STUB_PM_LOG, undefined);
 });

@@ -17,7 +17,7 @@ import {
   EXIT_CODE,
   validateBeadsText,
 } from "../index.ts";
-import { captureStderrAsync, CHMOD_ROOT_SKIP, envelopeWith, harness, jsonl, runCommand, stubScenario } from "./helpers.ts";
+import {captureStderrAsync, CHMOD_ROOT_SKIP, envelope, harness, jsonl, runCommand, stubScenario} from "./helpers.ts";
 import { execFileSync } from "node:child_process";
 import { chmodSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -25,19 +25,6 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const PM_BIN = fileURLToPath(import.meta.resolve("../node_modules/.bin/pm"));
-
-function captureStderr<T>(fn: () => T): { lines: string[]; result: T } {
-  const lines: string[] = [];
-  const original = console.error;
-  console.error = (...args: unknown[]) => {
-    lines.push(args.map(String).join(" "));
-  };
-  try {
-    return { lines, result: fn() };
-  } finally {
-    console.error = original;
-  }
-}
 
 test("validate without a file argument is a usage error", async () => {
   const ext = await harness();
@@ -101,17 +88,17 @@ test("human mode lists every issue, counts errors vs warnings, and throws on err
       JSON.stringify({ id: "bd-b", dependencies: ["bd-zzz"] }),
       "{broken",
     ].join("\n") + "\n", "utf-8");
-    let lines: string[] = [];
-    await assert.rejects(
-      () => {
-        const captured = captureStderr(() =>
-          runCommand(ext, { command: "beads validate", args: [file], options: { "no-workspace": true }, pmRoot: undefined }),
-        );
-        lines = captured.lines;
-        return Promise.resolve(captured.result);
-      },
-      (err: unknown) => err instanceof CommandError && /Validation failed: 3 structural error\(s\)\./.test(err.message),
-    );
+    // The error is captured as a value so the stderr capture spans the whole
+    // run (including output emitted after the handler's first await).
+    const { lines } = await captureStderrAsync(async () => {
+      try {
+        await runCommand(ext, { command: "beads validate", args: [file], options: { "no-workspace": true }, pmRoot: undefined });
+        return undefined;
+      } catch (err) {
+        assert.ok(err instanceof CommandError && /Validation failed: 3 structural error\(s\)\./.test(err.message));
+        return err;
+      }
+    });
     assert.ok(lines.some((l) => l.includes("WARNING [unknown_status]")));
     assert.ok(lines.some((l) => l.includes("WARNING [duplicate_id]")));
     assert.ok(lines.some((l) => l.includes('ERROR [invalid_json] line 4')));
@@ -129,20 +116,15 @@ test("a clean file reports OK and keeps a zero exit", async () => {
   try {
     const file = s.jsonlPath("clean.jsonl");
     writeFileSync(file, jsonl([{ id: "bd-ok", title: "Fine", status: "open" }]), "utf-8");
-    let lines: string[] = [];
-    const report = await (() => {
-      const captured = captureStderr(() =>
-        runCommand(ext, {
-          command: "beads validate",
-          args: [file],
-          options: { "no-workspace": true },
-          pmRoot: undefined,
-        }),
-      );
-      lines = captured.lines;
-      return captured.result as Promise<{ valid?: boolean }>;
-    })();
-    assert.equal(report.valid, true);
+    const { lines, result } = await captureStderrAsync(() =>
+      runCommand(ext, {
+        command: "beads validate",
+        args: [file],
+        options: { "no-workspace": true },
+        pmRoot: undefined,
+      }),
+    ) as { lines: string[]; result: { valid?: boolean } };
+    assert.equal(result.valid, true);
     assert.ok(lines.some((l) => l.includes("OK: 1 record(s), no issues.")));
   } finally {
     await ext.deactivate();
@@ -152,7 +134,7 @@ test("a clean file reports OK and keeps a zero exit", async () => {
 
 test("--no-workspace keeps a resolvable-in-workspace dependency a hard error", async () => {
   const ext = await harness();
-  const s = stubScenario({ listEnvelope: JSON.parse(envelopeWith([{ id: "pm-x", title: "X", description: "[bead_id: bd-real]" }])) });
+  const s = stubScenario({ listEnvelope: envelope([{ id: "pm-x", title: "X", description: "[bead_id: bd-real]" }]) });
   try {
     const file = s.jsonlPath("dep.jsonl");
     writeFileSync(file, jsonl([{ id: "bd-1", title: "Dependent", dependencies: ["bd-real"] }]), "utf-8");
@@ -209,9 +191,9 @@ test("a nonexistent pm root legitimately degrades the cross-check instead of fai
 test("an unreadable root falls back to the CLI read and downgrades resolvable edges", { skip: CHMOD_ROOT_SKIP }, async () => {
   const ext = await harness();
   const s = stubScenario({
-    listEnvelope: JSON.parse(envelopeWith([
+    listEnvelope: envelope([
       { id: "pm-x", title: "X", status: "open", description: "[bead_id: bd-real]" },
-    ])),
+    ]),
   });
   try {
     // The SDK store refuses an unreadable root while existsSync still passes —
@@ -221,23 +203,17 @@ test("an unreadable root falls back to the CLI read and downgrades resolvable ed
     chmodSync(ws, 0o000);
     const file = s.jsonlPath("dep.jsonl");
     writeFileSync(file, jsonl([{ id: "bd-1", title: "Dependent", dependencies: ["bd-real"] }]), "utf-8");
-    let lines: string[] = [];
-    const report = await (() => {
-      const captured = captureStderr(() =>
-        runCommand(ext, {
-          command: "beads validate",
-          args: [file],
-          options: {},
-          pmRoot: ws,
-        }),
-      );
-      lines = captured.lines;
-      return captured.result as Promise<{ valid?: boolean; issues?: Array<{ code: string }> }>;
-    })();
+    const { result: report } = await captureStderrAsync(() =>
+      runCommand(ext, {
+        command: "beads validate",
+        args: [file],
+        options: {},
+        pmRoot: ws,
+      }),
+    ) as { result: { valid?: boolean; issues?: Array<{ code: string }> } };
     assert.equal(report.valid, true, "a resolvable edge is a warning, not a refusal");
     assert.ok(report.issues?.some((i) => i.code === "cross_workspace_dependency"));
     assert.equal(process.exitCode ?? 0, 0);
-    void lines;
   } finally {
     chmodSync(join(s.dir, "ws"), 0o755); // so cleanup can remove the tree
     await ext.deactivate();

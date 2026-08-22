@@ -34,7 +34,28 @@ const scenarioPath: string = process.env.PM_STUB_SCENARIO ?? "";
 const logPath: string = process.env.STUB_PM_LOG ?? "";
 const scenario = JSON.parse(readFileSync(scenarioPath, "utf8"));
 
+/**
+ * Resolve the subcommand: the first non-flag argv token after the global
+ * flags, skipping the value of `--path`/`--pm-path` (the only value-taking
+ * globals this package's spawn surface uses). Dispatching on position rather
+ * than on `args.includes(...)` keeps a title, tag or reason that happens to
+ * equal a subcommand word from silently rerouting the stub.
+ */
+function resolveSubcommand(argv: readonly string[]): string | undefined {
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === "--path" || arg === "--pm-path") {
+      i++; // skip the flag's value
+      continue;
+    }
+    if (arg.startsWith("-")) continue;
+    return arg;
+  }
+  return undefined;
+}
+
 const args = process.argv.slice(2);
+const subcommand = resolveSubcommand(args);
 
 function argValue(flag: string): string | undefined {
   const i = args.indexOf(flag);
@@ -47,13 +68,14 @@ function priorWhere(pred: (argv: string[]) => boolean) {
   return lines.slice(0, -1).map((l) => JSON.parse(l)).filter(pred).length;
 }
 
+const isCreateCall = (argv: string[]): boolean => resolveSubcommand(argv) === "create";
 const isTitleUpdate = (argv: string[]): boolean =>
-  argv.includes("update") && !argv.some((a) => ["--dep", "--parent", "--replace-deps", "--clear-deps"].includes(a));
-const isCreate = (argv: string[]): boolean => argv.includes("create");
+  resolveSubcommand(argv) === "update" &&
+  !argv.some((a) => ["--dep", "--parent", "--replace-deps", "--clear-deps"].includes(a));
 
 appendFileSync(logPath, `${JSON.stringify(args)}\n`);
 
-if (args.includes("list")) {
+if (subcommand === "list") {
   if (scenario.listFail) {
     process.stderr.write(`${scenario.listFail.stderr}\n`);
     process.exit(scenario.listFail.status);
@@ -62,7 +84,7 @@ if (args.includes("list")) {
   process.exit(0);
 }
 
-if (isCreate(args)) {
+if (subcommand === "create") {
   const create = scenario.create ?? {};
   if (create.fail) {
     process.stderr.write("create exploded\n");
@@ -72,7 +94,7 @@ if (isCreate(args)) {
     process.stdout.write('{"unexpected":"shape"}\n');
     process.exit(0);
   }
-  const seq = priorWhere(isCreate) + 1;
+  const seq = priorWhere(isCreateCall) + 1;
   process.stdout.write(`${JSON.stringify({ id: create.idBase ? `${create.idBase}-${seq}` : `pm-stub-${seq}` })}\n`);
   process.exit(0);
 }
@@ -93,7 +115,7 @@ if (isTitleUpdate(args)) {
 
 // Dependency/parent wiring always succeeds unless the scenario says otherwise.
 if (args.includes("--replace-deps") || args.includes("--clear-deps")
-    || (args.includes("--dep") && args.includes("update"))) {
+    || (args.includes("--dep") && subcommand === "update")) {
   if (scenario.depFail) {
     process.stderr.write("dep exploded\n");
     process.exit(1);
@@ -108,7 +130,7 @@ if (args.includes("--parent")) {
   process.exit(0);
 }
 
-if (args.includes("close")) {
+if (subcommand === "close") {
   const close = scenario.close ?? {};
   if (close.fail) {
     process.stderr.write("close exploded\n");
@@ -118,7 +140,7 @@ if (args.includes("close")) {
   process.exit(0);
 }
 
-if (args.includes("history-repair")) {
+if (subcommand === "history-repair") {
   const repair = scenario.historyRepair ?? {};
   if (repair.chmodItemReadonly) {
     const root: string = argValue("--path") ?? "";
