@@ -12,6 +12,10 @@
 
 - Remove absolute host paths and non-public identities from the entire reachable Git history ([pm-beads-lajb](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-lajb.toon))
 
+### Other
+
+- Resolve PR 75 review thread and history drift on lajb ([pm-beads-1bgo](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-1bgo.toon))
+
 ## 2026.8.16 - 2026-08-16
 
 ### Fixed
