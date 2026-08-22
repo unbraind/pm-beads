@@ -1,12 +1,12 @@
 id: pm-beads-lajb
-title: Reachable history retains absolute host paths and legacy author identities
+title: Remove absolute host paths and non-public identities from the entire reachable Git history
 description: "Read-only all-ref history inspection found 22 absolute-home-path patch lines across 11 reachable commits and six repository-relative PM/runtime files. Git author metadata also contains 106 commits across two non-noreply identities. This blocks merge and publication of new delivery work until a maintainer authorizes a coordinated history rewrite and all refs, PRs, tags, package artifacts, and consumers are revalidated."
 type: Issue
 status: closed
 priority: 0
 tags[4]: history,privacy,publication-blocker,security
 created_at: "2026-08-21T05:20:31.002Z"
-updated_at: "2026-08-22T05:03:09.552Z"
+updated_at: "2026-08-22T05:27:10.356Z"
 closed_at: "2026-08-22T05:03:09.546Z"
 completed_at: "2026-08-22T05:03:09.546Z"
 claim_principal: ox-alpha
