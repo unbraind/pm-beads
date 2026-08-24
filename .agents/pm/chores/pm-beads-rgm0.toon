@@ -6,7 +6,7 @@ status: closed
 priority: 1
 tags: []
 created_at: "2026-08-22T19:01:34.144Z"
-updated_at: "2026-08-24T16:18:57.169Z"
+updated_at: "2026-08-24T16:28:57.742Z"
 closed_at: "2026-08-24T16:18:57.119Z"
 completed_at: "2026-08-24T16:18:57.119Z"
 claim_principal: codex
@@ -18,11 +18,12 @@ confidence: 100
 resolution: "Replaced the undeclared PyYAML verifier with a Node ESM parsed-YAML verifier using exact yaml 2.9.0, wired it into release:check, and asserted lookup failure performs no issue, comment, or label mutation."
 expected_result: "Every normal release gate parses and validates the complete alert-job contract, and lookup uncertainty provably causes zero mutation."
 actual_result: The executable verifier and all five focused alert scenarios pass package-locally; the final full release gate is being rerun on the recorded implementation.
-notes[4]{created_at,author,text}:
+notes[5]{created_at,author,text}:
   "2026-08-22T19:02:08.435Z",ox-alpha,"Gate proof: removed all five merge.pm-* sections, ./node_modules/.bin/pm health --strict-exit --require-merge-drivers exited 1; after ./node_modules/.bin/pm merge install it exited 0; plain --strict-exit 0 both ways."
   "2026-08-24T15:25:44.756Z","harness:codex",Cross-package review of merged pm-brief PR 79 proved the original inline implementation swallowed gh issue list failures with || true. The alert now executes a tracked script that distinguishes lookup failure from an empty result and exits 0 without mutating on uncertainty; five focused tests pass.
   "2026-08-24T15:33:06.730Z","harness:codex","Final local gate on pm CLI and SDK 2026.8.24: 298 tests passed; five configured source files measured exact 100.00 lines,100.00 branches,and 100.00 functions; 60 declarations documented; production audit found zero vulnerabilities; pack contained nine files; changelog was current. A red-first packaging contract rejected the stale 2026.8.21 expected host and was updated to 2026.8.24 before the full gate passed. ShellCheck was unavailable on this host and is not claimed."
   "2026-08-24T16:18:34.940Z",codex,"author=harness:codex,created_at=now,text=Exact-head review found that the parsed workflow verifier was not executed by the normal release gate and that failed-lookup proof did not explicitly cover label mutation. The fleet fix replaces the undeclared PyYAML verifier with a Node ESM parsed-YAML verifier backed by exact yaml 2.9.0, wires it into release:check, and asserts zero label creation after lookup failure."
+  "2026-08-24T16:28:57.716Z","harness:codex","Final exact-head review found release:check was not invoked by normal pull-request CI. Added an explicit verify:release-workflow step immediately after npm ci and made the parsed verifier self-check that CI contains the exact command. Package-local executable verification passes."
 files[4]:
   - path: .github/workflows/ci.yml
     scope: project
