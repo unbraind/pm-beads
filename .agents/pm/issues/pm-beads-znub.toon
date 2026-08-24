@@ -1,0 +1,16 @@
+id: pm-beads-znub
+title: "The changelog gate stamps an untagged version with the current date, so its verdict flips every midnight with no commit"
+description: "pm-changelog synthesises a pending release window for a version with no matching git tag and stamps it with the current UTC date rather than anything derived from the input. The release workflow tags only after npm publish succeeds, and publish has failed fleet wide since 2026-08-21, so this package carries an untagged version and sits on that clock dependent path. It passes today only because the package version and today's date are the same calendar day. Verified on pm-ops where those two differ, which is what makes the comparison decisive: an untagged 2026.8.22 generates heading 2026.8.22 - 2026-08-24 without the flag and 2026.8.22 - 2026-08-22 with it. The flag already shipped in pm-changelog 2026.8.17 and no fleet package passed it. Applied to every invocation of the generator here rather than only the scripts named changelog, because the release workflow invokes it directly and generation and check must not disagree. Site audit: package.json 4 of 4 flagged, release.yml 3 of 3 flagged."
+type: Issue
+status: open
+priority: 1
+tags[3]: changelog,gates,release
+created_at: "2026-08-24T09:45:25.555Z"
+updated_at: "2026-08-24T09:45:28.078Z"
+author: "harness:claude-code"
+files[2]{path,scope,note}:
+  package.json,project,all four generator invocations derive the no-tag date from the calendar version
+  .github/workflows/release.yml,project,all three release-time generator invocations carry the same flag so generation and check cannot disagree
+tests[1]{command,path,scope,note}:
+  "npm run changelog:check",package.json,project,without the flag the heading date is stamped from the clock and the comparison fails on any day after generation
+body: ""
