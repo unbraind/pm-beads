@@ -607,7 +607,10 @@ jobs:
   # issues:write on its own restricted token scope.
   alert-on-release-failure:
     needs: release
-    if: failure()
+    if: failure() && github.event_name == 'schedule'
+    concurrency:
+      group: release-failure-alert-${{ github.repository }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     permissions:
       contents: read

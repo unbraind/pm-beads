@@ -6,17 +6,17 @@ status: closed
 priority: 1
 tags: []
 created_at: "2026-08-22T19:01:34.144Z"
-updated_at: "2026-08-24T15:50:25.072Z"
-closed_at: "2026-08-24T15:50:25.000Z"
-completed_at: "2026-08-24T15:50:25.000Z"
+updated_at: "2026-08-24T16:03:40.321Z"
+closed_at: "2026-08-24T16:03:40.313Z"
+completed_at: "2026-08-24T16:03:40.313Z"
 author: ox-alpha
 estimated_minutes: 180
 acceptance_criteria: The workflow executes a tracked script checked out with a commit-pinned action and persist-credentials disabled; A successful empty lookup creates one stable release-failure issue and an existing issue receives a comment; A failed lookup performs no issue mutation and exits zero with a warning; The full package gate passes on exact-pinned pm CLI and SDK 2026.8.24 with exact configured coverage
 risk: low
 confidence: 100
-resolution: Added github.event.repository.default_branch to the pinned credential-free alert checkout and enforced it in the runtime wiring test and YAML verifier.
-expected_result: Divergent workflow_dispatch refs cannot make the alert job execute or depend on an untrusted or obsolete script copy.
-actual_result: "Five focused alert tests, the YAML verifier, all 298 package tests, exact five-source 100/100/100 coverage, 60 documented declarations, zero production vulnerabilities, and package dry-run pass; only the intentionally stale changelog remained while this item was reopened."
+resolution: "Restricted alerts to scheduled failures, added repository-scoped non-canceling alert concurrency, and made both validators require the exact checkout SHA, default-branch ref, disabled credentials, and exact script command."
+expected_result: Expected manual-dispatch failures do not mutate Daily Release issues; concurrent scheduled failures cannot race issue creation; mutable or non-executing workflow wiring is rejected.
+actual_result: "All five focused alert scenarios and the parsed YAML verifier pass with the complete schedule, concurrency, immutable checkout, and exact-command contract."
 notes[3]{created_at,author,text}:
   "2026-08-22T19:02:08.435Z",ox-alpha,"Gate proof: removed all five merge.pm-* sections, ./node_modules/.bin/pm health --strict-exit --require-merge-drivers exited 1; after ./node_modules/.bin/pm merge install it exited 0; plain --strict-exit 0 both ways."
   "2026-08-24T15:25:44.756Z","harness:codex",Cross-package review of merged pm-brief PR 79 proved the original inline implementation swallowed gh issue list failures with || true. The alert now executes a tracked script that distinguishes lookup failure from an empty result and exits 0 without mutating on uncertainty; five focused tests pass.
@@ -32,7 +32,7 @@ files[4]:
   - path: test/alert-on-release-failure.test.ts
     scope: project
     note: hermetic creation dedup mutation-failure lookup-failure and workflow-wiring tests
-tests[4]:
+tests[5]:
   - command: python3 .agents/pm/verify-release-yaml.py
     path: .github/workflows/release.yml
     scope: project
@@ -58,5 +58,13 @@ tests[4]:
       created_at: "2026-08-24T15:50:24.831Z"
       source_kind: local_mutation
       source_ref: ci/alert-on-release-failure-and-require-merge-drivers
-close_reason: The accepted Greptile finding is fixed by a trusted default-branch checkout and enforced by both test layers.
+  - command: node --test test/alert-on-release-failure.test.ts
+    path: test/alert-on-release-failure.test.ts
+    scope: project
+    provenance:
+      author: "harness:codex"
+      created_at: "2026-08-24T16:03:40.218Z"
+      source_kind: local_mutation
+      source_ref: ci/alert-on-release-failure-and-require-merge-drivers
+close_reason: CodeRabbit fleet hardening is implemented and verified package-locally.
 body: ""
