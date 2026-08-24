@@ -6,18 +6,17 @@ status: closed
 priority: 1
 tags: []
 created_at: "2026-08-22T19:01:34.144Z"
-updated_at: "2026-08-24T15:33:07.753Z"
-closed_at: "2026-08-24T15:33:07.730Z"
-completed_at: "2026-08-24T15:33:07.730Z"
-claim_principal: ox-alpha
+updated_at: "2026-08-24T15:50:25.072Z"
+closed_at: "2026-08-24T15:50:25.000Z"
+completed_at: "2026-08-24T15:50:25.000Z"
 author: ox-alpha
 estimated_minutes: 180
 acceptance_criteria: The workflow executes a tracked script checked out with a commit-pinned action and persist-credentials disabled; A successful empty lookup creates one stable release-failure issue and an existing issue receives a comment; A failed lookup performs no issue mutation and exits zero with a warning; The full package gate passes on exact-pinned pm CLI and SDK 2026.8.24 with exact configured coverage
 risk: low
 confidence: 100
-resolution: "Replaced the inline alert with a checked-in script that refuses to mutate when the dedup lookup fails, wired a pinned credential-free checkout, and updated the exact development-host contract."
-expected_result: "Daily release failures create or update one tracking issue without duplicates, while alert API failures never mask the release failure."
-actual_result: Five focused alert tests and the 298-test package gate pass on pm CLI and SDK 2026.8.24 at exact configured coverage.
+resolution: Added github.event.repository.default_branch to the pinned credential-free alert checkout and enforced it in the runtime wiring test and YAML verifier.
+expected_result: Divergent workflow_dispatch refs cannot make the alert job execute or depend on an untrusted or obsolete script copy.
+actual_result: "Five focused alert tests, the YAML verifier, all 298 package tests, exact five-source 100/100/100 coverage, 60 documented declarations, zero production vulnerabilities, and package dry-run pass; only the intentionally stale changelog remained while this item was reopened."
 notes[3]{created_at,author,text}:
   "2026-08-22T19:02:08.435Z",ox-alpha,"Gate proof: removed all five merge.pm-* sections, ./node_modules/.bin/pm health --strict-exit --require-merge-drivers exited 1; after ./node_modules/.bin/pm merge install it exited 0; plain --strict-exit 0 both ways."
   "2026-08-24T15:25:44.756Z","harness:codex",Cross-package review of merged pm-brief PR 79 proved the original inline implementation swallowed gh issue list failures with || true. The alert now executes a tracked script that distinguishes lookup failure from an empty result and exits 0 without mutating on uncertainty; five focused tests pass.
@@ -33,7 +32,7 @@ files[4]:
   - path: test/alert-on-release-failure.test.ts
     scope: project
     note: hermetic creation dedup mutation-failure lookup-failure and workflow-wiring tests
-tests[3]:
+tests[4]:
   - command: python3 .agents/pm/verify-release-yaml.py
     path: .github/workflows/release.yml
     scope: project
@@ -51,5 +50,13 @@ tests[3]:
       created_at: "2026-08-24T15:25:44.756Z"
       source_kind: local_mutation
       source_ref: ci/alert-on-release-failure-and-require-merge-drivers
-close_reason: "The fail-closed tracked alert script, hermetic regression tests, pinned checkout, latest-host gate, and PM evidence are complete."
+  - command: "npm run release:check"
+    path: package.json
+    scope: project
+    provenance:
+      author: "harness:codex"
+      created_at: "2026-08-24T15:50:24.831Z"
+      source_kind: local_mutation
+      source_ref: ci/alert-on-release-failure-and-require-merge-drivers
+close_reason: The accepted Greptile finding is fixed by a trusted default-branch checkout and enforced by both test layers.
 body: ""
