@@ -116,6 +116,70 @@ jobs:
           echo "npm_version=$npm_version" >> "$GITHUB_OUTPUT"
           echo "base_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
+      # This runs FIRST, before the OIDC preflight, and that ordering is the
+      # point: a workflow_dispatch from a feature branch would otherwise mint an
+      # id-token and exchange it for a short-lived npm PUBLISH CREDENTIAL, and
+      # only then be refused - requesting a credential the run is not allowed to
+      # use. Refusing on the ref costs nothing and must come first.
+      - name: Check release ref
+        if: steps.decide.outputs.should_release == 'true'
+        shell: bash
+        env:
+          GITHUB_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "::error::Refusing to release from non-main ref ('$GITHUB_REF'). Run the release workflow from main."
+            exit 1
+          fi
+
+      # Persist validated release metadata through the repository's protected
+      # branch policy before publishing an immutable npm artifact. A stable
+      # branch name lets a failed run update/reuse its open release PR, while
+      # the exact remote SHA lease prevents overwriting another actor's work.
+      # Ported from pm-context's release.yml: main must already contain the
+      # release commit before npm publish runs - the invariant the old
+      # publish-then-push ordering violated. pm-beads published 2026.8.10 to
+      # npm, then `git push origin HEAD:main` was rejected with GH006 by the
+      # protected branch, and `set -e` killed the job before the tag push, so
+      # npm ended up ahead of git (main still at 2026.8.7, no v2026.08.10 tag).
+      #
+      # The merge wait below IMPROVES on pm-context. pm-context polls
+      # `gh pr view --json mergeStateStatus` and merges when it reads
+      # CLEAN/HAS_HOOKS/UNSTABLE. That deadlocked pm-changelog's release PR
+      # #133 for the full 30-minute deadline: it read `BLOCKED` with an empty
+      # `statusCheckRollup` ("settling: none; failing: none") even though
+      # `test (22)` and `test (26)` had both already succeeded on the PR's head
+      # commit - GitHub's computed mergeStateStatus lagged the real check
+      # state, so a "read a state, then decide" loop waited forever for a state
+      # that never updated. A human had to merge it by hand.
+      #
+      # This step replaces that state poll with "attempt the merge, let GitHub
+      # be the authority": before each attempt it resolves any unresolved
+      # review threads (required_conversation_resolution is on, so an advisory
+      # bot comment from Sourcery/cubic/CodeRabbit would otherwise block the
+      # release forever), then it simply calls the merge endpoint. A
+      # successful PUT is proof the branch-protection rules were satisfied - no
+      # inference needed; a failed PUT (405 = checks not ready, 409 = SHA
+      # moved) is proof they were not, and is retried until the deadline.
+      #
+      # The required-check list itself cannot be read here:
+      # /branches/main/protection/required_status_checks is
+      # administration-scoped, and the built-in GITHUB_TOKEN has no
+      # administration permission (there is no such key in the `permissions:`
+      # block, so it cannot be granted). It answers "Resource not accessible by
+      # integration" (HTTP 403) on every run, so deriving the wait from the
+      # exact required contexts is impossible from this workflow. The merge
+      # attempt sidesteps that entirely: GitHub evaluates the full protection
+      # rule set server-side and either accepts or refuses the merge.
+      #
+      # mergeStateStatus is still read, but only for two purposes:
+      #   - the two fatal, unrecoverable states DIRTY (conflict) and BEHIND
+      #     (stale base), which retrying cannot fix and so fail at once;
+      #   - the deadline-expiry message, so a doomed release names the checks
+      #     still settling or failing and stays diagnosable.
+      # The merge DECISION is never derived from mergeStateStatus - only the
+      # merge API call decides.
       # Publication is the only step that can fail for a reason outside this
       # repository, and it runs LAST - after the version bump and the release
       # commit have already landed on main. That ordering is what let a dead
@@ -224,65 +288,6 @@ jobs:
       # trigger ref (rather than git topology) reliably distinguishes a feature
       # branch from main, which commit-topology checks cannot do (a feature
       # branch off main is also a descendant of origin/main).
-      - name: Check release ref
-        if: steps.decide.outputs.should_release == 'true'
-        shell: bash
-        env:
-          GITHUB_REF: ${{ github.ref }}
-        run: |
-          set -euo pipefail
-          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
-            echo "::error::Refusing to release from non-main ref ('$GITHUB_REF'). Run the release workflow from main."
-            exit 1
-          fi
-
-      # Persist validated release metadata through the repository's protected
-      # branch policy before publishing an immutable npm artifact. A stable
-      # branch name lets a failed run update/reuse its open release PR, while
-      # the exact remote SHA lease prevents overwriting another actor's work.
-      # Ported from pm-context's release.yml: main must already contain the
-      # release commit before npm publish runs - the invariant the old
-      # publish-then-push ordering violated. pm-beads published 2026.8.10 to
-      # npm, then `git push origin HEAD:main` was rejected with GH006 by the
-      # protected branch, and `set -e` killed the job before the tag push, so
-      # npm ended up ahead of git (main still at 2026.8.7, no v2026.08.10 tag).
-      #
-      # The merge wait below IMPROVES on pm-context. pm-context polls
-      # `gh pr view --json mergeStateStatus` and merges when it reads
-      # CLEAN/HAS_HOOKS/UNSTABLE. That deadlocked pm-changelog's release PR
-      # #133 for the full 30-minute deadline: it read `BLOCKED` with an empty
-      # `statusCheckRollup` ("settling: none; failing: none") even though
-      # `test (22)` and `test (26)` had both already succeeded on the PR's head
-      # commit - GitHub's computed mergeStateStatus lagged the real check
-      # state, so a "read a state, then decide" loop waited forever for a state
-      # that never updated. A human had to merge it by hand.
-      #
-      # This step replaces that state poll with "attempt the merge, let GitHub
-      # be the authority": before each attempt it resolves any unresolved
-      # review threads (required_conversation_resolution is on, so an advisory
-      # bot comment from Sourcery/cubic/CodeRabbit would otherwise block the
-      # release forever), then it simply calls the merge endpoint. A
-      # successful PUT is proof the branch-protection rules were satisfied - no
-      # inference needed; a failed PUT (405 = checks not ready, 409 = SHA
-      # moved) is proof they were not, and is retried until the deadline.
-      #
-      # The required-check list itself cannot be read here:
-      # /branches/main/protection/required_status_checks is
-      # administration-scoped, and the built-in GITHUB_TOKEN has no
-      # administration permission (there is no such key in the `permissions:`
-      # block, so it cannot be granted). It answers "Resource not accessible by
-      # integration" (HTTP 403) on every run, so deriving the wait from the
-      # exact required contexts is impossible from this workflow. The merge
-      # attempt sidesteps that entirely: GitHub evaluates the full protection
-      # rule set server-side and either accepts or refuses the merge.
-      #
-      # mergeStateStatus is still read, but only for two purposes:
-      #   - the two fatal, unrecoverable states DIRTY (conflict) and BEHIND
-      #     (stale base), which retrying cannot fix and so fail at once;
-      #   - the deadline-expiry message, so a doomed release names the checks
-      #     still settling or failing and stays diagnosable.
-      # The merge DECISION is never derived from mergeStateStatus - only the
-      # merge API call decides.
       - name: Merge release metadata through protected PR
         if: steps.decide.outputs.should_release == 'true'
         id: release_pr
