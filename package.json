@@ -26,13 +26,14 @@
     "prepack": "npm run build",
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck",
+    "verify:release-workflow": "node .agents/pm/verify-release-yaml.mjs",
     "docstring": "node scripts/docstring-gate.ts",
     "audit:prod": "node --input-type=module -e \"import { spawnSync } from 'node:child_process'; import { devNull } from 'node:os'; const env = { ...process.env, npm_config_userconfig: devNull, NPM_CONFIG_USERCONFIG: devNull }; for (const key of Object.keys(env)) if (key.toLowerCase() === 'npm_config_allow_scripts') delete env[key]; const win = process.platform === 'win32'; const r = spawnSync(win ? 'npm.cmd' : 'npm', ['audit', '--omit=dev', '--ignore-scripts'], { stdio: 'inherit', env, shell: win }); process.exit(r.status ?? 1);\"",
     "pack:dry-run": "npm pack --dry-run",
     "changelog": "pm-changelog --pm-root .agents/pm --mode prepend --output CHANGELOG.md --release-version-from-package --since-previous-tag --until-release-tag --item-url-base https://github.com/unbraind/pm-beads/blob/main/.agents/pm --respect-item-release --pm-bin ./node_modules/.bin/pm --pm-arg=--output-budget --pm-arg=unbounded --pm-arg=--output-limit --pm-arg=unbounded",
     "changelog:full": "pm-changelog --pm-root .agents/pm --mode replace --output CHANGELOG.md --all-release-tags --release-version-from-package --item-url-base https://github.com/unbraind/pm-beads/blob/main/.agents/pm --respect-item-release --pm-bin ./node_modules/.bin/pm --pm-arg=--output-budget --pm-arg=unbounded --pm-arg=--output-limit --pm-arg=unbounded",
     "changelog:check": "pm-changelog --pm-root .agents/pm --mode replace --output CHANGELOG.md --all-release-tags --release-version-from-package --item-url-base https://github.com/unbraind/pm-beads/blob/main/.agents/pm --respect-item-release --check --pm-bin ./node_modules/.bin/pm --pm-arg=--output-budget --pm-arg=unbounded --pm-arg=--output-limit --pm-arg=unbounded",
-    "release:check": "npm run typecheck && npm run build && npm run docstring && npm run coverage && npm run audit:prod && npm run pack:dry-run && npm run changelog:check",
+    "release:check": "npm run typecheck && npm run verify:release-workflow && npm run build && npm run docstring && npm run coverage && npm run audit:prod && npm run pack:dry-run && npm run changelog:check",
     "prepublishOnly": "npm run release:check",
     "release:notes": "pm-changelog --pm-root .agents/pm --stdout --since-previous-tag --until-release-tag --release-version-from-package --item-url-base https://github.com/unbraind/pm-beads/blob/main/.agents/pm --respect-item-release --pm-bin ./node_modules/.bin/pm --pm-arg=--output-budget --pm-arg=unbounded --pm-arg=--output-limit --pm-arg=unbounded --github-step-summary",
     "prepare": "node scripts/prepare-merge-driver.ts",
@@ -41,10 +42,11 @@
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
-    "@unbrained/pm-cli": "2026.8.21",
+    "@unbrained/pm-cli": "2026.8.24",
     "pm-changelog": "^2026.8.17",
     "pm-ops": "^2026.8.17",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "yaml": "2.9.0"
   },
   "peerDependencies": {
     "@unbrained/pm-cli": ">=2026.8.20"
