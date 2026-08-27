@@ -26,7 +26,7 @@
     "prepack": "npm run build",
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck",
-    "verify:release-workflow": "node .agents/pm/verify-release-yaml.mjs",
+    "verify:release-workflow": "node .agents/pm/verify-release-yaml.ts",
     "verify:release-changelog-date": "node scripts/verify-release-changelog-date.ts",
     "docstring": "node scripts/docstring-gate.ts",
     "audit:prod": "node --input-type=module -e \"import { spawnSync } from 'node:child_process'; import { devNull } from 'node:os'; const env = { ...process.env, npm_config_userconfig: devNull, NPM_CONFIG_USERCONFIG: devNull }; for (const key of Object.keys(env)) if (key.toLowerCase() === 'npm_config_allow_scripts') delete env[key]; const win = process.platform === 'win32'; const r = spawnSync(win ? 'npm.cmd' : 'npm', ['audit', '--omit=dev', '--ignore-scripts'], { stdio: 'inherit', env, shell: win }); process.exit(r.status ?? 1);\"",
