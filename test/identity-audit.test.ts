@@ -84,43 +84,40 @@ test("the audit controls are anchored to the base ref, not to the branch under a
   // Reading the controls from the working tree is the bypass: a pull request
   // could move the baseline past its own bad commit, or add its own identity to
   // the approved list, and this gate would then validate nothing at all.
-  const introducing = !identities.fromBase || !baselineControl.fromBase;
-
-  if (introducing) {
-    // Bootstrap. The commit that INTRODUCES the controls cannot be measured
-    // against them - there is nothing on the base ref to measure against. Assert
-    // that this really is the introducing state rather than a spoofed one, and
-    // record plainly that the anchor only becomes effective once this merges.
-    for (const path of [CONTROL.identities, CONTROL.baseline]) {
-      const onBase = (() => {
-        try {
-          git("show", `${baseRef()}:${path}`);
-          return true;
-        } catch {
-          return false;
-        }
-      })();
-      assert.equal(
-        onBase,
-        false,
-        `${path} exists on ${baseRef()} but was read from the working tree - the anchor must come from the base ref`
-      );
-    }
-    return;
-  }
-
-  // Steady state: the controls exist on the base ref, so any change to them in
-  // this branch is a maintainer decision that belongs in its own reviewed pull
-  // request rather than inside one this gate is measuring.
+  //
+  // Judged PER FILE. A repository can legitimately be part-way through adopting
+  // this gate - one control already on the base ref, the other introduced by
+  // this branch - and an all-or-nothing rule reports that mixed state as a
+  // spoof, which is both wrong and unactionable.
   for (const [path, control] of [
     [CONTROL.identities, identities],
     [CONTROL.baseline, baselineControl],
   ] as const) {
-    assert.deepEqual(
-      meaningful(readFileSync(resolve(root, path), "utf-8")),
-      control.values,
-      `${path} differs from ${baseRef()}. Changing an audit control is a maintainer decision and ` +
-        "belongs in its own reviewed pull request, not in one this gate is measuring."
+    if (control.fromBase) {
+      // Steady state: changing a control is a maintainer decision that belongs
+      // in its own reviewed pull request, not inside one this gate measures.
+      assert.deepEqual(
+        meaningful(readFileSync(resolve(root, path), "utf-8")),
+        control.values,
+        `${path} differs from ${baseRef()}. Changing an audit control is a maintainer decision ` +
+          "and belongs in its own reviewed pull request, not in one this gate is measuring."
+      );
+      continue;
+    }
+
+    // Bootstrap: this branch introduces the control, so there is nothing on the
+    // base ref to measure it against. Assert that is genuinely the case rather
+    // than skipping silently; the anchor becomes effective once this merges.
+    let onBase = true;
+    try {
+      git("show", `${baseRef()}:${path}`);
+    } catch {
+      onBase = false;
+    }
+    assert.equal(
+      onBase,
+      false,
+      `${path} exists on ${baseRef()} but was read from the working tree - the anchor must come from the base ref`
     );
   }
 });
