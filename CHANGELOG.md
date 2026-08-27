@@ -10,6 +10,7 @@
 
 ### Security
 
+- The identity gate deadlocks the one remediation its own failure message prescribes ([pm-beads-a3xr](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-a3xr.toon))
 - Remove absolute host paths and non-public identities from the entire reachable Git history ([pm-beads-lajb](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-lajb.toon))
 
 ### Other
