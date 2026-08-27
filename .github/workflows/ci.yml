@@ -40,6 +40,9 @@ jobs:
       - name: Verify release workflow contract
         run: npm run verify:release-workflow
 
+      - name: Build
+        run: npm run build
+
       - name: Install clone-local pm merge drivers
         shell: bash
         run: |
