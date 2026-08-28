@@ -290,6 +290,24 @@ export function tokenizeCommands(text: string, depth = 0): ShellCommand[] {
       started = true;
       continue;
     }
+    if (character === "$" && text[index + 1] === "{") {
+      // `${name[0]}` is one word. The `{` here opens a parameter expansion, not
+      // a brace group, so ending the command on it splits the expansion into
+      // `$`, `name[0]` and whatever followed -- which reads
+      // `${program[0]} publish` as a command named `publish`, and hides a
+      // publish that reaches the shell through an expansion.
+      let braces = 0;
+      let end = index + 1;
+      for (; end < text.length; end += 1) {
+        if (text[end] === "{") braces += 1;
+        else if (text[end] === "}" && (braces -= 1) === 0) break;
+      }
+      value += text.slice(index, end + 1);
+      index = end;
+      if (!started) startsQuoted = false;
+      started = true;
+      continue;
+    }
     if (character === "`" || (character === "$" && text[index + 1] === "(")) {
       const { inner, end } = readSubstitution(text, index);
       nested.push(inner);
@@ -649,20 +667,34 @@ export function expandScalars(line: string, scalars: Map<string, string>): strin
 }
 
 /**
- * Expand `"${name[@]}"` and `"${name[*]}"` references against the file's
- * array declarations.
+ * Expand Bash array references against the file's array declarations.
  *
- * An unknown name is left untouched rather than erased: silently dropping it
- * would turn "this scan does not understand the command" into "this command has
- * no flags", which reads as a pass.
+ * Both whole-array forms (`"${name[@]}"` and `"${name[*]}"`) and indexed
+ * elements (`${name[0]}`) are resolved. Indexed elements are tokenised from
+ * the declaration so a quoted member keeps its single-word value. An unknown
+ * name or out-of-range element is left untouched; the verifier rejects an
+ * unresolved indexed expression when it could be the command word rather than
+ * quietly treating it as a non-publish.
  *
  * @param line - One logical command.
  * @param arrays - Array declarations from the same file.
- * @returns The command with referenced array contents inlined.
+ * @returns The command with known array references inlined.
  */
 export function expandArrays(line: string, arrays: Map<string, string>): string {
-  return line.replace(/"?\$\{([A-Za-z_][A-Za-z0-9_]*)\[@*\]\}"?/g, (whole, name: string) =>
-    arrays.get(name) ?? whole);
+  // Two passes rather than one alternation. A single pattern would hand the
+  // callback one defined group and one undefined group per match, and the
+  // narrowing needed to tell them apart leaves a branch no input can reach.
+  // The two shapes are disjoint -- `[@]`/`[*]` against a decimal index -- so
+  // matching them separately is the same substitution, stated once each.
+  const whole = line.replace(
+    /"?\$\{([A-Za-z_][A-Za-z0-9_]*)\[@*\]\}"?/g,
+    (match: string, name: string) => arrays.get(name) ?? match,
+  );
+  return whole.replace(
+    /"?\$\{([A-Za-z_][A-Za-z0-9_]*)\[(-?\d+)\]\}"?/g,
+    (match: string, name: string, indexText: string) =>
+      tokenizeCommands(arrays.get(name) ?? "")[0]?.[Number(indexText)]?.value ?? match,
+  );
 }
 
 /** The outcome of one verifier run. */

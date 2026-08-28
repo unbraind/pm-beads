@@ -53,6 +53,16 @@ export interface PublishInvocation {
 /** Publishers other than npm, which this repository has no attested path for. */
 export const FOREIGN_PUBLISHERS = new Set(["yarn", "pnpm", "bun"]);
 
+/**
+ * A single indexed Bash-array word (`${name[0]}`) that survived expansion.
+ *
+ * Only numeric indices, matching what `expandArrays` resolves. The whole-array
+ * forms `${name[@]}` and `${name[*]}` are deliberately excluded: they are
+ * re-scanned through the evaluator path, so treating them as unresolved would
+ * report the same command twice -- once as unknown and once as what it is.
+ */
+const INDEXED_ARRAY_EXPRESSION = /^\$\{[A-Za-z_][A-Za-z0-9_]*\[-?\d+\]\}$/;
+
 /** Repository subtrees whose contents are build output rather than a publish path. */
 const GENERATED_PREFIXES = ["dist/", "coverage/", "node_modules/", ".agents/pm/runtime/"];
 
@@ -216,16 +226,18 @@ export function attestationEnabled(command: ShellCommand): boolean {
 }
 
 /**
- * Find every publish invocation in one file's contents.
+ * Scan one file for publish invocations and unresolved command words.
  *
  * Continuations are joined and shared arrays expanded before tokenising, for
  * the same reason the changelog-date scan does it: a multi-line invocation
- * otherwise looks like fragments, none of which carries the flag.
+ * otherwise looks like fragments, none of which carries the flag. An indexed
+ * array expression that remains as the first command word is also returned so
+ * the audit can fail closed instead of assuming that unknown command is safe.
  *
  * @param source - The file's path and contents.
- * @returns The publish invocations found, in file order.
+ * @returns Publish invocations and unresolved indexed command expressions.
  */
-export function publishInvocationsIn(source: SourceFile): PublishInvocation[] {
+function scanPublishSource(source: SourceFile): { invocations: PublishInvocation[]; unresolved: string[] } {
   const raw = source.file.endsWith("package.json") ? manifestCommandLines(source.text) : source.text;
   const text = joinContinuations(raw);
   const arrays = bashArrays(text);
@@ -235,12 +247,18 @@ export function publishInvocationsIn(source: SourceFile): PublishInvocation[] {
     .map((line) => expandScalars(expandArrays(line, arrays), scalars))
     .join("\n");
   const found: PublishInvocation[] = [];
+  const unresolved = new Set<string>();
   for (const command of tokenizeCommands(expanded)) {
     // Every reading, not just the command's own: a wrapper option that takes a
     // value (`sudo -u root npm publish`) moves the program past where naming it
     // once would look. Missing a publish is a failed audit; offering one that no
     // shell would run is noise an operator dismisses.
     for (const candidate of commandCandidates(command)) {
+      const first = candidate[0];
+      if (first !== undefined && INDEXED_ARRAY_EXPRESSION.test(first.value)) {
+        unresolved.add(first.value);
+        continue;
+      }
       const program = commandName(candidate);
       if (program === undefined) continue;
       if (program !== "npm" && !FOREIGN_PUBLISHERS.has(program)) continue;
@@ -250,7 +268,17 @@ export function publishInvocationsIn(source: SourceFile): PublishInvocation[] {
       found.push({ file: source.file, program, command: candidate });
     }
   }
-  return found;
+  return { invocations: found, unresolved: [...unresolved] };
+}
+
+/**
+ * Find every publish invocation in one file's contents.
+ *
+ * @param source - The file's path and contents.
+ * @returns The publish invocations found, in file order.
+ */
+export function publishInvocationsIn(source: SourceFile): PublishInvocation[] {
+  return scanPublishSource(source).invocations;
 }
 
 /**
@@ -274,14 +302,24 @@ export function renderCommand(command: ShellCommand): string {
  * flag. This repository's attested path is npm's `--provenance`; no equivalent
  * is configured for yarn, pnpm or bun, so such an invocation is an unattested
  * publish path regardless of the flags it carries, and guessing at another
- * tool's spelling would be a gate that only looked strict.
+ * tool's spelling would be a gate that only looked strict. An indexed array
+ * expression left in command position is also refused, because its program
+ * cannot be proven not to be an unattested publish.
  *
  * @param sources - The tracked files to scan.
  * @returns Failures and per-file notes.
  */
 export function auditPublishAttestation(sources: SourceFile[]): VerifierResult {
-  const invocations = sources.flatMap(publishInvocationsIn);
+  const scans = sources.map((source) => ({ source, scan: scanPublishSource(source) }));
+  const invocations = scans.flatMap(({ scan }) => scan.invocations);
   const failures: string[] = [];
+  for (const { source, scan } of scans) {
+    for (const expression of scan.unresolved) {
+      failures.push(
+        `${source.file}: indexed Bash-array expression ${expression} remains unresolved in command position; refusing to assume it is not an unattested publish`,
+      );
+    }
+  }
   const counted = new Map<string, { total: number; unflagged: number }>();
   for (const invocation of invocations) {
     const tally = counted.get(invocation.file) ?? { total: 0, unflagged: 0 };

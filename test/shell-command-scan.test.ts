@@ -13,7 +13,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 
-import { bashArrays, expandArrays, joinContinuations } from "../scripts/shell-command-scan.ts";
+import { bashArrays, expandArrays, joinContinuations, tokenizeCommands } from "../scripts/shell-command-scan.ts";
 import { isMainInvocation } from "../scripts/main-invocation.ts";
 
 test("an unknown array reference is left in place rather than erased", () => {
@@ -52,4 +52,38 @@ test("an array reference is replaced by the declaration's contents, quoted or ba
   const arrays = bashArrays('common=( --access public --provenance )\n');
   assert.equal(expandArrays('npm publish "${common[@]}"', arrays), "npm publish --access public --provenance");
   assert.equal(expandArrays("npm publish ${common[@]}", arrays), "npm publish --access public --provenance");
+  assert.equal(expandArrays("${common[0]} ${common[1]} ${common[2]}", arrays), "--access public --provenance");
+  assert.equal(expandArrays("${missing[0]}", arrays), "${missing[0]}");
+  assert.equal(expandArrays("${common[99]}", arrays), "${common[99]}");
+});
+
+test("a parameter expansion is one word, not a brace group", () => {
+  // `{` and `}` end a command because they open and close a brace group, but
+  // the `{` in `${name[0]}` opens a parameter expansion. Splitting there read
+  // `${program[0]} publish` as a command named `publish`, so a publish reaching
+  // the shell through an expansion was audited as something else entirely.
+  assert.deepEqual(
+    tokenizeCommands("${program[0]} publish").map((command) => command.map(({ value }) => value)),
+    [["${program[0]}", "publish"]],
+  );
+  // A brace group with no `$` still separates commands.
+  assert.deepEqual(
+    tokenizeCommands("{ npm publish; }").map((command) => command.map(({ value }) => value)),
+    [["npm", "publish"]],
+  );
+});
+
+test("an unbalanced parameter expansion consumes the rest of the text rather than resyncing", () => {
+  // A truncated file can end mid-expansion. Scanning to end-of-text keeps the
+  // fragment as one unknown word; resyncing on the missing brace would hand the
+  // audit a command word the shell would never have produced.
+  assert.deepEqual(
+    tokenizeCommands("${program[0] npm publish").map((command) => command.map(({ value }) => value)),
+    [["${program[0] npm publish"]],
+  );
+  // A nested expansion closes on its own brace, not the first one seen.
+  assert.deepEqual(
+    tokenizeCommands("${outer${inner}} publish").map((command) => command.map(({ value }) => value)),
+    [["${outer${inner}}", "publish"]],
+  );
 });

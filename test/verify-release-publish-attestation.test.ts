@@ -120,6 +120,23 @@ test("a star-expanded array is rescanned through an evaluator", () => {
   assert.equal(result.failures.length, 1, "the publish in ${command[*]} must not be skipped");
 });
 
+test("an indexed array element can name an attested publish", () => {
+  const result = auditPublishAttestation([{
+    file: "release.yml",
+    text: `          program=(npm publish ${ATTESTATION_FLAG})\n          \${program[0]} \${program[1]} \${program[2]}`,
+  }]);
+  assert.deepEqual(result.failures, [], "declared indexed array elements must be resolved before auditing");
+});
+
+test("an unresolved indexed array command fails closed instead of being skipped", () => {
+  const result = auditPublishAttestation([{
+    file: "release.yml",
+    text: `          npm publish --access public ${ATTESTATION_FLAG}\n          \${missing[0]} publish`,
+  }]);
+  assert.equal(result.failures.length, 1);
+  assert.match(result.failures[0]!, /indexed Bash-array expression/);
+});
+
 test("a prose mention of the command inside quotes is not treated as an invocation", () => {
   // This repository's own workflow echoes advice naming the command. Reading
   // that echo as a publish makes the gate report a defect that is not there,
