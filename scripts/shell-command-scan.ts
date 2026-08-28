@@ -82,6 +82,7 @@ const COMMAND_PREFIXES = new Set([
   "ionice",
   "time",
   "stdbuf",
+  "timeout",
   "setsid",
   "xargs",
   "npx",
@@ -322,15 +323,43 @@ export function tokenizeCommands(text: string, depth = 0): ShellCommand[] {
   for (const body of nested) commands.push(...tokenizeCommands(body, depth + 1));
   for (const found of [...commands]) {
     const name = commandName(found);
-    if (name === undefined || !SHELL_EVALUATORS.has(name)) continue;
-    // The shell joins an evaluator's words with a space and evaluates the
-    // result, so `eval "npm pub" "lish"` runs a publish that scanning each
-    // argument on its own never sees.
-    const payload = found.slice(1)
-      .filter((argument) => !argument.value.startsWith("-"))
-      .map((argument) => argument.value);
-    for (const body of new Set([...payload, payload.join(" ")])) {
-      commands.push(...tokenizeCommands(body, depth + 1));
+    if (name === "find") {
+      const args = commandArguments(found);
+      for (let index = 0; index < args.length; index += 1) {
+        const marker = args[index]!.value;
+        if (marker !== "-exec" && marker !== "-execdir") continue;
+        const end = args.slice(index + 1).findIndex(({ value }) => value === ";" || value === "+");
+        if (end === -1) continue;
+        const tail = args.slice(index + 1, index + 1 + end);
+        if (tail.length > 0) commands.push(...tokenizeCommands(tail.map((token) => token.value).join(" "), depth + 1));
+      }
+    }
+    // A YAML key's value is shell text, and it may arrive as ONE quoted word:
+    // `run: "npm publish"` leaves a single token holding the whole command, so
+    // the value has to be re-scanned rather than read as a program name.
+    // A leading `- ` list marker may sit before the key.
+    const keyAt = found[0]?.value === "-" ? 1 : 0;
+    const key = found[keyAt];
+    const bodyToken = found[keyAt + 1];
+    const quotedBody = bodyToken?.quoted === true && /[\s;&|]/.test(bodyToken.value);
+    if (key !== undefined && !key.startsQuoted && quotedBody && /^[A-Za-z_][A-Za-z0-9_-]*:$/.test(key.value)) {
+      const body = found.slice(keyAt + 1).map((token) => token.value).join(" ");
+      if (body.length > 0) commands.push(...tokenizeCommands(body, depth + 1));
+    }
+    // Every reading, not just the first: `sudo -u root bash -c '…'` resolves to
+    // `root` on the primary reading, so recursing only there never reaches the
+    // evaluator at all.
+    for (const candidate of commandCandidates(found)) {
+      const candidateName = commandName(candidate);
+      if (candidateName === undefined || !SHELL_EVALUATORS.has(candidateName)) continue;
+      const words = candidate.slice(1).map((argument) => argument.value);
+      // The shell joins an evaluator's words with a space and evaluates the
+      // result, so `eval "npm pub" "lish"` runs a publish that scanning each
+      // argument on its own never sees. The join keeps the OPTION words too: drop
+      // them and `eval "npm" "publish" "--provenance"` reconstructs as an
+      // unattested publish and fails a workflow that is in fact attested.
+      const bodies = new Set([...words.filter((word) => !word.startsWith("-")), words.join(" ")]);
+      for (const body of bodies) commands.push(...tokenizeCommands(body, depth + 1));
     }
   }
   return commands;
@@ -533,19 +562,31 @@ export function joinContinuations(text: string): string {
 }
 
 /**
+ * A supported Bash array declaration, with quoted and escaped parentheses kept
+ * inside the declaration rather than mistaken for its closing delimiter.
+ *
+ * Unsupported constructs such as command substitutions are deliberately left
+ * unmatched. Their references then remain unresolved and the attestation audit
+ * fails closed instead of guessing at an array's contents.
+ */
+const BASH_ARRAY_DECLARATION = /(?:^|\s)([A-Za-z_][A-Za-z0-9_]*)=\(((?:\\[\s\S]|'[^']*'|"(?:\\[\s\S]|[^"\\])*"|[^\\'"()])*)\)/g;
+
+/**
  * Index bash array assignments so a shared options array can be expanded.
  *
  * The release workflows declare `common=( ... )` once and pass `"${common[@]}"`
  * to each invocation, precisely so the invocations cannot drift. A scan that
  * reads only the invocation line therefore sees none of the shared flags.
+ * Quoted or escaped closing parentheses are members, not array boundaries; an
+ * unsupported array shape is left unknown so verification fails closed.
  *
  * @param text - File contents with continuations already joined.
  * @returns Array name mapped to the flag text it holds.
  */
 export function bashArrays(text: string): Map<string, string> {
   const arrays = new Map<string, string>();
-  for (const match of text.matchAll(/(?:^|\s)([A-Za-z_][A-Za-z0-9_]*)=\(([\s\S]*?)\)/g)) {
-    arrays.set(match[1], match[2].replace(/\s+/g, " ").trim());
+  for (const match of text.matchAll(BASH_ARRAY_DECLARATION)) {
+    arrays.set(match[1]!, match[2]!.replace(/\s+/g, " ").trim());
   }
   return arrays;
 }
@@ -557,8 +598,8 @@ export function bashArrays(text: string): Map<string, string> {
  * invocation line can see, because the invocation line contains no publish. The
  * assignment is where the command actually is.
  *
- * Only literal single- or double-quoted values are indexed. An unquoted value
- * cannot hold a space and so cannot hold a command, and a value built from
+ * Plain literal values are indexed. Quoted values can hold a multi-word command;
+ * an unquoted value can still hold one command word, while a value built from
  * other variables is not resolvable without evaluating the script, which this
  * module deliberately does not do.
  *
@@ -567,10 +608,10 @@ export function bashArrays(text: string): Map<string, string> {
  */
 export function shellScalars(text: string): Map<string, string> {
   const scalars = new Map<string, string>();
-  for (const match of text.matchAll(/(?:^|[\s;&|])([A-Za-z_][A-Za-z0-9_]*)=(?:"([^"\n]*)"|'([^'\n]*)')/g)) {
-    // The alternation guarantees exactly one of the two value groups matched,
-    // so there is no third case to fall back to.
-    const value = match[2] ?? match[3]!;
+  for (const match of text.matchAll(/(?:^|[\s;&|])([A-Za-z_][A-Za-z0-9_]*)=(?:"([^"\n]*)"|'([^'\n]*)'|([^\s"'\n;&|]+))/g)) {
+    // The alternation guarantees exactly one value group matched, so there is
+    // no fourth case to fall back to.
+    const value = match[2] ?? match[3] ?? match[4]!;
     // Only a plain literal is inlined. A value carrying a substitution, a
     // backtick, or a quote of its own changes how the line it lands in parses:
     // inlining `pkg_name="$(node -p …)"` injects an unbalanced parenthesis into
@@ -601,7 +642,8 @@ export function expandScalars(line: string, scalars: Map<string, string>): strin
 }
 
 /**
- * Expand `"${name[@]}"` references against the file's array declarations.
+ * Expand `"${name[@]}"` and `"${name[*]}"` references against the file's
+ * array declarations.
  *
  * An unknown name is left untouched rather than erased: silently dropping it
  * would turn "this scan does not understand the command" into "this command has
@@ -612,7 +654,7 @@ export function expandScalars(line: string, scalars: Map<string, string>): strin
  * @returns The command with referenced array contents inlined.
  */
 export function expandArrays(line: string, arrays: Map<string, string>): string {
-  return line.replace(/"?\$\{([A-Za-z_][A-Za-z0-9_]*)\[@\]\}"?/g, (whole, name: string) =>
+  return line.replace(/"?\$\{([A-Za-z_][A-Za-z0-9_]*)\[@*\]\}"?/g, (whole, name: string) =>
     arrays.get(name) ?? whole);
 }
 

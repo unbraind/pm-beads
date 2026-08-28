@@ -113,6 +113,20 @@ export function manifestCommandLines(text: string): string {
 const RUNNER_SUBCOMMANDS = new Set(["run", "run-script", "exec", "explore", "x"]);
 
 /**
+ * npm flags that consume the word after them.
+ *
+ * Their values sit where a subcommand would, so a value that happens to spell a
+ * runner word (`npm --tag run publish`) otherwise reads as `npm run` and the
+ * publish beside it is discarded. Joined forms (`--tag=run`) need no entry,
+ * because they are one word.
+ */
+const VALUE_TAKING_FLAGS = new Set([
+  "--tag", "--access", "--registry", "--otp", "--workspace", "-w",
+  "--userconfig", "--globalconfig", "--cache", "--prefix", "--loglevel",
+  "--provenance-file", "--auth-type", "--before", "--omit", "--include",
+]);
+
+/**
  * Decide whether one command is a direct `npm publish`.
  *
  * `publish` does not have to follow `npm` immediately: npm accepts its
@@ -140,7 +154,16 @@ const RUNNER_SUBCOMMANDS = new Set(["run", "run-script", "exec", "explore", "x"]
  * @returns True when the command publishes.
  */
 export function isPublishCommand(command: ShellCommand): boolean {
-  for (const token of commandArguments(command)) {
+  const args = commandArguments(command);
+  for (let index = 0; index < args.length; index += 1) {
+    const token = args[index]!;
+    // A flag's separate value is not the subcommand. `npm --tag run publish`
+    // configures the tag as "run" and publishes; reading `run` as a runner
+    // subcommand discarded a real publish and let an attested sibling carry the
+    // audit. Only npm's own value-taking flags are skipped, so an unknown flag
+    // still leaves its value in subcommand position rather than being ignored.
+    if (VALUE_TAKING_FLAGS.has(token.value)) { index += 1; continue; }
+    if (token.value.startsWith("-")) continue;
     if (RUNNER_SUBCOMMANDS.has(token.value)) return false;
     if (token.value === "publish") return true;
   }

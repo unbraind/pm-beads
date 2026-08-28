@@ -1,12 +1,12 @@
 id: pm-beads-y1gg
-title: A failed provenance publish silently falls back to an unattested one
-description: "After three failed provenance publish attempts the release step called npm publish without --provenance and reported success. The only signal was a GitHub warning annotation. A transient registry failure therefore downgrades the package's supply-chain attestation permanently for that version, and consumers cannot tell an unattested publish caused by a 404 storm apart from one that never had provenance at all."
+title: Prevent a failed provenance publish from silently falling back to an unattested publish
+description: After three failed provenance publish attempts the release step called an unattested publish and reported success. A transient registry failure therefore downgraded the package supply chain attestation permanently. The release now fails closed and reconciles a late landing.
 type: Issue
 status: closed
 priority: 1
 tags[3]: "area:release","area:supply-chain","type:defect"
 created_at: "2026-08-28T06:47:41.079Z"
-updated_at: "2026-08-28T15:31:44.168Z"
+updated_at: "2026-08-28T20:45:47.572Z"
 closed_at: "2026-08-28T06:47:44.832Z"
 completed_at: "2026-08-28T06:47:44.832Z"
 author: codex

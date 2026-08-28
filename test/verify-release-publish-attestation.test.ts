@@ -98,6 +98,28 @@ test("a shared bash array holding the flag is expanded rather than read as an ab
   assert.deepEqual(result.failures, []);
 });
 
+test("a quoted closing parenthesis cannot hide a later disabling array flag", () => {
+  // The old non-greedy regex stopped at the parenthesis in "package)". The
+  // truncated value retained the earlier enabling flag and discarded the later
+  // disabling flag, so an attested sibling made the whole scan pass.
+  const text = [
+    `          npm publish --access public ${ATTESTATION_FLAG}`,
+    `          flags=( ${ATTESTATION_FLAG} "package)" --provenance=false )`,
+    '          npm publish "${flags[@]}"',
+  ].join("\n");
+  const result = auditPublishAttestation([{ file: "release.yml", text }]);
+  assert.equal(result.failures.length, 1, "the disabling flag after the quoted parenthesis must be audited");
+  assert.match(result.failures[0]!, /does not enable --provenance/);
+});
+
+test("a star-expanded array is rescanned through an evaluator", () => {
+  const result = auditPublishAttestation([{
+    file: "release.yml",
+    text: `          npm publish --access public ${ATTESTATION_FLAG}\n          command=(npm publish)\n          bash -c "\${command[*]}"`,
+  }]);
+  assert.equal(result.failures.length, 1, "the publish in ${command[*]} must not be skipped");
+});
+
 test("a prose mention of the command inside quotes is not treated as an invocation", () => {
   // This repository's own workflow echoes advice naming the command. Reading
   // that echo as a publish makes the gate report a defect that is not there,
@@ -181,6 +203,21 @@ test("a publish with configuration flags before the subcommand is still a publis
   assert.equal(result.failures.length, 1, "the unattested sibling must be counted and failed");
 });
 
+test("npm option values are not mistaken for runner subcommands", () => {
+  for (const spread of [
+    "npm --tag run publish",
+    "npm --access run publish",
+    "npm --workspace run publish",
+  ]) {
+    assert.equal(isPublishCommand(onlyCommand(spread)), true, spread);
+    assert.equal(
+      auditPublishAttestation([{ file: "release.yml", text: `          ${ATTESTED}\n          ${spread}` }]).failures.length,
+      1,
+      spread,
+    );
+  }
+});
+
 test("npm run publish is a script runner, not a publish", () => {
   // The script's own body is scanned from the manifest, so requiring the flag
   // on the runner would report a defect that is not there.
@@ -248,6 +285,14 @@ test("an unattested publish smuggled through an interpreter or a substitution is
     ]).failures;
     assert.equal(failures.length, 1, `${smuggled} -> ${JSON.stringify(failures)}`);
   }
+});
+
+test("an evaluator keeps an attestation flag supplied as a separate argument", () => {
+  const result = auditPublishAttestation([{
+    file: "release.yml",
+    text: `          ${ATTESTED}\n          eval "npm" "publish" "${ATTESTATION_FLAG}"`,
+  }]);
+  assert.deepEqual(result.failures, [], "the shell joins evaluator arguments before executing them");
 });
 
 test("every shell separator ends a command, so a flagged publish cannot cover an unflagged neighbour", () => {
@@ -560,6 +605,29 @@ test("a package runner is a wrapper, so the publish behind its own options is st
   );
 });
 
+test("a timeout wrapper still exposes an unattested publish", () => {
+  const result = auditPublishAttestation([{
+    file: "release.yml",
+    text: `          npm publish --access public ${ATTESTATION_FLAG}\n          timeout 10s npm publish --provenance=false`,
+  }]);
+  assert.equal(result.failures.length, 1, "timeout must not hide the publish from the attestation audit");
+  assert.match(result.failures[0]!, /npm publish --provenance=false/);
+});
+
+test("find exec tails are rescanned as command invocations", () => {
+  const result = auditPublishAttestation([{
+    file: "release.yml",
+    text: [
+      `          npm publish --access public ${ATTESTATION_FLAG}`,
+      "          find . -exec npm publish \\;",
+      "          find . -execdir npm publish +",
+      "          find . -exec \\;",
+      "          find . -exec npm publish",
+    ].join("\n"),
+  }]);
+  assert.equal(result.failures.length, 2, "only terminated find command tails execute publishes");
+});
+
 test("a runner spelled as two words is consumed only when its second word completes it", () => {
   for (const wrapped of ["pnpm dlx npm publish --provenance", "yarn exec npm publish --provenance", "bun x npm publish --provenance"]) {
     assert.equal(
@@ -641,7 +709,7 @@ test("a command held in a scalar is expanded, so the assignment is where the pub
   const scalars = shellScalars('CMD="npm publish"\nOTHER=\'npm publish --provenance\'\nBARE=npm\n');
   assert.equal(scalars.get("CMD"), "npm publish");
   assert.equal(scalars.get("OTHER"), "npm publish --provenance");
-  assert.equal(scalars.get("BARE"), undefined, "an unquoted value cannot hold a command");
+  assert.equal(scalars.get("BARE"), "npm", "an unquoted literal command word can be resolved");
   assert.equal(expandScalars("$CMD", scalars), "npm publish");
   assert.equal(expandScalars("${CMD}", scalars), "npm publish");
   assert.equal(expandScalars("$UNKNOWN", scalars), "$UNKNOWN", "an unknown name is left in place, not erased");
@@ -671,6 +739,22 @@ test("a workflow key carries the command as its value, and is not the command", 
       text: "          npm publish --provenance\n          - run: npm publish\n",
     }]).failures.length,
     1,
+  );
+  assert.deepEqual(
+    publishInvocationsIn({
+      file: "release.yml",
+      text: "          npm publish --provenance\n          run: \"npm publish\"\n",
+    }).map((invocation) => renderCommand(invocation.command)),
+    ["npm publish --provenance", "npm publish"],
+    "a quoted YAML command value is rescanned once, not duplicated",
+  );
+  assert.deepEqual(
+    publishInvocationsIn({
+      file: "release.yml",
+      text: "          npm publish --provenance\n          run: \"npm\" publish\n",
+    }).map((invocation) => renderCommand(invocation.command)),
+    ["npm publish --provenance", "npm publish"],
+    "quoting only the program word does not trigger a second scan",
   );
 });
 

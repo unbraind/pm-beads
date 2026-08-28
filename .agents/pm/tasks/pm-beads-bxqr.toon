@@ -1,0 +1,34 @@
+id: pm-beads-bxqr
+title: Finish attested publishing review backlog
+description: "Resolve the remaining code, workflow, and tracker integrity findings on pull request 86. Verify every repository owned publish path, preserve append only history, and record the real gate evidence."
+type: Task
+status: closed
+priority: 1
+tags: []
+created_at: "2026-08-28T20:34:59.245Z"
+updated_at: "2026-08-28T20:49:46.556Z"
+closed_at: "2026-08-28T20:49:45.670Z"
+completed_at: "2026-08-28T20:49:45.670Z"
+claim_principal: pi-agent
+author: pi-agent
+release: 2026.8.28
+resolution: "PR 86 review backlog is resolved: evaluator argument joins preserve attestation flags; npm option values, find execution tails, and star-expanded arrays are audited; registry lookup errors have a distinct terminal diagnostic; and persisted history normalization is append-only."
+expected_result: "The publish gate fails closed for every discovered publish path, the release distinguishes registry lookup failure from missing attestation, and historical tracker evidence is never rewritten."
+actual_result: All six findings have regression coverage or static workflow assertions. The five affected history streams match the released main prefix byte-for-byte and each has only one appended correction note.
+comments[1]{created_at,author,text}:
+  "2026-08-28T20:45:09.442Z",pi-agent,"PR 86 review disposition: evaluator provenance flags, npm option values, find execution tails, star array expansion, and the attestation lookup error state are valid and fixed. The persisted-history finding is valid; original history records were restored exactly from the released main and each affected stream received only an appended correction note. Generic scanner behavior was verified in this package's own files rather than copied from another repository."
+files[10]{path,scope,note}:
+  .agents/pm/history/pm-beads-bjqg.jsonl,project,restored append-only history with correction note
+  .agents/pm/history/pm-beads-bzpz.jsonl,project,restored append-only history with correction note
+  .agents/pm/history/pm-beads-cg9v.jsonl,project,restored append-only history with correction note
+  .agents/pm/history/pm-beads-dgk3.jsonl,project,restored append-only history with correction note
+  .agents/pm/history/pm-beads-kbnm.jsonl,project,restored append-only history with correction note
+  .github/workflows/release.yml,project,tri-state attestation lookup diagnostics in the publish reconciliation gate
+  scripts/shell-command-scan.ts,project,"generic shell scanner fixes for evaluator flags,find tails,arrays,YAML values,and timeout"
+  scripts/verify-release-publish-attestation.ts,project,npm option parsing for publish detection
+  test/release-workflow.test.ts,project,lookup-error regression assertions
+  test/verify-release-publish-attestation.test.ts,project,generic publish scanner regression fixtures
+tests[1]{command,path,scope,timeout_seconds,provenance{author,created_at,source_kind,source_ref},note}:
+  "npm run release:check",test/verify-release-publish-attestation.test.ts,project,1800,pi-agent,"2026-08-28T20:45:10.785Z",local_mutation,fix/refuse-unattested-publish-fallback,release gate covers scanner and workflow regressions
+close_reason: "Resolved all six PR 86 review findings. Evidence: npm run build exited 0, npm test passed 374 of 374 tests, npm run release:check exited 0 with 100 percent coverage, verify-release-workflow and verify-release-publish-attestation exited 0, and the history streams preserve their original records with appended correction notes."
+body: ""

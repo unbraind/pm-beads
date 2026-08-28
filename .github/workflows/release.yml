@@ -673,7 +673,9 @@ jobs:
           # coordinate" and is refused rather than reconciled.
           registry_version_is_attested() {
             local attestations
-            attestations="$(npm view "${pkg_name}@${NPM_VERSION}" dist.attestations --json 2>/dev/null || true)"
+            if ! attestations="$(npm view "${pkg_name}@${NPM_VERSION}" dist.attestations --json 2>/dev/null)"; then
+              return 2
+            fi
             [[ -n "${attestations}" && "${attestations}" != "null" && "${attestations}" != "{}" && "${attestations}" != "[]" ]]
           }
           registry_has_version() {
@@ -698,7 +700,13 @@ jobs:
           # will misdescribe.
           refuse_unattested_or_fail() {
             if registry_has_version; then
-              echo "::error::${pkg_name}@${NPM_VERSION} exists on the registry WITHOUT a visible provenance attestation. This workflow only ever publishes with --provenance, so either that artifact did not come from this job, or its attestation never became visible. Refusing to tag and release around it; investigate before re-running."
+              local attestation_status=0
+              registry_version_is_attested || attestation_status=$?
+              if (( attestation_status == 2 )); then
+                echo "::error::Could not read attestation metadata for ${pkg_name}@${NPM_VERSION} after ${reconcile_attempts} attempts. This is a registry read failure, NOT proof that the artifact is unattested. Refusing to tag and release on an unverified attestation; re-run when the registry answers."
+              else
+                echo "::error::${pkg_name}@${NPM_VERSION} exists on the registry WITHOUT a visible provenance attestation. This workflow only ever publishes with --provenance, so either that artifact did not come from this job, or its attestation never became visible. Refusing to tag and release around it; investigate before re-running."
+              fi
             else
               echo "::error::Publish with provenance failed after ${max_attempts} attempts. Refusing to downgrade supply-chain attestations; retry the release transaction."
             fi
