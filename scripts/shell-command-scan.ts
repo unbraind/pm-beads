@@ -358,7 +358,14 @@ export function tokenizeCommands(text: string, depth = 0): ShellCommand[] {
       // argument on its own never sees. The join keeps the OPTION words too: drop
       // them and `eval "npm" "publish" "--provenance"` reconstructs as an
       // unattested publish and fails a workflow that is in fact attested.
-      const bodies = new Set([...words.filter((word) => !word.startsWith("-")), words.join(" ")]);
+      // `eval` joins every argument, so scanning its individual words would
+      // invent commands that the shell never executes (`eval "npm publish"
+      // "--provenance"`). Interpreters with a command-string option still need
+      // the individual non-option readings because their option grammar is not
+      // fully known here; the joined reading preserves flags after the script.
+      const bodies = candidateName === "eval"
+        ? new Set([words.join(" ")])
+        : new Set([...words.filter((word) => !word.startsWith("-")), words.join(" ")]);
       for (const body of bodies) commands.push(...tokenizeCommands(body, depth + 1));
     }
   }

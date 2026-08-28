@@ -288,11 +288,16 @@ test("an unattested publish smuggled through an interpreter or a substitution is
 });
 
 test("an evaluator keeps an attestation flag supplied as a separate argument", () => {
-  const result = auditPublishAttestation([{
-    file: "release.yml",
-    text: `          ${ATTESTED}\n          eval "npm" "publish" "${ATTESTATION_FLAG}"`,
-  }]);
-  assert.deepEqual(result.failures, [], "the shell joins evaluator arguments before executing them");
+  for (const evaluated of [
+    `eval "npm" "publish" "${ATTESTATION_FLAG}"`,
+    `eval "npm publish" "${ATTESTATION_FLAG}"`,
+  ]) {
+    const result = auditPublishAttestation([{
+      file: "release.yml",
+      text: `          ${ATTESTED}\n          ${evaluated}`,
+    }]);
+    assert.deepEqual(result.failures, [], `${evaluated}: the shell joins evaluator arguments before executing them`);
+  }
 });
 
 test("every shell separator ends a command, so a flagged publish cannot cover an unflagged neighbour", () => {

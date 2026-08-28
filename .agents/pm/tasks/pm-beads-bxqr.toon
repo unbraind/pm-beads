@@ -6,17 +6,18 @@ status: closed
 priority: 1
 tags: []
 created_at: "2026-08-28T20:34:59.245Z"
-updated_at: "2026-08-28T20:49:46.556Z"
+updated_at: "2026-08-28T21:05:34.406Z"
 closed_at: "2026-08-28T20:49:45.670Z"
 completed_at: "2026-08-28T20:49:45.670Z"
 claim_principal: pi-agent
 author: pi-agent
 release: 2026.8.28
-resolution: "PR 86 review backlog is resolved: evaluator argument joins preserve attestation flags; npm option values, find execution tails, and star-expanded arrays are audited; registry lookup errors have a distinct terminal diagnostic; and persisted history normalization is append-only."
+resolution: "PR 86 review backlog is resolved: evaluator argument joins preserve attestation flags without synthetic commands; npm option values, find execution tails, and star-expanded arrays are audited; registry lookup errors have a distinct terminal diagnostic; and persisted history normalization is append-only."
 expected_result: "The publish gate fails closed for every discovered publish path, the release distinguishes registry lookup failure from missing attestation, and historical tracker evidence is never rewritten."
-actual_result: All six findings have regression coverage or static workflow assertions. The five affected history streams match the released main prefix byte-for-byte and each has only one appended correction note.
-comments[1]{created_at,author,text}:
+actual_result: All seven findings have regression coverage or static workflow assertions. The five affected history streams match the released main prefix byte-for-byte and each has only one appended correction note.
+comments[2]{created_at,author,text}:
   "2026-08-28T20:45:09.442Z",pi-agent,"PR 86 review disposition: evaluator provenance flags, npm option values, find execution tails, star array expansion, and the attestation lookup error state are valid and fixed. The persisted-history finding is valid; original history records were restored exactly from the released main and each affected stream received only an appended correction note. Generic scanner behavior was verified in this package's own files rather than copied from another repository."
+  "2026-08-28T21:02:25.829Z",pi-agent,"Follow-up review finding: evaluator recursion also synthesized an unattested single-word reading from eval \"npm publish\" \"--provenance\". Fixed by using only eval's joined argument string while retaining conservative individual readings for other interpreters, and added a regression that covers both split-word and command-plus-flag evaluator forms."
 files[10]{path,scope,note}:
   .agents/pm/history/pm-beads-bjqg.jsonl,project,restored append-only history with correction note
   .agents/pm/history/pm-beads-bzpz.jsonl,project,restored append-only history with correction note
@@ -30,5 +31,5 @@ files[10]{path,scope,note}:
   test/verify-release-publish-attestation.test.ts,project,generic publish scanner regression fixtures
 tests[1]{command,path,scope,timeout_seconds,provenance{author,created_at,source_kind,source_ref},note}:
   "npm run release:check",test/verify-release-publish-attestation.test.ts,project,1800,pi-agent,"2026-08-28T20:45:10.785Z",local_mutation,fix/refuse-unattested-publish-fallback,release gate covers scanner and workflow regressions
-close_reason: "Resolved all six PR 86 review findings. Evidence: npm run build exited 0, npm test passed 374 of 374 tests, npm run release:check exited 0 with 100 percent coverage, verify-release-workflow and verify-release-publish-attestation exited 0, and the history streams preserve their original records with appended correction notes."
+close_reason: "Resolved all seven PR 86 review findings. Evidence: npm run build exited 0, npm test passed 374 of 374 tests, npm run release:check exited 0 with 100 percent coverage, verify-release-workflow and verify-release-publish-attestation exited 0, and the five normalized history streams preserve their original records with appended correction notes."
 body: ""
