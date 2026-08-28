@@ -208,6 +208,21 @@ test("nothing between the upgrade and the publish step can put an older npm back
   assert.doesNotMatch(between, /GITHUB_PATH/);
 });
 
+test("attestation lookup errors are reported separately from missing attestations", () => {
+  const publish = executable(stepSource("Publish npm package"));
+
+  // A metadata read can fail independently of the version lookup. The probe
+  // must preserve that third state so the terminal diagnostic does not claim a
+  // registry substitution when the registry simply failed to answer.
+  assert.match(publish, /if ! attestations="\$\(npm view/);
+  assert.match(publish, /return 2/);
+  assert.match(publish, /registry_version_is_attested \|\| attestation_status=\$\?/);
+  assert.match(publish, /if \(\( attestation_status == 2 \)\); then/);
+  assert.match(publish, /Could not read attestation metadata/);
+  assert.match(publish, /NOT proof that the artifact is unattested/);
+  assert.match(publish, /WITHOUT a visible provenance attestation/);
+});
+
 test("no run script in the release job interpolates workflow context", () => {
   // Every step here executes with `id-token: write`. Expanding `${{ … }}` into a
   // shell script splices attacker-influenceable text - `github.event.repository.name`

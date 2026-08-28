@@ -6,7 +6,7 @@ status: closed
 priority: 2
 tags: []
 created_at: "2026-08-03T22:00:04.221Z"
-updated_at: "2026-08-03T23:17:17.549Z"
+updated_at: "2026-08-28T20:35:24.169Z"
 closed_at: "2026-08-03T23:17:17.537Z"
 completed_at: "2026-08-03T23:17:17.537Z"
 claim_principal: claude-code
@@ -15,9 +15,10 @@ acceptance_criteria: "npm run typecheck, build, test, coverage and changelog:che
 resolution: "Terminal closed status applied via pm close --reason on both the create and the upsert/update path, with source-derived provenance and the source completion timestamp; canceled continues to flow through --status unchanged."
 expected_result: "pm-beads imports Beads records whose status maps to closed against pm-cli 2026.8.3 without close_reason_required errors, preserving real closure provenance and remaining idempotent on re-import."
 actual_result: "Achieved. 91/91 tests pass including four new tests covering the reason-derivation precedence, the create path, the open-to-closed upsert and the non-closed status update. Merged as unbraind/pm-beads#61."
-notes[3]{created_at,author,text}:
+notes[4]{created_at,author,text}:
   "2026-08-03T22:42:51.931Z",pi-agent,"Root cause: the in-progress fix added beadCloseReason() and closeImportedItem() helpers but never wired them into the create/update paths in runImport. Both paths still sent --status closed directly to pm create / pm update, which pm-cli 2026.8.3 rejects with close_reason_required. Every record in the repeated-terminal-status upsert test failed (total failure, not edge case)."
   "2026-08-03T22:42:55.929Z",pi-agent,"Fix: (1) Create path — when mapStatus yields closed, create in default open state then call closeImportedItem(pm close --reason <beadCloseReason> --completed-at <source ts>). (2) Update path — never send --status closed to pm update; for non-closed status changes still send --status; after a successful update, if the bead maps to closed AND the existing item is not already closed, call closeImportedItem. A re-import of an already-closed bead skips the close (idempotent, no second bogus close). (3) canceled is not gated and still flows through --status unchanged. (4) existingIndex now records the post-close closed status so the next row in the same file sees it as already closed."
   "2026-08-03T22:43:00.830Z",pi-agent,"Tests added: (a) beadCloseReason unit test covering close_reason/resolution/state_reason precedence and the factual-provenance fallback (with id, with title, with neither, with no status). (b) Integration: import a done bead with close_reason + closed_at via the create path — asserts item is closed with the source reason and carried completed-at. (c) Integration: upsert open->closed transition routes through pm close with the source reason. (d) Integration: upsert open->in_progress still sends --status (non-closed status change arm). (e) Existing repeated-terminal-status upsert test now passes (updated=2, skipped=0). Coverage: branches 78.52% (threshold 77%); all gates green: typecheck, build, test (91 pass), release:check."
+  "2026-08-28T20:35:24.169Z",pi-agent,"Correction: restore the original historical event records after provenance normalization rewrote persisted evidence; this appended note records the correction without altering prior events."
 close_reason: "Merged in unbraind/pm-beads#61. Both import paths now route terminal closed transitions through pm close --reason instead of pm create/update --status closed, which pm-cli 2026.8.3 rejects under governance.require_close_reason. The reason carries the source record's own closure evidence (close_reason, then the foreign resolution/state_reason spellings) and only falls back to a factual import-provenance string when the source recorded none, so no closure evidence is ever invented. Re-import of an already-closed bead stays idempotent. Independently verified by Claude: typecheck clean, 91/91 tests pass. Bots: CodeRabbit, Greptile, DeepScan, Hound and semgrep all green with no actionable findings; Sourcery was rate-limited."
 body: ""
