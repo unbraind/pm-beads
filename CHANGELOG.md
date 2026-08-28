@@ -4,7 +4,6 @@
 
 ### Fixed
 
-- A failed provenance publish silently falls back to an unattested one ([pm-beads-uevw](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-uevw.toon))
 - A failed provenance publish silently falls back to an unattested one ([pm-beads-y1gg](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-y1gg.toon))
 - Release coverage gate is below 100 percent and omits executable tooling ([pm-beads-cjey](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-cjey.toon))
 - Canonicalize complete workspace reads and adopt the current pm host contract ([pm-beads-1uz3](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-1uz3.toon))
