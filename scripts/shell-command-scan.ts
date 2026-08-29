@@ -707,14 +707,15 @@ export function shellScalars(text: string): Map<string, string> {
   const scalars = new Map<string, string>();
   // Keep the YAML block indentation separate from shell heredoc semantics.
   // Only <<- strips tabs; an ordinary << delimiter must otherwise match exactly.
-  let heredoc: { delimiter: string; stripTabs: boolean; yamlIndent: string } | null = null;
+  const heredocs: Array<{ delimiter: string; stripTabs: boolean; yamlIndent: string }> = [];
   for (const line of text.split("\n")) {
-    if (heredoc !== null) {
-      const yamlNormalized = line.startsWith(heredoc.yamlIndent)
-        ? line.slice(heredoc.yamlIndent.length)
+    const activeHeredoc = heredocs[0];
+    if (activeHeredoc !== undefined) {
+      const yamlNormalized = line.startsWith(activeHeredoc.yamlIndent)
+        ? line.slice(activeHeredoc.yamlIndent.length)
         : line;
-      const candidate = (heredoc.stripTabs ? yamlNormalized.replace(/^\t+/, "") : yamlNormalized).replace(/\r$/, "");
-      if (candidate === heredoc.delimiter) heredoc = null;
+      const candidate = (activeHeredoc.stripTabs ? yamlNormalized.replace(/^\t+/, "") : yamlNormalized).replace(/\r$/, "");
+      if (candidate === activeHeredoc.delimiter) heredocs.shift();
       continue;
     }
 
@@ -746,14 +747,14 @@ export function shellScalars(text: string): Map<string, string> {
 
     // Detect the operator from shell tokens, not raw text: quoted and commented
     // `<<EOF` text is not a heredoc. `<<<` remains a here-string.
-    const opener = commands.flat().find((token) => !token.startsQuoted && /^<<-?[^<\s]+$/.test(token.value));
-    if (opener !== undefined) {
+    const openers = commands.flat().filter((token) => !token.startsQuoted && /^<<-?[^<\s]+$/.test(token.value));
+    for (const opener of openers) {
       const match = /^<<(-?)([^<\s]+)$/.exec(opener.value)!;
-      heredoc = {
+      heredocs.push({
         delimiter: match[2]!,
         stripTabs: match[1] === "-",
         yamlIndent: /^[ \t]*/.exec(line)![0],
-      };
+      });
     }
   }
   return scalars;

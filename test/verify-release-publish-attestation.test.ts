@@ -1058,6 +1058,14 @@ test("an assignment-shaped line inside a here-document body is not indexed", () 
     "          123",
   ].join("\n")).get("FLAG"), undefined,
     "a non-identifier heredoc delimiter still hides body text from scalar indexing");
+  assert.equal(shellScalars([
+    "          cat <<A <<B",
+    "          body a",
+    "          A",
+    "          FLAG=--provenance",
+    "          B",
+  ].join("\n")).get("FLAG"), undefined,
+    "all heredoc bodies opened by one command remain non-executable text");
   // <<< (here-string) must NOT be mistaken for a heredoc.
   assert.equal(shellScalars("FLAG=--provenance\n".trim()).get("FLAG"), "--provenance",
     "a here-string (<<<) does not suppress the line it is on");
