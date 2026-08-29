@@ -927,6 +927,8 @@ test("a scalar is taken only from a line that is exactly one literal assignment"
     "an escape is honoured, so one word can still hold a command");
   assert.equal(shellScalars('NPM=npm; "$NPM" publish\n').get("NPM"), "npm",
     "a semicolon ends the assignment, and the shell keeps the binding after it");
+  assert.equal(shellScalars("unset NPM; NPM=npm\n").get("NPM"), "npm",
+    "a persistent assignment after a separator replaces the cleared binding");
   assert.equal(shellScalars("export NPM=npm\n").get("NPM"), "npm",
     "export still declares a persistent binding");
   const exported = shellScalars("export NPM=npm FLAG=--provenance\n");
@@ -955,6 +957,8 @@ test("a scalar is taken only from a line that is exactly one literal assignment"
     "a binding made inside a subshell is not visible to the outer shell");
   assert.equal(shellScalars("NPM=npm$(printf foo)\n").get("NPM"), undefined,
     "a literal prefix in front of a substitution is not the value");
+  assert.equal(shellScalars("NPM=npm\\").get("NPM"), undefined,
+    "a dangling escape is not a complete literal assignment");
 
   // Both leaks were false passes end to end, not merely wrong map entries.
   for (const text of [

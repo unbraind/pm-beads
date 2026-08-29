@@ -620,9 +620,33 @@ export function bashArrays(text: string): Map<string, string> {
   return arrays;
 }
 
-/** A line opening with one assignment of a fully literal value, ending there or at a `;`. */
-const STANDALONE_ASSIGNMENT =
-  /^[ \t]*(?:export[ \t]+)?([A-Za-z_][A-Za-z0-9_]*)=(?:"((?:\\.|[^"\\$`])*)"|'([^']*)'|((?:\\.|[^\s;&|"'`$()\\])+))[ \t]*(?:[;#]|\r?$)/;
+/** Return only a line's outer commands, masking executable substitutions. */
+function topLevelCommands(line: string): ShellCommand[] {
+  let masked = "";
+  let single = false;
+  let double = false;
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index]!;
+    if (character === "\\") {
+      const escaped = line[index + 1];
+      masked += escaped === undefined ? "$DYNAMIC" : character + escaped;
+      index += 1;
+    } else if (character === "'" && !double) {
+      single = !single;
+      masked += character;
+    } else if (character === '"' && !single) {
+      double = !double;
+      masked += character;
+    } else if (!single && (character === "`" || (character === "$" && line[index + 1] === "("))) {
+      const substitution = readSubstitution(line, index);
+      masked += "$DYNAMIC";
+      index = substitution.end - 1;
+    } else {
+      masked += character;
+    }
+  }
+  return tokenizeCommands(masked);
+}
 
 /**
  * Index scalar assignments so a command held in a variable can be audited.
@@ -694,39 +718,29 @@ export function shellScalars(text: string): Map<string, string> {
       continue;
     }
 
-    const assignment = STANDALONE_ASSIGNMENT.exec(line);
-    if (assignment !== null) {
-      // Exactly one of the three value alternatives matches, so the last is the
-      // only case left rather than a fallback that could be undefined.
-      const raw = assignment[2] ?? assignment[3] ?? assignment[4]!;
-      // Single quotes make a backslash literal, so only the other two forms are
-      // unescaped. Unescaping a single-quoted value turned `'npm publish
-      // \\--provenance'` into an attested-looking command the shell never runs.
-      const value = assignment[3] === undefined ? raw.replace(/\\(.)/g, "$1") : raw;
-      if (!/[$`"'()]/.test(value)) scalars.set(assignment[1]!, value);
-    }
-
-    // `export` accepts several persistent assignments. Tokenization preserves
-    // shell quoting while preventing comments and quoted command words from
-    // masquerading as declarations.
-    const commands = tokenizeCommands(line);
-    const declaration = commands[0];
-    if (declaration?.[0]?.value === "export" && !declaration[0].startsQuoted) {
-      for (const token of declaration.slice(1)) {
-        const binding = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(token.value);
+    const commands = topLevelCommands(line);
+    // Only an unconditional parent-shell unset may mutate this file-wide map.
+    // The raw guard rejects conditional, piped and backgrounded forms; commands
+    // are then applied in order so a post-separator reassignment wins normally.
+    const unsetLine = /^(?:[ \t]*(?:export[ \t]+)?[A-Za-z_][A-Za-z0-9_]*=(?:"(?:\\.|[^"\\$`])*"|'[^']*'|(?:\\.|[^\s;&|"'`$()\\])+)[ \t]*;)?[ \t]*unset[ \t]+([^;&|#]*)(?:[ \t]*(?:;.*|#.*)?\r?)$/.exec(line);
+    for (const command of commands) {
+      const first = command[0];
+      if (command.length === 1 && first !== undefined && !first.startsQuoted) {
+        const binding = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(first.value);
         if (binding !== null && !/[$`"'()]/.test(binding[2]!)) scalars.set(binding[1]!, binding[2]!);
       }
-    }
-
-    // Only an unconditional parent-shell unset may mutate this file-wide map.
-    // Raw searches used to accept quoted, commented, conditional, piped and
-    // backgrounded text, none of which proves that the parent binding changed.
-    const unsetLine = /^(?:[ \t]*(?:export[ \t]+)?[A-Za-z_][A-Za-z0-9_]*=(?:"(?:\\.|[^"\\$`])*"|'[^']*'|(?:\\.|[^\s;&|"'`$()\\])+)[ \t]*;)?[ \t]*unset[ \t]+([^;&|#]*)(?:[ \t]*(?:;.*|#.*)?\r?)$/.exec(line);
-    if (unsetLine !== null) {
-      for (const arg of unsetLine[1]!.trim().split(/\s+/)) {
-        if (arg === "-v") continue;
-        if (arg === "-f") break;
-        if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(arg)) scalars.delete(arg);
+      if (first?.value === "export" && !first.startsQuoted) {
+        for (const token of command.slice(1)) {
+          const binding = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(token.value);
+          if (binding !== null && !/[$`"'()]/.test(binding[2]!)) scalars.set(binding[1]!, binding[2]!);
+        }
+      }
+      if (unsetLine !== null && first?.value === "unset" && !first.startsQuoted) {
+        for (const arg of command.slice(1).map((token) => token.value)) {
+          if (arg === "-v") continue;
+          if (arg === "-f") break;
+          if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(arg)) scalars.delete(arg);
+        }
       }
     }
 
