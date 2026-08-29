@@ -681,20 +681,19 @@ const STANDALONE_ASSIGNMENT =
  */
 export function shellScalars(text: string): Map<string, string> {
   const scalars = new Map<string, string>();
-  // Track here-document bodies so an assignment-shaped line inside one is not
-  // indexed: the shell feeds those lines to a command as text, it does not
-  // bind them as variables.
-  let heredocDelim: string | null = null;
+  // Keep the YAML block indentation separate from shell heredoc semantics.
+  // Only <<- strips tabs; an ordinary << delimiter must otherwise match exactly.
+  let heredoc: { delimiter: string; stripTabs: boolean; yamlIndent: string } | null = null;
   for (const line of text.split("\n")) {
-    // Inside a here-document body, skip every line until the closing delimiter.
-    // Leading whitespace is stripped from the candidate so a YAML-indented
-    // delimiter line (e.g. `          EOF`) still closes the body, the same way
-    // the assignment regex treats leading whitespace as insignificant.
-    if (heredocDelim !== null) {
-      const candidate = line.replace(/^[ \t]+/, "").replace(/\r$/, "");
-      if (candidate === heredocDelim) heredocDelim = null;
+    if (heredoc !== null) {
+      const yamlNormalized = line.startsWith(heredoc.yamlIndent)
+        ? line.slice(heredoc.yamlIndent.length)
+        : line;
+      const candidate = (heredoc.stripTabs ? yamlNormalized.replace(/^\t+/, "") : yamlNormalized).replace(/\r$/, "");
+      if (candidate === heredoc.delimiter) heredoc = null;
       continue;
     }
+
     const assignment = STANDALONE_ASSIGNMENT.exec(line);
     if (assignment !== null) {
       // Exactly one of the three value alternatives matches, so the last is the
@@ -704,28 +703,43 @@ export function shellScalars(text: string): Map<string, string> {
       // unescaped. Unescaping a single-quoted value turned `'npm publish
       // \\--provenance'` into an attested-looking command the shell never runs.
       const value = assignment[3] === undefined ? raw.replace(/\\(.)/g, "$1") : raw;
-      if (/[$`"'()]/.test(value)) continue;
-      scalars.set(assignment[1]!, value);
+      if (!/[$`"'()]/.test(value)) scalars.set(assignment[1]!, value);
     }
-    // A later `unset` clears a binding the shell no longer holds. Keeping it
-    // would let an unattested publish borrow a flag that is gone -- the same
-    // false pass the other guards close. `unset` may follow an assignment on
-    // the same line (`FLAG=x; unset FLAG`) or stand on its own. The `-v` flag
-    // selects variables (the default) and is skipped; `-f` selects functions,
-    // which are not scalars, so the rest of that unset is ignored.
-    for (const match of line.matchAll(/(?:^[ \t]*|[;|&]\s*)unset\s+([^;&|#]*)/g)) {
-      for (const arg of match[1]!.trim().split(/\s+/)) {
+
+    // `export` accepts several persistent assignments. Tokenization preserves
+    // shell quoting while preventing comments and quoted command words from
+    // masquerading as declarations.
+    const commands = tokenizeCommands(line);
+    const declaration = commands[0];
+    if (commands.length === 1 && declaration?.[0]?.value === "export" && !declaration[0].startsQuoted) {
+      for (const token of declaration.slice(1)) {
+        const binding = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(token.value);
+        if (binding !== null && !/[$`"'()]/.test(binding[2]!)) scalars.set(binding[1]!, binding[2]!);
+      }
+    }
+
+    // Only an unconditional parent-shell unset may mutate this file-wide map.
+    // Raw searches used to accept quoted, commented, conditional, piped and
+    // backgrounded text, none of which proves that the parent binding changed.
+    const unsetLine = /^(?:[ \t]*(?:export[ \t]+)?[A-Za-z_][A-Za-z0-9_]*=(?:"(?:\\.|[^"\\$`])*"|'[^']*'|(?:\\.|[^\s;&|"'`$()\\])+)[ \t]*;)?[ \t]*unset[ \t]+([^;&|#]*)(?:[ \t]*(?:;|#.*)?\r?)$/.exec(line);
+    if (unsetLine !== null) {
+      for (const arg of unsetLine[1]!.trim().split(/\s+/)) {
         if (arg === "-v") continue;
         if (arg === "-f") break;
         if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(arg)) scalars.delete(arg);
       }
     }
-    // A here-document start: body lines until the closing delimiter are text,
-    // not commands, and must not be scanned for assignments. `<<<` (here-string)
-    // is excluded by the negative lookahead so it does not start a heredoc.
-    const heredoc = line.match(/<<(?!<)(-?)(['"]?)([A-Za-z_][A-Za-z0-9_-]*)\2/);
-    if (heredoc) {
-      heredocDelim = heredoc[3]!;
+
+    // Detect the operator from shell tokens, not raw text: quoted and commented
+    // `<<EOF` text is not a heredoc. `<<<` remains a here-string.
+    const opener = commands.flat().find((token) => !token.startsQuoted && /^<<-?[A-Za-z_][A-Za-z0-9_-]*$/.test(token.value));
+    if (opener !== undefined) {
+      const match = /^<<(-?)([A-Za-z_][A-Za-z0-9_-]*)$/.exec(opener.value)!;
+      heredoc = {
+        delimiter: match[2]!,
+        stripTabs: match[1] === "-",
+        yamlIndent: /^[ \t]*/.exec(line)![0],
+      };
     }
   }
   return scalars;

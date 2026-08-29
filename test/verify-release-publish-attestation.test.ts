@@ -910,6 +910,15 @@ test("an assignment the shell never makes is not indexed", () => {
   assert.match(result.failures[0]!, /does not enable --provenance/);
 });
 
+test("every literal binding in a multi-name export is audited", () => {
+  const result = auditPublishAttestation([{ file: "release.yml", text: [
+    "          export NPM=npm FLAG=--provenance",
+    "          $NPM publish --access public $FLAG",
+    "          npm publish --access public --provenance",
+  ].join("\n") }]);
+  assert.equal(result.failures.length, 0, "both exported values resolve to the command the shell runs");
+});
+
 test("a scalar is taken only from a line that is exactly one literal assignment", () => {
   assert.equal(shellScalars("NPM=npm\n").get("NPM"), "npm");
   assert.equal(shellScalars('CMD="npm publish"\n').get("CMD"), "npm publish");
@@ -920,6 +929,9 @@ test("a scalar is taken only from a line that is exactly one literal assignment"
     "a semicolon ends the assignment, and the shell keeps the binding after it");
   assert.equal(shellScalars("export NPM=npm\n").get("NPM"), "npm",
     "export still declares a persistent binding");
+  const exported = shellScalars("export NPM=npm FLAG=--provenance\n");
+  assert.equal(exported.get("NPM"), "npm", "the first binding in a multi-name export is indexed");
+  assert.equal(exported.get("FLAG"), "--provenance", "the later binding in a multi-name export is indexed");
   assert.equal(shellScalars("NPM=npm # explanation\n").get("NPM"), "npm",
     "a trailing comment does not stop the line being an assignment");
   assert.equal(shellScalars("NPM=npm\r\n").get("NPM"), "npm",
@@ -969,6 +981,16 @@ test("a binding cleared by unset is removed from the scalar map", () => {
   // unset -f targets functions, not scalars, so the scalar survives.
   assert.equal(shellScalars("FLAG=--provenance\nunset -f func\n").get("FLAG"), "--provenance",
     "unset -f does not remove a scalar binding");
+  for (const falseUnset of [
+    "# unset FLAG",
+    "echo 'unset FLAG'",
+    "false && unset FLAG",
+    "unset FLAG | cat",
+    "unset FLAG &",
+  ]) {
+    assert.equal(shellScalars(`FLAG=--provenance\n${falseUnset}\n`).get("FLAG"), "--provenance",
+      `${falseUnset} does not clear a parent-shell binding`);
+  }
 
   // The bypass, end to end: without the fix this audit returns no failures.
   for (const [label, text] of [
@@ -1012,6 +1034,17 @@ test("an assignment-shaped line inside a here-document body is not indexed", () 
     "          EOF",
   ].join("\n")).get("FLAG"), undefined,
     "an assignment inside a quoted-delimiter heredoc body is not a binding");
+  for (const falseOpener of ["          # <<EOF", "          echo '<<EOF'"]) {
+    assert.equal(shellScalars(`${falseOpener}\n          REAL=--provenance\n`).get("REAL"), "--provenance",
+      `${falseOpener.trim()} does not open a heredoc`);
+  }
+  assert.equal(shellScalars([
+    "          cat <<EOF",
+    "            EOF",
+    "          FLAG=--provenance",
+    "          EOF",
+  ].join("\n")).get("FLAG"), undefined,
+    "extra indentation does not close an ordinary heredoc");
   // <<< (here-string) must NOT be mistaken for a heredoc.
   assert.equal(shellScalars("FLAG=--provenance\n".trim()).get("FLAG"), "--provenance",
     "a here-string (<<<) does not suppress the line it is on");
