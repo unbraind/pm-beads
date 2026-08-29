@@ -952,6 +952,81 @@ test("a scalar is taken only from a line that is exactly one literal assignment"
     assert.match(result.failures[0]!, /does not enable --provenance/);
   }
 });
+
+test("a binding cleared by unset is removed from the scalar map", () => {
+  // `FLAG=--provenance; unset FLAG` makes the shell forget FLAG, so a later
+  // `` expands to empty. The scanner used to keep the binding and let an
+  // unattested publish borrow the flag from a variable the shell no longer holds.
+  assert.equal(shellScalars("FLAG=--provenance; unset FLAG\n").get("FLAG"), undefined,
+    "unset on the same line removes the binding");
+  assert.equal(shellScalars("FLAG=--provenance\nunset FLAG\n").get("FLAG"), undefined,
+    "unset on a later line removes the binding");
+  assert.equal(shellScalars("FLAG=--provenance\nunset -v FLAG\n").get("FLAG"), undefined,
+    "unset -v (explicit variable) removes the binding");
+  // A binding NOT cleared by unset is preserved.
+  assert.equal(shellScalars("FLAG=--provenance\nunset OTHER\n").get("FLAG"), "--provenance",
+    "unset of a different name leaves the binding intact");
+  // unset -f targets functions, not scalars, so the scalar survives.
+  assert.equal(shellScalars("FLAG=--provenance\nunset -f func\n").get("FLAG"), "--provenance",
+    "unset -f does not remove a scalar binding");
+
+  // The bypass, end to end: without the fix this audit returns no failures.
+  for (const [label, text] of [
+    ["same line", ["          FLAG=--provenance; unset FLAG", "          npm publish --access public $FLAG"]],
+    ["separate line", ["          FLAG=--provenance", "          unset FLAG", "          npm publish --access public $FLAG"]],
+  ] as const) {
+    const result = auditPublishAttestation([{ file: "release.yml", text: text.join("\n") }]);
+    assert.equal(result.failures.length, 1, `a publish flagged only by a binding cleared by unset (${label}) is unattested`);
+    assert.match(result.failures[0]!, /does not enable --provenance/);
+  }
+});
+
+test("an assignment-shaped line inside a here-document body is not indexed", () => {
+  // A line inside a heredoc body is text fed to a command, not a shell binding.
+  // The scanner used to index it and let an unattested publish borrow the flag.
+  assert.equal(shellScalars([
+    "          cat <<EOF",
+    "          FLAG=--provenance",
+    "          EOF",
+  ].join("\n")).get("FLAG"), undefined,
+    "an assignment inside a heredoc body is not a binding");
+  // A real assignment after the heredoc is still indexed.
+  assert.equal(shellScalars([
+    "          cat <<EOF",
+    "          FLAG=--provenance",
+    "          EOF",
+    "          REAL=--provenance",
+  ].join("\n")).get("REAL"), "--provenance",
+    "an assignment after the heredoc is indexed normally");
+  // The <<- form strips leading tabs from the delimiter line.
+  assert.equal(shellScalars([
+    "          cat <<-EOF",
+    "	  FLAG=--provenance",
+    "	  EOF",
+  ].join("\n")).get("FLAG"), undefined,
+    "an assignment inside a <<- heredoc body is not a binding");
+  // A quoted delimiter is handled the same way.
+  assert.equal(shellScalars([
+    "          cat <<'EOF'",
+    "          FLAG=--provenance",
+    "          EOF",
+  ].join("\n")).get("FLAG"), undefined,
+    "an assignment inside a quoted-delimiter heredoc body is not a binding");
+  // <<< (here-string) must NOT be mistaken for a heredoc.
+  assert.equal(shellScalars("FLAG=--provenance\n".trim()).get("FLAG"), "--provenance",
+    "a here-string (<<<) does not suppress the line it is on");
+
+  // The bypass, end to end: without the fix this audit returns no failures.
+  const result = auditPublishAttestation([{ file: "release.yml", text: [
+    "          cat <<EOF",
+    "          FLAG=--provenance",
+    "          EOF",
+    "          npm publish --access public $FLAG",
+  ].join("\n") }]);
+  assert.equal(result.failures.length, 1, "a publish flagged only by a heredoc body line is unattested");
+  assert.match(result.failures[0]!, /does not enable --provenance/);
+});
+
 test("a read-write redirection does not turn its target into the command", () => {
   // `<>` is one operator, not `<` followed by `>`. Unnamed, it was read as a
   // joined redirection that consumes no target, so `/dev/null` became the

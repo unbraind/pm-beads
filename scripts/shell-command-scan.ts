@@ -667,23 +667,66 @@ const STANDALONE_ASSIGNMENT =
  * invocations that are not there while losing the one that is -- a false
  * verdict in both directions, which is worse than not resolving the variable.
  *
+ * A binding cleared by `unset` is removed, so an expansion after the unset
+ * resolves to empty in the map just as it does in the shell. Without this,
+ * `FLAG=--provenance; unset FLAG` followed by `npm publish $FLAG` would borrow
+ * the flag from a binding the shell no longer holds and pass the gate.
+ *
+ * Lines inside a here-document body are text fed to a command, not shell
+ * assignments. An assignment-shaped line such as `FLAG=--provenance` inside a
+ * `cat <<EOF ... EOF` block must not be indexed, or the same false pass opens.
+ *
  * @param text - File contents with continuations already joined.
  * @returns Variable name mapped to the literal text it holds.
  */
 export function shellScalars(text: string): Map<string, string> {
   const scalars = new Map<string, string>();
+  // Track here-document bodies so an assignment-shaped line inside one is not
+  // indexed: the shell feeds those lines to a command as text, it does not
+  // bind them as variables.
+  let heredocDelim: string | null = null;
   for (const line of text.split("\n")) {
+    // Inside a here-document body, skip every line until the closing delimiter.
+    // Leading whitespace is stripped from the candidate so a YAML-indented
+    // delimiter line (e.g. `          EOF`) still closes the body, the same way
+    // the assignment regex treats leading whitespace as insignificant.
+    if (heredocDelim !== null) {
+      const candidate = line.replace(/^[ \t]+/, "").replace(/\r$/, "");
+      if (candidate === heredocDelim) heredocDelim = null;
+      continue;
+    }
     const assignment = STANDALONE_ASSIGNMENT.exec(line);
-    if (assignment === null) continue;
-    // Exactly one of the three value alternatives matches, so the last is the
-    // only case left rather than a fallback that could be undefined.
-    const raw = assignment[2] ?? assignment[3] ?? assignment[4]!;
-    // Single quotes make a backslash literal, so only the other two forms are
-    // unescaped. Unescaping a single-quoted value turned `'npm publish
-    // \\--provenance'` into an attested-looking command the shell never runs.
-    const value = assignment[3] === undefined ? raw.replace(/\\(.)/g, "$1") : raw;
-    if (/[$`"'()]/.test(value)) continue;
-    scalars.set(assignment[1]!, value);
+    if (assignment !== null) {
+      // Exactly one of the three value alternatives matches, so the last is the
+      // only case left rather than a fallback that could be undefined.
+      const raw = assignment[2] ?? assignment[3] ?? assignment[4]!;
+      // Single quotes make a backslash literal, so only the other two forms are
+      // unescaped. Unescaping a single-quoted value turned `'npm publish
+      // \\--provenance'` into an attested-looking command the shell never runs.
+      const value = assignment[3] === undefined ? raw.replace(/\\(.)/g, "$1") : raw;
+      if (/[$`"'()]/.test(value)) continue;
+      scalars.set(assignment[1]!, value);
+    }
+    // A later `unset` clears a binding the shell no longer holds. Keeping it
+    // would let an unattested publish borrow a flag that is gone -- the same
+    // false pass the other guards close. `unset` may follow an assignment on
+    // the same line (`FLAG=x; unset FLAG`) or stand on its own. The `-v` flag
+    // selects variables (the default) and is skipped; `-f` selects functions,
+    // which are not scalars, so the rest of that unset is ignored.
+    for (const match of line.matchAll(/(?:^[ \t]*|[;|&]\s*)unset\s+([^;&|#]*)/g)) {
+      for (const arg of match[1]!.trim().split(/\s+/)) {
+        if (arg === "-v") continue;
+        if (arg === "-f") break;
+        if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(arg)) scalars.delete(arg);
+      }
+    }
+    // A here-document start: body lines until the closing delimiter are text,
+    // not commands, and must not be scanned for assignments. `<<<` (here-string)
+    // is excluded by the negative lookahead so it does not start a heredoc.
+    const heredoc = line.match(/<<(?!<)(-?)(['"]?)([A-Za-z_][A-Za-z0-9_-]*)\2/);
+    if (heredoc) {
+      heredocDelim = heredoc[3]!;
+    }
   }
   return scalars;
 }
