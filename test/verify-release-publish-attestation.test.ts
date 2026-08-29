@@ -932,6 +932,8 @@ test("a scalar is taken only from a line that is exactly one literal assignment"
   const exported = shellScalars("export NPM=npm FLAG=--provenance\n");
   assert.equal(exported.get("NPM"), "npm", "the first binding in a multi-name export is indexed");
   assert.equal(exported.get("FLAG"), "--provenance", "the later binding in a multi-name export is indexed");
+  assert.equal(shellScalars("export NPM=npm VERSION=$(node -p 1)\n").get("NPM"), "npm",
+    "a dynamic sibling does not hide a literal exported binding");
   assert.equal(shellScalars("NPM=npm # explanation\n").get("NPM"), "npm",
     "a trailing comment does not stop the line being an assignment");
   assert.equal(shellScalars("NPM=npm\r\n").get("NPM"), "npm",
@@ -996,6 +998,7 @@ test("a binding cleared by unset is removed from the scalar map", () => {
   for (const [label, text] of [
     ["same line", ["          FLAG=--provenance; unset FLAG", "          npm publish --access public $FLAG"]],
     ["separate line", ["          FLAG=--provenance", "          unset FLAG", "          npm publish --access public $FLAG"]],
+    ["before a later command", ["          FLAG=--provenance", "          unset FLAG; npm publish --access public $FLAG"]],
   ] as const) {
     const result = auditPublishAttestation([{ file: "release.yml", text: text.join("\n") }]);
     assert.equal(result.failures.length, 1, `a publish flagged only by a binding cleared by unset (${label}) is unattested`);
@@ -1045,6 +1048,12 @@ test("an assignment-shaped line inside a here-document body is not indexed", () 
     "          EOF",
   ].join("\n")).get("FLAG"), undefined,
     "extra indentation does not close an ordinary heredoc");
+  assert.equal(shellScalars([
+    "          cat <<123",
+    "          FLAG=--provenance",
+    "          123",
+  ].join("\n")).get("FLAG"), undefined,
+    "a non-identifier heredoc delimiter still hides body text from scalar indexing");
   // <<< (here-string) must NOT be mistaken for a heredoc.
   assert.equal(shellScalars("FLAG=--provenance\n".trim()).get("FLAG"), "--provenance",
     "a here-string (<<<) does not suppress the line it is on");

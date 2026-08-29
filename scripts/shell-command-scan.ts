@@ -711,7 +711,7 @@ export function shellScalars(text: string): Map<string, string> {
     // masquerading as declarations.
     const commands = tokenizeCommands(line);
     const declaration = commands[0];
-    if (commands.length === 1 && declaration?.[0]?.value === "export" && !declaration[0].startsQuoted) {
+    if (declaration?.[0]?.value === "export" && !declaration[0].startsQuoted) {
       for (const token of declaration.slice(1)) {
         const binding = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(token.value);
         if (binding !== null && !/[$`"'()]/.test(binding[2]!)) scalars.set(binding[1]!, binding[2]!);
@@ -721,7 +721,7 @@ export function shellScalars(text: string): Map<string, string> {
     // Only an unconditional parent-shell unset may mutate this file-wide map.
     // Raw searches used to accept quoted, commented, conditional, piped and
     // backgrounded text, none of which proves that the parent binding changed.
-    const unsetLine = /^(?:[ \t]*(?:export[ \t]+)?[A-Za-z_][A-Za-z0-9_]*=(?:"(?:\\.|[^"\\$`])*"|'[^']*'|(?:\\.|[^\s;&|"'`$()\\])+)[ \t]*;)?[ \t]*unset[ \t]+([^;&|#]*)(?:[ \t]*(?:;|#.*)?\r?)$/.exec(line);
+    const unsetLine = /^(?:[ \t]*(?:export[ \t]+)?[A-Za-z_][A-Za-z0-9_]*=(?:"(?:\\.|[^"\\$`])*"|'[^']*'|(?:\\.|[^\s;&|"'`$()\\])+)[ \t]*;)?[ \t]*unset[ \t]+([^;&|#]*)(?:[ \t]*(?:;.*|#.*)?\r?)$/.exec(line);
     if (unsetLine !== null) {
       for (const arg of unsetLine[1]!.trim().split(/\s+/)) {
         if (arg === "-v") continue;
@@ -732,9 +732,9 @@ export function shellScalars(text: string): Map<string, string> {
 
     // Detect the operator from shell tokens, not raw text: quoted and commented
     // `<<EOF` text is not a heredoc. `<<<` remains a here-string.
-    const opener = commands.flat().find((token) => !token.startsQuoted && /^<<-?[A-Za-z_][A-Za-z0-9_-]*$/.test(token.value));
+    const opener = commands.flat().find((token) => !token.startsQuoted && /^<<-?[^<\s]+$/.test(token.value));
     if (opener !== undefined) {
-      const match = /^<<(-?)([A-Za-z_][A-Za-z0-9_-]*)$/.exec(opener.value)!;
+      const match = /^<<(-?)([^<\s]+)$/.exec(opener.value)!;
       heredoc = {
         delimiter: match[2]!,
         stripTabs: match[1] === "-",
