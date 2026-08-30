@@ -919,6 +919,30 @@ test("every literal binding in a multi-name export is audited", () => {
   assert.equal(result.failures.length, 0, "both exported values resolve to the command the shell runs");
 });
 
+test("escaped scalar operators cannot become attestation syntax after expansion", () => {
+  assert.equal(shellScalars("FLAG=--provenance\\;ignored\n").get("FLAG"), undefined,
+    "an escaped operator is not stored where expansion could reparse it as syntax");
+  const result = auditPublishAttestation([{ file: "release.yml", text: [
+    "          FLAG=--provenance\\;ignored",
+    "          npm publish --access public $FLAG",
+  ].join("\n") }]);
+  assert.equal(result.failures.length, 1, "the escaped semicolon remains part of one non-attestation argument");
+  assert.match(result.failures[0]!, /does not enable --provenance/);
+});
+
+test("guarded scalar mutations do not become persistent parent-shell state", () => {
+  for (const guarded of ["false && FLAG=--provenance", "false && export FLAG=--provenance"]) {
+    assert.equal(shellScalars(`${guarded}\n`).get("FLAG"), undefined,
+      `${guarded} may not execute and is not persistent state`);
+    const result = auditPublishAttestation([{ file: "release.yml", text: [
+      `          ${guarded}`,
+      "          npm publish --access public $FLAG",
+    ].join("\n") }]);
+    assert.equal(result.failures.length, 1, `a publish cannot borrow provenance from ${guarded}`);
+    assert.match(result.failures[0]!, /does not enable --provenance/);
+  }
+});
+
 test("a scalar is taken only from a line that is exactly one literal assignment", () => {
   assert.equal(shellScalars("NPM=npm\n").get("NPM"), "npm");
   assert.equal(shellScalars('CMD="npm publish"\n').get("CMD"), "npm publish");
@@ -960,7 +984,7 @@ test("a scalar is taken only from a line that is exactly one literal assignment"
   assert.equal(shellScalars("NPM=npm\\").get("NPM"), undefined,
     "a dangling escape is not a complete literal assignment");
 
-  // Both leaks were false passes end to end, not merely wrong map entries.
+  // These leaks were false passes end to end, not merely wrong map entries.
   for (const text of [
     ["          FLAG=--provenance some-command", "          npm publish --access public $FLAG"],
     ["          $(FLAG=--provenance)", "          npm publish --access public $FLAG"],
@@ -979,6 +1003,8 @@ test("a binding cleared by unset is removed from the scalar map", () => {
     "unset on the same line removes the binding");
   assert.equal(shellScalars("FLAG=--provenance\nunset FLAG\n").get("FLAG"), undefined,
     "unset on a later line removes the binding");
+  assert.equal(shellScalars("FLAG=--provenance\necho ready; unset FLAG\n").get("FLAG"), undefined,
+    "unset after an ordinary completed command removes the binding");
   assert.equal(shellScalars("FLAG=--provenance\nunset -v FLAG\n").get("FLAG"), undefined,
     "unset -v (explicit variable) removes the binding");
   // A binding NOT cleared by unset is preserved.
@@ -1003,6 +1029,7 @@ test("a binding cleared by unset is removed from the scalar map", () => {
     ["same line", ["          FLAG=--provenance; unset FLAG", "          npm publish --access public $FLAG"]],
     ["separate line", ["          FLAG=--provenance", "          unset FLAG", "          npm publish --access public $FLAG"]],
     ["before a later command", ["          FLAG=--provenance", "          unset FLAG; npm publish --access public $FLAG"]],
+    ["after an earlier command", ["          FLAG=--provenance", "          echo ready; unset FLAG", "          npm publish --access public $FLAG"]],
   ] as const) {
     const result = auditPublishAttestation([{ file: "release.yml", text: text.join("\n") }]);
     assert.equal(result.failures.length, 1, `a publish flagged only by a binding cleared by unset (${label}) is unattested`);
@@ -1059,6 +1086,12 @@ test("an assignment-shaped line inside a here-document body is not indexed", () 
   ].join("\n")).get("FLAG"), undefined,
     "a non-identifier heredoc delimiter still hides body text from scalar indexing");
   assert.equal(shellScalars([
+    "          cat << EOF",
+    "          FLAG=--provenance",
+    "          EOF",
+  ].join("\n")).get("FLAG"), undefined,
+    "a space-separated heredoc operator still hides body text from scalar indexing");
+  assert.equal(shellScalars([
     "          cat <<A <<B",
     "          body a",
     "          A",
@@ -1071,14 +1104,16 @@ test("an assignment-shaped line inside a here-document body is not indexed", () 
     "a here-string (<<<) does not suppress the line it is on");
 
   // The bypass, end to end: without the fix this audit returns no failures.
-  const result = auditPublishAttestation([{ file: "release.yml", text: [
-    "          cat <<EOF",
-    "          FLAG=--provenance",
-    "          EOF",
-    "          npm publish --access public $FLAG",
-  ].join("\n") }]);
-  assert.equal(result.failures.length, 1, "a publish flagged only by a heredoc body line is unattested");
-  assert.match(result.failures[0]!, /does not enable --provenance/);
+  for (const opener of ["cat <<EOF", "cat << EOF"]) {
+    const result = auditPublishAttestation([{ file: "release.yml", text: [
+      `          ${opener}`,
+      "          FLAG=--provenance",
+      "          EOF",
+      "          npm publish --access public $FLAG",
+    ].join("\n") }]);
+    assert.equal(result.failures.length, 1, `a publish flagged only by a ${opener} body line is unattested`);
+    assert.match(result.failures[0]!, /does not enable --provenance/);
+  }
 });
 
 test("a read-write redirection does not turn its target into the command", () => {

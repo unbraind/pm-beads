@@ -620,8 +620,8 @@ export function bashArrays(text: string): Map<string, string> {
   return arrays;
 }
 
-/** Return only a line's outer commands, masking executable substitutions. */
-function topLevelCommands(line: string): ShellCommand[] {
+/** Mask executable substitutions without changing outer shell syntax. */
+function maskSubstitutions(line: string): string {
   let masked = "";
   let single = false;
   let double = false;
@@ -645,7 +645,85 @@ function topLevelCommands(line: string): ShellCommand[] {
       masked += character;
     }
   }
-  return tokenizeCommands(masked);
+  return masked;
+}
+
+/** Return only a line's outer commands, masking executable substitutions. */
+function topLevelCommands(line: string): ShellCommand[] {
+  return tokenizeCommands(maskSubstitutions(line));
+}
+
+/**
+ * Return commands whose scalar mutations certainly run in the parent shell.
+ *
+ * The first command of a semicolon-delimited list runs unconditionally. A later
+ * `&&`/`||` command is guarded, while either side of a pipe and a backgrounded
+ * command runs outside the parent-shell state tracked by `shellScalars`.
+ */
+function parentShellStateCommands(line: string): ShellCommand[] {
+  const masked = maskSubstitutions(line);
+  const segments: Array<{ text: string; before: string; after: string }> = [];
+  let start = 0;
+  let before = "";
+  let single = false;
+  let double = false;
+  let wordStarted = false;
+  for (let index = 0; index <= masked.length; index += 1) {
+    const character = masked[index];
+    if (character === undefined) {
+      segments.push({ text: masked.slice(start), before, after: "" });
+      break;
+    }
+    if (character === "\\") {
+      wordStarted = true;
+      index += 1;
+      continue;
+    }
+    if (character === "'" && !double) {
+      single = !single;
+      wordStarted = true;
+      continue;
+    }
+    if (character === '"' && !single) {
+      double = !double;
+      wordStarted = true;
+      continue;
+    }
+    if (single || double) {
+      wordStarted = true;
+      continue;
+    }
+    if (character === "#" && !wordStarted) {
+      segments.push({ text: masked.slice(start, index), before, after: "" });
+      break;
+    }
+    if (character === " " || character === "\t" || character === "\r") {
+      wordStarted = false;
+      continue;
+    }
+    if (character === ";" || character === "&" || character === "|") {
+      const doubled = masked[index + 1] === character && character !== ";";
+      const operator = doubled ? character + character : character;
+      segments.push({ text: masked.slice(start, index), before, after: operator });
+      index += doubled ? 1 : 0;
+      start = index + 1;
+      before = operator;
+      wordStarted = false;
+      continue;
+    }
+    wordStarted = true;
+  }
+
+  return segments.flatMap(({ text, before: preceding, after }) => {
+    if ((preceding !== "" && preceding !== ";") || after === "|" || after === "&") return [];
+    const commands = tokenizeCommands(text);
+    return commands.length === 1 ? commands : [];
+  });
+}
+
+/** A scalar value must remain inert when textually expanded and re-tokenised. */
+function isLiteralScalar(value: string): boolean {
+  return !/[$`"'();&|<>]/.test(value);
 }
 
 /**
@@ -720,23 +798,19 @@ export function shellScalars(text: string): Map<string, string> {
     }
 
     const commands = topLevelCommands(line);
-    // Only an unconditional parent-shell unset may mutate this file-wide map.
-    // The raw guard rejects conditional, piped and backgrounded forms; commands
-    // are then applied in order so a post-separator reassignment wins normally.
-    const unsetLine = /^(?:[ \t]*(?:export[ \t]+)?[A-Za-z_][A-Za-z0-9_]*=(?:"(?:\\.|[^"\\$`])*"|'[^']*'|(?:\\.|[^\s;&|"'`$()\\])+)[ \t]*;)?[ \t]*unset[ \t]+([^;&|#]*)(?:[ \t]*(?:;.*|#.*)?\r?)$/.exec(line);
-    for (const command of commands) {
+    for (const command of parentShellStateCommands(line)) {
       const first = command[0];
       if (command.length === 1 && first !== undefined && !first.startsQuoted) {
         const binding = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(first.value);
-        if (binding !== null && !/[$`"'()]/.test(binding[2]!)) scalars.set(binding[1]!, binding[2]!);
+        if (binding !== null && isLiteralScalar(binding[2]!)) scalars.set(binding[1]!, binding[2]!);
       }
       if (first?.value === "export" && !first.startsQuoted) {
         for (const token of command.slice(1)) {
           const binding = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(token.value);
-          if (binding !== null && !/[$`"'()]/.test(binding[2]!)) scalars.set(binding[1]!, binding[2]!);
+          if (binding !== null && isLiteralScalar(binding[2]!)) scalars.set(binding[1]!, binding[2]!);
         }
       }
-      if (unsetLine !== null && first?.value === "unset" && !first.startsQuoted) {
+      if (first?.value === "unset" && !first.startsQuoted) {
         for (const arg of command.slice(1).map((token) => token.value)) {
           if (arg === "-v") continue;
           if (arg === "-f") break;
@@ -746,15 +820,26 @@ export function shellScalars(text: string): Map<string, string> {
     }
 
     // Detect the operator from shell tokens, not raw text: quoted and commented
-    // `<<EOF` text is not a heredoc. `<<<` remains a here-string.
-    const openers = commands.flat().filter((token) => !token.startsQuoted && /^<<-?[^<\s]+$/.test(token.value));
-    for (const opener of openers) {
-      const match = /^<<(-?)([^<\s]+)$/.exec(opener.value)!;
-      heredocs.push({
-        delimiter: match[2]!,
-        stripTabs: match[1] === "-",
-        yamlIndent: /^[ \t]*/.exec(line)![0],
-      });
+    // `<<EOF` text is not a heredoc. `<<<` remains a here-string. The shell also
+    // accepts whitespace between `<<`/`<<-` and its delimiter.
+    for (const command of commands) {
+      for (let index = 0; index < command.length; index += 1) {
+        const opener = command[index]!;
+        let delimiter: string | undefined;
+        let stripTabs = false;
+        const joined = !opener.startsQuoted ? /^<<(-?)([^<\s]+)$/.exec(opener.value) : null;
+        if (joined !== null) {
+          stripTabs = joined[1] === "-";
+          delimiter = joined[2]!;
+        } else if (!opener.startsQuoted && (opener.value === "<<" || opener.value === "<<-")) {
+          stripTabs = opener.value === "<<-";
+          delimiter = command[index + 1]?.value;
+          index += 1;
+        }
+        if (delimiter !== undefined) {
+          heredocs.push({ delimiter, stripTabs, yamlIndent: /^[ \t]*/.exec(line)![0] });
+        }
+      }
     }
   }
   return scalars;
