@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Restore YAML indentation branch coverage after rebase ([pm-beads-mnb5](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-mnb5.toon))
 - Use YAML block indentation for heredoc delimiters ([pm-beads-zroe](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-zroe.toon))
 - Normalize shallower YAML heredoc delimiters ([pm-beads-g2p8](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-g2p8.toon))
 - Recognize mixed and chained joined heredoc operators ([pm-beads-n3yd](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-n3yd.toon))

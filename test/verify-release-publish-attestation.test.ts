@@ -911,6 +911,8 @@ test("an assignment the shell never makes is not indexed", () => {
 });
 
 test("piped and backgrounded brace groups do not mutate parent-shell state", () => {
+  assert.equal(shellScalars("} | cat; FLAG=--provenance\n").get("FLAG"), "--provenance",
+    "an unmatched closing brace cannot mask a later independent assignment");
   for (const grouped of ["{ FLAG=--provenance; } | cat", "{ FLAG=--provenance; } &"]) {
     assert.equal(shellScalars(`${grouped}\n`).get("FLAG"), undefined,
       `${grouped} runs outside parent-shell state`);
@@ -1159,6 +1161,22 @@ test("YAML block indentation closes a more deeply nested heredoc opener", () => 
   ].join("\n") }]);
   assert.equal(result.failures.length, 1, "the later variable-routed publish cannot be hidden");
   assert.match(result.failures[0]!, /does not enable --provenance/);
+});
+
+test("explicit YAML indentation survives blank content and block exit", () => {
+  for (const marker of ["|2+", "|+2"]) {
+    const scalars = shellScalars([
+      `      run: ${marker}`,
+      "",
+      "          cat <<EOF",
+      "        EOF",
+      "        NPM=npm",
+      "      next: done",
+      "OUTER=value",
+    ].join("\n"));
+    assert.equal(scalars.get("NPM"), "npm", `${marker} removes its declared two-space content indentation`);
+    assert.equal(scalars.get("OUTER"), "value", "a line after the YAML block is scanned normally");
+  }
 });
 
 test("a delimiter-looking body line keeps shell-significant indentation", () => {
