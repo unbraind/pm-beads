@@ -801,6 +801,40 @@ function isLiteralScalar(value: string): boolean {
   return !/[$`"'();&|<>]/.test(value);
 }
 
+/** Return the indentation YAML removes from each block-scalar content line. */
+function yamlBlockIndents(lines: string[]): Array<string | undefined> {
+  const indents: Array<string | undefined> = Array.from({ length: lines.length });
+  let keyIndent: number | undefined;
+  let contentIndent: string | undefined;
+  let explicitIndent: number | undefined;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]!;
+    const indentation = /^[ \t]*/.exec(line)![0];
+    if (keyIndent !== undefined) {
+      if (line.trim().length === 0) {
+        indents[index] = contentIndent;
+        continue;
+      }
+      if (indentation.length > keyIndent) {
+        contentIndent ??= explicitIndent !== undefined
+          ? indentation.slice(0, keyIndent + explicitIndent)
+          : indentation;
+        indents[index] = contentIndent;
+        continue;
+      }
+      keyIndent = undefined;
+      contentIndent = undefined;
+      explicitIndent = undefined;
+    }
+    const marker = /^([ \t]*).*:\s*[>|](?:([1-9])[+-]?|[+-]?([1-9])?)\s*(?:#.*)?$/.exec(line);
+    if (marker !== null) {
+      keyIndent = marker[1]!.length;
+      explicitIndent = Number(marker[2] ?? marker[3]) || undefined;
+    }
+  }
+  return indents;
+}
+
 /**
  * Index scalar assignments so a command held in a variable can be audited.
  *
@@ -861,15 +895,15 @@ export function shellScalars(text: string): Map<string, string> {
   // Keep the YAML block indentation separate from shell heredoc semantics.
   // Only <<- strips tabs; an ordinary << delimiter must otherwise match exactly.
   const heredocs: Array<{ delimiter: string; stripTabs: boolean; yamlIndent: string }> = [];
-  for (const line of text.split("\n")) {
+  const lines = text.split("\n");
+  const blockIndents = yamlBlockIndents(lines);
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const line = lines[lineIndex]!;
     const activeHeredoc = heredocs[0];
     if (activeHeredoc !== undefined) {
-      const lineIndent = /^[ \t]*/.exec(line)![0];
-      const yamlNormalized = activeHeredoc.yamlIndent.startsWith(lineIndent)
-        ? line.slice(lineIndent.length)
-        : line.startsWith(activeHeredoc.yamlIndent)
-          ? line.slice(activeHeredoc.yamlIndent.length)
-          : line;
+      const yamlNormalized = line.startsWith(activeHeredoc.yamlIndent)
+        ? line.slice(activeHeredoc.yamlIndent.length)
+        : line;
       const candidate = (activeHeredoc.stripTabs ? yamlNormalized.replace(/^\t+/, "") : yamlNormalized).replace(/\r$/, "");
       if (candidate === activeHeredoc.delimiter) heredocs.shift();
       continue;
@@ -914,7 +948,7 @@ export function shellScalars(text: string): Map<string, string> {
           heredocs.push({
             delimiter: match[2]!,
             stripTabs: match[1] === "-",
-            yamlIndent: /^[ \t]*/.exec(line)![0],
+            yamlIndent: blockIndents[lineIndex] ?? /^[ \t]*/.exec(line)![0],
           });
         }
         if (joined.length === 0) {
@@ -924,7 +958,7 @@ export function shellScalars(text: string): Map<string, string> {
             heredocs.push({
               delimiter,
               stripTabs: separated![1] === "-",
-              yamlIndent: /^[ \t]*/.exec(line)![0],
+              yamlIndent: blockIndents[lineIndex] ?? /^[ \t]*/.exec(line)![0],
             });
             index += 1;
           }

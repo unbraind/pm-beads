@@ -1141,21 +1141,40 @@ test("a binding cleared by unset is removed from the scalar map", () => {
   }
 });
 
-test("a shallower YAML delimiter closes a more deeply nested heredoc opener", () => {
+test("YAML block indentation closes a more deeply nested heredoc opener", () => {
   const text = [
-    "            cat <<EOF",
-    "            body",
-    "          EOF",
-    "          NPM=npm",
+    "      run: |",
+    "        echo ready",
+    "          cat <<EOF",
+    "          body",
+    "        EOF",
+    "        NPM=npm",
   ].join("\n");
   assert.equal(shellScalars(text).get("NPM"), "npm",
     "the executable assignment after the delimiter remains visible");
   const result = auditPublishAttestation([{ file: "release.yml", text: [
     text,
-    "          $NPM publish --access public",
-    "          npm publish --access public --provenance",
+    "        $NPM publish --access public",
+    "        npm publish --access public --provenance",
   ].join("\n") }]);
   assert.equal(result.failures.length, 1, "the later variable-routed publish cannot be hidden");
+  assert.match(result.failures[0]!, /does not enable --provenance/);
+});
+
+test("a delimiter-looking body line keeps shell-significant indentation", () => {
+  const text = [
+    "      run: |",
+    "        echo ready",
+    "          cat <<EOF",
+    "         EOF",
+    "          FLAG=--provenance",
+    "        EOF",
+    "        npm publish --access public $FLAG",
+  ].join("\n");
+  assert.equal(shellScalars(text).get("FLAG"), undefined,
+    "a body line one space past YAML indentation cannot close an ordinary heredoc");
+  const result = auditPublishAttestation([{ file: "release.yml", text }]);
+  assert.equal(result.failures.length, 1, "the body assignment cannot lend provenance");
   assert.match(result.failures[0]!, /does not enable --provenance/);
 });
 
