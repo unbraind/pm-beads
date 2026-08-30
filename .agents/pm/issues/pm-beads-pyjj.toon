@@ -1,0 +1,25 @@
+id: pm-beads-pyjj
+title: Preserve scalar assignments with ampersand redirections
+description: "Fix Greptile thread 3889766800: parent-shell state segmentation must not confuse the ampersand in 2>&1 with background execution."
+type: Issue
+status: closed
+priority: 1
+tags: []
+created_at: "2026-08-30T15:30:24.724Z"
+updated_at: "2026-08-30T15:31:14.032Z"
+closed_at: "2026-08-30T15:31:14.020Z"
+completed_at: "2026-08-30T15:31:14.020Z"
+claim_principal: pi-agent
+author: pi-agent
+severity: high
+repro_steps: NPM=npm 2>&1; later run $NPM publish beside an attested sibling.
+resolution: Recognize redirection ampersands during state segmentation and remove redirection tokens before classifying scalar mutations.
+expected_result: NPM remains indexed and the unattested variable-routed publish fails audit.
+actual_result: The scanner drops the assignment segment at the redirection ampersand.
+comments[1]{created_at,author,text}:
+  "2026-08-30T15:31:13.611Z",pi-agent,"Fixed thread 3889766800. Focused source-only revert proof: assignment redirection regression failed with undefined !== 'npm'; restored source passed 1/1. The audit-level case includes an attested sibling and reports the variable-routed unattested publish."
+files[2]{path,scope}:
+  scripts/shell-command-scan.ts,project
+  test/verify-release-publish-attestation.test.ts,project
+close_reason: Ampersand redirections now preserve parent-shell scalar assignment visibility.
+body: ""

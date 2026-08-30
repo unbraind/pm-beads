@@ -668,6 +668,7 @@ function parentShellStateCommands(line: string): ShellCommand[] {
   let single = false;
   let double = false;
   let wordStarted = false;
+  let wordStart = 0;
   for (let index = 0; index <= masked.length; index += 1) {
     const character = masked[index];
     if (character === undefined) {
@@ -699,6 +700,13 @@ function parentShellStateCommands(line: string): ShellCommand[] {
     }
     if (character === " " || character === "\t" || character === "\r") {
       wordStarted = false;
+      wordStart = index + 1;
+      continue;
+    }
+    // In `2>&1`, the ampersand is part of the redirection word rather than a
+    // background operator, so it cannot change the assignment's shell scope.
+    if (character === "&" && /^[0-9]*[<>]>?$/.test(masked.slice(wordStart, index))) {
+      wordStarted = true;
       continue;
     }
     if (character === ";" || character === "&" || character === "|") {
@@ -709,6 +717,7 @@ function parentShellStateCommands(line: string): ShellCommand[] {
       start = index + 1;
       before = operator;
       wordStarted = false;
+      wordStart = index + 1;
       continue;
     }
     wordStarted = true;
@@ -798,7 +807,8 @@ export function shellScalars(text: string): Map<string, string> {
     }
 
     const commands = topLevelCommands(line);
-    for (const command of parentShellStateCommands(line)) {
+    for (const stateCommand of parentShellStateCommands(line)) {
+      const command = withoutRedirections(stateCommand);
       const first = command[0];
       if (command.length === 1 && first !== undefined && !first.startsQuoted) {
         const binding = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(first.value);

@@ -919,6 +919,18 @@ test("every literal binding in a multi-name export is audited", () => {
   assert.equal(result.failures.length, 0, "both exported values resolve to the command the shell runs");
 });
 
+test("assignment redirections do not erase persistent scalar state", () => {
+  assert.equal(shellScalars("NPM=npm 2>&1\n").get("NPM"), "npm",
+    "the ampersand belongs to the redirection, not a background operator");
+  const result = auditPublishAttestation([{ file: "release.yml", text: [
+    "          NPM=npm 2>&1",
+    "          $NPM publish --access public",
+    "          npm publish --access public --provenance",
+  ].join("\n") }]);
+  assert.equal(result.failures.length, 1, "the variable-routed unattested publish remains visible");
+  assert.match(result.failures[0]!, /does not enable --provenance/);
+});
+
 test("escaped scalar operators cannot become attestation syntax after expansion", () => {
   assert.equal(shellScalars("FLAG=--provenance\\;ignored\n").get("FLAG"), undefined,
     "an escaped operator is not stored where expansion could reparse it as syntax");
