@@ -52,8 +52,8 @@ export interface ShellToken {
   startsQuoted: boolean;
 }
 
-/** Quote provenance for syntax-sensitive characters after quote removal. */
-const quotedCharacterIndexes = new WeakMap<ShellToken, ReadonlySet<number>>();
+/** Quoted or escaped characters that cannot become shell syntax after normalization. */
+const protectedCharacterIndexes = new WeakMap<ShellToken, ReadonlySet<number>>();
 
 /** One simple command: the words it would run, in order. */
 export type ShellCommand = ShellToken[];
@@ -221,18 +221,18 @@ export function tokenizeCommands(text: string, depth = 0): ShellCommand[] {
   let value = "";
   let quoted = false;
   let startsQuoted = false;
-  let quotedIndexes: number[] = [];
+  let protectedIndexes: number[] = [];
   let started = false;
 
   const endWord = (): void => {
     if (!started) return;
     const token = { value, quoted, startsQuoted };
-    quotedCharacterIndexes.set(token, new Set(quotedIndexes));
+    protectedCharacterIndexes.set(token, new Set(protectedIndexes));
     command.push(token);
     value = "";
     quoted = false;
     startsQuoted = false;
-    quotedIndexes = [];
+    protectedIndexes = [];
     started = false;
   };
   const endCommand = (): void => {
@@ -254,6 +254,7 @@ export function tokenizeCommands(text: string, depth = 0): ShellCommand[] {
       index += 1;
       if (next === undefined) break;
       if (next === "\n") continue;
+      protectedIndexes.push(value.length);
       value += next;
       if (!started) startsQuoted = false;
       started = true;
@@ -263,7 +264,7 @@ export function tokenizeCommands(text: string, depth = 0): ShellCommand[] {
       const close = text.indexOf("'", index + 1);
       const end = close === -1 ? text.length : close;
       const content = text.slice(index + 1, end);
-      for (let offset = 0; offset < content.length; offset += 1) quotedIndexes.push(value.length + offset);
+      for (let offset = 0; offset < content.length; offset += 1) protectedIndexes.push(value.length + offset);
       value += content;
       quoted = true;
       if (!started) startsQuoted = true;
@@ -279,7 +280,7 @@ export function tokenizeCommands(text: string, depth = 0): ShellCommand[] {
           const next = text[index + 1];
           if (next !== undefined) {
             if (next !== "\n") {
-              quotedIndexes.push(value.length);
+              protectedIndexes.push(value.length);
               value += next;
             }
             index += 2;
@@ -294,7 +295,7 @@ export function tokenizeCommands(text: string, depth = 0): ShellCommand[] {
           index = end;
           continue;
         }
-        quotedIndexes.push(value.length);
+        protectedIndexes.push(value.length);
         value += inner;
         index += 1;
       }
@@ -963,9 +964,9 @@ export function shellScalars(text: string): Map<string, string> {
       for (let index = 0; index < command.length; index += 1) {
         const opener = command[index]!;
         if (opener.startsQuoted) continue;
-        const quotedIndexes = quotedCharacterIndexes.get(opener)!;
+        const protectedIndexes = protectedCharacterIndexes.get(opener)!;
         const joined = [...opener.value.matchAll(/(?<!<)<<(-?)([^<\s]+?)(?=<<|$)/g)]
-          .filter((match) => !quotedIndexes.has(match.index!) && !quotedIndexes.has(match.index! + 1));
+          .filter((match) => !protectedIndexes.has(match.index!) && !protectedIndexes.has(match.index! + 1));
         for (const match of joined) {
           heredocs.push({
             delimiter: match[2]!,
@@ -975,8 +976,8 @@ export function shellScalars(text: string): Map<string, string> {
         }
         const separatedMatch = /(?<!<)<<(-?)$/.exec(opener.value);
         const separated = separatedMatch !== null
-          && !quotedIndexes.has(separatedMatch.index)
-          && !quotedIndexes.has(separatedMatch.index + 1)
+          && !protectedIndexes.has(separatedMatch.index)
+          && !protectedIndexes.has(separatedMatch.index + 1)
           ? separatedMatch
           : null;
         const delimiterToken = separated !== null ? command[index + 1] : undefined;

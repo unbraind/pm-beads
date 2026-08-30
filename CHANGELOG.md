@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Reject escaped heredoc operator text ([pm-beads-6aag](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-6aag.toon))
 - Reject quoted heredoc operator text ([pm-beads-jyil](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-jyil.toon))
 - Close reverse heredoc and uncertain unset review bypasses ([pm-beads-yaua](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-yaua.toon))
 - Queue trailing separated heredoc after joined opener ([pm-beads-uwkq](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-uwkq.toon))
