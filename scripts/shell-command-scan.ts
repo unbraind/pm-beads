@@ -782,6 +782,11 @@ function parentShellStateCommands(line: string): ShellCommand[] {
       const words = withoutRedirections(command);
       if (words.length === 1 && words[0]?.value === "true") status = true;
       else if (words.length === 1 && words[0]?.value === "false") status = false;
+      else if (words.length > 0 && words.every((word) => {
+        if (word.startsQuoted) return false;
+        const binding = /^[A-Za-z_][A-Za-z0-9_]*=(.*)$/.exec(word.value);
+        return binding !== null && isLiteralScalar(binding[1]!);
+      })) status = true;
       else status = undefined;
     }
   }

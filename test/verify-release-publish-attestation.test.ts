@@ -923,6 +923,18 @@ test("piped and backgrounded brace groups do not mutate parent-shell state", () 
   }
 });
 
+test("literal assignment success carries parent state through a conditional", () => {
+  assert.equal(shellScalars("SEED=ok && NPM=npm\n").get("NPM"), "npm",
+    "a literal assignment-only command succeeds, so its && successor executes");
+  const result = auditPublishAttestation([{ file: "release.yml", text: [
+    "          SEED=ok && NPM=npm",
+    "          $NPM publish --access public",
+    "          npm publish --access public --provenance",
+  ].join("\n") }]);
+  assert.equal(result.failures.length, 1, "the conditional assignment keeps the unattested publish visible");
+  assert.match(result.failures[0]!, /does not enable --provenance/);
+});
+
 test("multiple assignment-only bindings keep variable-routed publishes visible", () => {
   const scalars = shellScalars("NPM=npm FLAG=--provenance\n");
   assert.equal(scalars.get("NPM"), "npm");
