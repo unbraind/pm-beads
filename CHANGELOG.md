@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Fail closed on dynamic publish forms and brace status ([pm-beads-9pan](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-9pan.toon))
 - Close CodeRabbit scalar scope follow-ups ([pm-beads-b7h1](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-b7h1.toon))
 - Shell scalar assignments are read from raw text, so a comment can flag an unattested publish ([pm-beads-dhgs](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-dhgs.toon))
 - Fail closed on unresolved scalar command words ([pm-beads-980d](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-980d.toon))

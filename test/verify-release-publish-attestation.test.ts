@@ -951,6 +951,17 @@ test("literal assignment success carries parent state through a conditional", ()
   assert.equal(uncertain.failures.length, 1,
     "an unresolved scalar command word fails closed instead of hiding a possible publish");
   assert.match(uncertain.failures[0]!, /scalar expression \$NPM remains unresolved in command position/);
+
+  const dynamicPublishes = ["${CMD:-npm} publish", "npm $SUB"];
+  const dynamicResults = dynamicPublishes.map((dynamicPublish) => auditPublishAttestation([{ file: "release.sh", text: [
+    dynamicPublish,
+    "npm publish --access public --provenance",
+  ].join("\n") }]));
+  assert.deepEqual(dynamicResults.map(({ failures }) => failures.length), [1, 1],
+    "both dynamic publish forms fail closed rather than hiding behind the attested sibling");
+  for (const dynamic of dynamicResults) {
+    assert.match(dynamic.failures[0]!, /scalar expression .* remains unresolved in command position/);
+  }
 });
 
 test("multiple assignment-only bindings keep variable-routed publishes visible", () => {
@@ -1031,7 +1042,11 @@ test("literal guard outcomes apply scalar deletion when the unset executes", () 
 });
 
 test("compound command status cannot admit a skipped scalar mutation", () => {
-  for (const guarded of ["true | false && FLAG=--provenance", "( false ) && FLAG=--provenance"]) {
+  for (const guarded of [
+    "true | false && FLAG=--provenance",
+    "( false ) && FLAG=--provenance",
+    "{ false; } && FLAG=--provenance",
+  ]) {
     assert.equal(shellScalars(`${guarded}\n`).get("FLAG"), undefined,
       `${guarded} does not execute the assignment`);
     const result = auditPublishAttestation([{ file: "release.yml", text: [

@@ -791,7 +791,10 @@ function parentShellStateCommands(line: string): ShellCommand[] {
   const stateCommands: ShellCommand[] = [];
   let status: boolean | undefined;
   for (const { text, before: preceding, after } of segments) {
-    if (preceding === "" || preceding === ";") status = true;
+    // A standalone closing brace completes the preceding command group; the
+    // semicolon before it does not replace that group's status with success.
+    const closesBraceGroup = /^\s*}/.test(text);
+    if ((preceding === "" || preceding === ";") && !closesBraceGroup) status = true;
     const executes = preceding === "&&" ? status === true
       : preceding === "||" ? status === false
         : preceding === "" || preceding === ";";

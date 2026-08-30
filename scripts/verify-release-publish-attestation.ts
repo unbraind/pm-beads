@@ -62,7 +62,7 @@ export const FOREIGN_PUBLISHERS = new Set(["yarn", "pnpm", "bun"]);
  * report the same command twice -- once as unknown and once as what it is.
  */
 const INDEXED_ARRAY_EXPRESSION = /^\$\{[A-Za-z_][A-Za-z0-9_]*\[-?\d+\]\}$/;
-const SCALAR_EXPRESSION = /^(?:\$[A-Za-z_][A-Za-z0-9_]*|\$\{[A-Za-z_][A-Za-z0-9_]*\})$/;
+const SCALAR_EXPRESSION = /^(?:\$[A-Za-z_][A-Za-z0-9_]*|\$\{[^{}\s]+\})$/;
 
 /** Repository subtrees whose contents are build output rather than a publish path. */
 const GENERATED_PREFIXES = ["dist/", "coverage/", "node_modules/", ".agents/pm/runtime/"];
@@ -261,8 +261,14 @@ function scanPublishSource(source: SourceFile): { invocations: PublishInvocation
       const unresolvedScalarPublisher = first !== undefined
         && SCALAR_EXPRESSION.test(first.value)
         && candidate.slice(1).some(({ value }) => value === "publish");
-      if (unresolvedIndexedCommand || unresolvedScalarPublisher) {
-        unresolved.add(first!.value);
+      const subcommand = candidate[1];
+      const unresolvedScalarSubcommand = commandName(candidate) === "npm"
+        && subcommand !== undefined
+        && SCALAR_EXPRESSION.test(subcommand.value);
+      const unresolvedExpression = unresolvedScalarSubcommand ? subcommand.value : first?.value;
+      if ((unresolvedIndexedCommand || unresolvedScalarPublisher || unresolvedScalarSubcommand)
+        && unresolvedExpression !== undefined) {
+        unresolved.add(unresolvedExpression);
         continue;
       }
       const program = commandName(candidate);
