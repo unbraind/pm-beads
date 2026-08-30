@@ -961,12 +961,14 @@ test("literal assignment success carries parent state through a conditional", ()
     "$CMD $SUB --access public",
     "sudo -u root $CMD $SUB",
     "$CMD --access public $SUB",
+    "$CMD --access public",
+    "sudo -u root $CMD --access public $SUB",
   ];
   const dynamicResults = dynamicPublishes.map((dynamicPublish) => auditPublishAttestation([{ file: "release.sh", text: [
     dynamicPublish,
     "npm publish --access public --provenance",
   ].join("\n") }]));
-  assert.deepEqual(dynamicResults.map(({ failures }) => failures.length), [1, 1, 1, 1, 1, 1, 1, 1],
+  assert.deepEqual(dynamicResults.map(({ failures }) => failures.length), [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
     "all dynamic publish forms fail closed rather than hiding behind the attested sibling");
   for (const dynamic of dynamicResults) {
     assert.match(dynamic.failures[0]!, /scalar expression .* remains unresolved in command position/);
@@ -976,6 +978,13 @@ test("literal assignment success carries parent state through a conditional", ()
     "npm publish --access public --provenance",
   ].join("\n") }]);
   assert.equal(noSubcommand.failures.length, 0, "npm without any subcommand does not invent a dynamic publish");
+
+  const unrelatedWrapperTail = auditPublishAttestation([{ file: "release.sh", text: [
+    "if gh issue comment $NUMBER --repo $REPOSITORY",
+    "npm publish --access public --provenance",
+  ].join("\n") }]);
+  assert.equal(unrelatedWrapperTail.failures.length, 0,
+    "an unknown non-npm wrapper option does not turn its value into a scalar npm subcommand");
 });
 
 test("multiple assignment-only bindings keep variable-routed publishes visible", () => {

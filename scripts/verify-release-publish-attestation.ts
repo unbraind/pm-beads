@@ -31,6 +31,7 @@ import {
   joinContinuations,
   shellScalars,
   type ShellCommand,
+  type ShellToken,
   type SourceFile,
   tokenizeCommands,
   type VerifierResult,
@@ -165,31 +166,41 @@ const VALUE_TAKING_FLAGS = new Set([
  * @returns True when the command publishes.
  */
 export function isPublishCommand(command: ShellCommand): boolean {
-  const args = commandArguments(command);
-  for (let index = 0; index < args.length; index += 1) {
-    const token = args[index]!;
-    // A flag's separate value is not the subcommand. `npm --tag run publish`
-    // configures the tag as "run" and publishes; reading `run` as a runner
-    // subcommand discarded a real publish and let an attested sibling carry the
-    // audit. Only npm's own value-taking flags are skipped, so an unknown flag
-    // still leaves its value in subcommand position rather than being ignored.
-    if (VALUE_TAKING_FLAGS.has(token.value)) { index += 1; continue; }
-    if (token.value.startsWith("-")) continue;
+  for (const token of npmSubcommandTokens(commandArguments(command))) {
     if (RUNNER_SUBCOMMANDS.has(token.value)) return false;
     if (token.value === "publish") return true;
   }
   return false;
 }
 
-/** Return an unresolved scalar in npm subcommand position, after known options. */
-function scalarInNpmSubcommandPosition(args: ShellCommand): string | undefined {
+/** Yield npm subcommand words after consuming its known option syntax. */
+function* npmSubcommandTokens(args: ShellCommand, unknownFlagsAreOptions = true): Generator<ShellToken> {
   for (let index = 0; index < args.length; index += 1) {
     const token = args[index]!;
+    // A flag's separate value is not the subcommand. `npm --tag run publish`
+    // configures the tag as "run" and publishes; reading `run` as a runner
+    // subcommand discarded a real publish and let an attested sibling carry the
+    // audit. Unknown flags are options for a direct npm-shaped command, but a
+    // wrapper-tail candidate stops at one so unrelated wrapper arguments do not
+    // become a synthetic scalar subcommand.
     if (VALUE_TAKING_FLAGS.has(token.value)) { index += 1; continue; }
-    if (token.value.startsWith("-")) continue;
-    return SCALAR_EXPRESSION.test(token.value) ? token.value : undefined;
+    if (token.value.startsWith("-")) {
+      if (!unknownFlagsAreOptions) return;
+      continue;
+    }
+    yield token;
   }
-  return undefined;
+}
+
+/** Return an unresolved scalar in npm subcommand position, after known options. */
+function scalarInNpmSubcommandPosition(args: ShellCommand, unknownFlagsAreOptions = true): string | undefined {
+  const token = npmSubcommandTokens(args, unknownFlagsAreOptions).next().value;
+  return token !== undefined && SCALAR_EXPRESSION.test(token.value) ? token.value : undefined;
+}
+
+/** Whether arguments contain options but no explicit npm subcommand. */
+function hasOnlyNpmOptions(args: ShellCommand): boolean {
+  return args.length > 0 && npmSubcommandTokens(args).next().done === true;
 }
 
 /** Return an unresolved scalar in a literal npm command's subcommand position. */
@@ -278,7 +289,8 @@ function scanPublishSource(source: SourceFile): { invocations: PublishInvocation
         && SCALAR_EXPRESSION.test(first.value)
         && (candidate.slice(1).some(({ value }) => value === "publish")
           || SCALAR_EXPRESSION.test(candidate[1]?.value ?? "")
-          || (candidateIndex === 0 && scalarInNpmSubcommandPosition(candidate.slice(1)) !== undefined));
+          || scalarInNpmSubcommandPosition(candidate.slice(1), candidateIndex === 0) !== undefined
+          || (candidateIndex === 0 && hasOnlyNpmOptions(candidate.slice(1))));
       const unresolvedScalarSubcommand = unresolvedNpmScalarSubcommand(candidate);
       const unresolvedExpression = unresolvedScalarSubcommand ?? first?.value;
       if ((unresolvedIndexedCommand || unresolvedScalarPublisher || unresolvedScalarSubcommand !== undefined)

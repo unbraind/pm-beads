@@ -6,10 +6,9 @@ status: closed
 priority: 1
 tags: []
 created_at: "2026-08-30T15:30:24.724Z"
-updated_at: "2026-08-30T15:31:14.032Z"
+updated_at: "2026-08-30T20:55:06.261Z"
 closed_at: "2026-08-30T15:31:14.020Z"
 completed_at: "2026-08-30T15:31:14.020Z"
-claim_principal: pi-agent
 author: pi-agent
 severity: high
 repro_steps: NPM=npm 2>&1; later run $NPM publish beside an attested sibling.

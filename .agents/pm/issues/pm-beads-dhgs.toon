@@ -6,10 +6,9 @@ status: closed
 priority: 1
 tags: []
 created_at: "2026-08-28T22:36:17.874Z"
-updated_at: "2026-08-30T18:50:54.024Z"
+updated_at: "2026-08-30T20:55:05.496Z"
 closed_at: "2026-08-30T18:50:53.998Z"
 completed_at: "2026-08-30T18:50:53.998Z"
-claim_principal: pi-agent
 author: claude
 comments[5]{created_at,author,text}:
   "2026-08-29T04:20:49.907Z",pi-agent,"Addressing final PR #88 review: parse multi-binding export declarations, reject non-executing raw heredoc/unset text, and preserve ordinary versus tab-stripping heredoc delimiter semantics."

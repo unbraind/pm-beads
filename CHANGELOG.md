@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Close dynamic scalar flag and PM claim follow-ups ([pm-beads-pxl7](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-pxl7.toon))
 - Fail closed on wrapped and option-separated combined scalar publishes ([pm-beads-icb4](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-icb4.toon))
 - Fail closed on argument-bearing combined scalar publishes ([pm-beads-ax72](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-ax72.toon))
 - Fail closed on combined scalar publishes and redirection-adjacent heredoc delimiters ([pm-beads-rzz1](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-rzz1.toon))

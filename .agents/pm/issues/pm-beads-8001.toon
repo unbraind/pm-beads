@@ -6,10 +6,9 @@ status: closed
 priority: 1
 tags: []
 created_at: "2026-08-30T15:17:13.319Z"
-updated_at: "2026-08-30T15:23:22.685Z"
+updated_at: "2026-08-30T20:55:07.835Z"
 closed_at: "2026-08-30T15:23:22.670Z"
 completed_at: "2026-08-30T15:23:22.670Z"
-claim_principal: pi-agent
 author: pi-agent
 severity: high
 repro_steps: "Review threads 3885642778, 3885642781, 3885642786, 3885643405, 3885643407, and 3885643409."
