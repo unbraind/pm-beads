@@ -959,12 +959,14 @@ test("literal assignment success carries parent state through a conditional", ()
     "npm --ignore-scripts $SUB",
     "$CMD $SUB",
     "$CMD $SUB --access public",
+    "sudo -u root $CMD $SUB",
+    "$CMD --access public $SUB",
   ];
   const dynamicResults = dynamicPublishes.map((dynamicPublish) => auditPublishAttestation([{ file: "release.sh", text: [
     dynamicPublish,
     "npm publish --access public --provenance",
   ].join("\n") }]));
-  assert.deepEqual(dynamicResults.map(({ failures }) => failures.length), [1, 1, 1, 1, 1, 1],
+  assert.deepEqual(dynamicResults.map(({ failures }) => failures.length), [1, 1, 1, 1, 1, 1, 1, 1],
     "all dynamic publish forms fail closed rather than hiding behind the attested sibling");
   for (const dynamic of dynamicResults) {
     assert.match(dynamic.failures[0]!, /scalar expression .* remains unresolved in command position/);

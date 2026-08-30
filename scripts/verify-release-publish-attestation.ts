@@ -182,9 +182,7 @@ export function isPublishCommand(command: ShellCommand): boolean {
 }
 
 /** Return an unresolved scalar in npm subcommand position, after known options. */
-function unresolvedNpmScalarSubcommand(command: ShellCommand): string | undefined {
-  if (commandName(command) !== "npm") return undefined;
-  const args = commandArguments(command);
+function scalarInNpmSubcommandPosition(args: ShellCommand): string | undefined {
   for (let index = 0; index < args.length; index += 1) {
     const token = args[index]!;
     if (VALUE_TAKING_FLAGS.has(token.value)) { index += 1; continue; }
@@ -192,6 +190,11 @@ function unresolvedNpmScalarSubcommand(command: ShellCommand): string | undefine
     return SCALAR_EXPRESSION.test(token.value) ? token.value : undefined;
   }
   return undefined;
+}
+
+/** Return an unresolved scalar in a literal npm command's subcommand position. */
+function unresolvedNpmScalarSubcommand(command: ShellCommand): string | undefined {
+  return commandName(command) === "npm" ? scalarInNpmSubcommandPosition(commandArguments(command)) : undefined;
 }
 
 /**
@@ -274,7 +277,8 @@ function scanPublishSource(source: SourceFile): { invocations: PublishInvocation
       const unresolvedScalarPublisher = first !== undefined
         && SCALAR_EXPRESSION.test(first.value)
         && (candidate.slice(1).some(({ value }) => value === "publish")
-          || (candidateIndex === 0 && SCALAR_EXPRESSION.test(candidate[1]?.value ?? "")));
+          || SCALAR_EXPRESSION.test(candidate[1]?.value ?? "")
+          || (candidateIndex === 0 && scalarInNpmSubcommandPosition(candidate.slice(1)) !== undefined));
       const unresolvedScalarSubcommand = unresolvedNpmScalarSubcommand(candidate);
       const unresolvedExpression = unresolvedScalarSubcommand ?? first?.value;
       if ((unresolvedIndexedCommand || unresolvedScalarPublisher || unresolvedScalarSubcommand !== undefined)

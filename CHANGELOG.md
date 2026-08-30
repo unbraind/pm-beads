@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Fail closed on wrapped and option-separated combined scalar publishes ([pm-beads-icb4](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-icb4.toon))
 - Fail closed on argument-bearing combined scalar publishes ([pm-beads-ax72](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-ax72.toon))
 - Fail closed on combined scalar publishes and redirection-adjacent heredoc delimiters ([pm-beads-rzz1](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-rzz1.toon))
 - Fail closed on option-prefixed dynamic npm subcommands ([pm-beads-vu7d](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-vu7d.toon))
