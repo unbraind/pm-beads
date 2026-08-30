@@ -734,7 +734,10 @@ function parentShellStateCommands(line: string): ShellCommand[] {
     const command = commands.length === 1 ? commands[0] : undefined;
     if (executes && command !== undefined && after !== "|" && after !== "&") stateCommands.push(command);
 
-    if (executes && command !== undefined) {
+    if (preceding === "|" || preceding === "&" || preceding === "(" || preceding === ")"
+      || after === "|" || after === "&" || after === "(" || after === ")") {
+      status = undefined;
+    } else if (executes && command !== undefined) {
       const words = withoutRedirections(command);
       if (words.length === 1 && words[0]?.value === "true") status = true;
       else if (words.length === 1 && words[0]?.value === "false") status = false;
@@ -827,9 +830,13 @@ export function shellScalars(text: string): Map<string, string> {
     for (const stateCommand of parentShellStateCommands(line)) {
       const command = withoutRedirections(stateCommand);
       const first = command[0];
-      if (command.length === 1 && first !== undefined && !first.startsQuoted) {
-        const binding = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(first.value);
-        if (binding !== null && isLiteralScalar(binding[2]!)) scalars.set(binding[1]!, binding[2]!);
+      const plainBindings = command.map((token) => !token.startsQuoted
+        ? /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(token.value)
+        : null);
+      if (plainBindings.every((binding) => binding !== null)) {
+        for (const binding of plainBindings) {
+          if (isLiteralScalar(binding![2]!)) scalars.set(binding![1]!, binding![2]!);
+        }
       }
       if (first !== undefined && !first.startsQuoted && SCALAR_DECLARATIONS.has(first.value)) {
         for (const token of command.slice(1)) {
@@ -854,7 +861,7 @@ export function shellScalars(text: string): Map<string, string> {
         const opener = command[index]!;
         let delimiter: string | undefined;
         let stripTabs = false;
-        const joined = !opener.startsQuoted ? /^<<(-?)([^<\s]+)$/.exec(opener.value) : null;
+        const joined = !opener.startsQuoted ? /^(?:.*?[^<])?[0-9]*<<(-?)([^<\s]+)$/.exec(opener.value) : null;
         if (joined !== null) {
           stripTabs = joined[1] === "-";
           delimiter = joined[2]!;

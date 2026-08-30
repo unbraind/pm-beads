@@ -1,0 +1,25 @@
+id: pm-beads-rgro
+title: "Close multi-assignment, compound-status, and joined-heredoc bypasses"
+description: "Fix Greptile threads 3889855056, 3889855059, and 3889855060 with audit-level regressions."
+type: Issue
+status: closed
+priority: 1
+tags: []
+created_at: "2026-08-30T16:10:32.678Z"
+updated_at: "2026-08-30T16:12:10.728Z"
+closed_at: "2026-08-30T16:12:10.673Z"
+completed_at: "2026-08-30T16:12:10.673Z"
+claim_principal: pi-agent
+author: pi-agent
+severity: high
+repro_steps: "Use multiple assignment-only bindings, a failed pipeline/subshell before && assignment, or cat<<EOF/2<<EOF heredoc syntax."
+resolution: "Index all assignment-only operands, invalidate status across compound boundaries, and recognize joined command/fd heredoc operators."
+expected_result: Bindings and heredoc bodies match shell semantics; uncertain compound status cannot inject provenance.
+actual_result: The scanner can hide publishes or index state the parent shell lacks.
+comments[1]{created_at,author,text}:
+  "2026-08-30T16:12:09.786Z",pi-agent,"Fixed threads 3889855056, 3889855059, and 3889855060. Source-only revert proof failed 3/3: multi-assignment NPM was undefined, failed pipeline retained '--provenance', and cat<<EOF body retained '--provenance'; restored source passed 3/3. All include audit-level checks."
+files[2]{path,scope}:
+  scripts/shell-command-scan.ts,project
+  test/verify-release-publish-attestation.test.ts,project
+close_reason: "Multiple assignments, uncertain compound status, and joined heredocs now fail closed."
+body: ""

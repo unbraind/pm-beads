@@ -910,6 +910,19 @@ test("an assignment the shell never makes is not indexed", () => {
   assert.match(result.failures[0]!, /does not enable --provenance/);
 });
 
+test("multiple assignment-only bindings keep variable-routed publishes visible", () => {
+  const scalars = shellScalars("NPM=npm FLAG=--provenance\n");
+  assert.equal(scalars.get("NPM"), "npm");
+  assert.equal(scalars.get("FLAG"), "--provenance");
+  const result = auditPublishAttestation([{ file: "release.yml", text: [
+    "          NPM=npm FLAG=ignored",
+    "          $NPM publish --access public $FLAG",
+    "          npm publish --access public --provenance",
+  ].join("\n") }]);
+  assert.equal(result.failures.length, 1, "the assignment list cannot hide the unattested publish");
+  assert.match(result.failures[0]!, /does not enable --provenance/);
+});
+
 test("persistent declaration builtins keep variable-routed publishes visible", () => {
   for (const declaration of ["readonly", "declare", "typeset"]) {
     assert.equal(shellScalars(`${declaration} NPM=npm\n`).get("NPM"), "npm",
@@ -968,6 +981,19 @@ test("literal guard outcomes apply scalar deletion when the unset executes", () 
       "          npm publish --access public $FLAG",
     ].join("\n") }]);
     assert.equal(result.failures.length, 1, `${guardedUnset} cannot leave stale provenance`);
+    assert.match(result.failures[0]!, /does not enable --provenance/);
+  }
+});
+
+test("compound command status cannot admit a skipped scalar mutation", () => {
+  for (const guarded of ["true | false && FLAG=--provenance", "( false ) && FLAG=--provenance"]) {
+    assert.equal(shellScalars(`${guarded}\n`).get("FLAG"), undefined,
+      `${guarded} does not execute the assignment`);
+    const result = auditPublishAttestation([{ file: "release.yml", text: [
+      `          ${guarded}`,
+      "          npm publish --access public $FLAG",
+    ].join("\n") }]);
+    assert.equal(result.failures.length, 1, `${guarded} cannot lend provenance to the publish`);
     assert.match(result.failures[0]!, /does not enable --provenance/);
   }
 });
@@ -1138,6 +1164,14 @@ test("an assignment-shaped line inside a here-document body is not indexed", () 
     "          123",
   ].join("\n")).get("FLAG"), undefined,
     "a non-identifier heredoc delimiter still hides body text from scalar indexing");
+  for (const joinedOpener of ["cat<<EOF", "2<<EOF"]) {
+    assert.equal(shellScalars([
+      `          ${joinedOpener}`,
+      "          FLAG=--provenance",
+      "          EOF",
+    ].join("\n")).get("FLAG"), undefined,
+    `${joinedOpener} still opens a heredoc whose body is not shell state`);
+  }
   assert.equal(shellScalars([
     "          cat << EOF",
     "          FLAG=--provenance",
@@ -1157,7 +1191,7 @@ test("an assignment-shaped line inside a here-document body is not indexed", () 
     "a here-string (<<<) does not suppress the line it is on");
 
   // The bypass, end to end: without the fix this audit returns no failures.
-  for (const opener of ["cat <<EOF", "cat << EOF"]) {
+  for (const opener of ["cat <<EOF", "cat << EOF", "cat<<EOF", "2<<EOF"]) {
     const result = auditPublishAttestation([{ file: "release.yml", text: [
       `          ${opener}`,
       "          FLAG=--provenance",
