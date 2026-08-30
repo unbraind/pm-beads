@@ -1189,7 +1189,7 @@ test("an assignment-shaped line inside a here-document body is not indexed", () 
     "          123",
   ].join("\n")).get("FLAG"), undefined,
     "a non-identifier heredoc delimiter still hides body text from scalar indexing");
-  for (const joinedOpener of ["cat<<EOF", "2<<EOF"]) {
+  for (const joinedOpener of ["cat<<EOF", "2<<EOF", "cat<< EOF"]) {
     assert.equal(shellScalars([
       `          ${joinedOpener}`,
       "          FLAG=--provenance",
@@ -1203,14 +1203,16 @@ test("an assignment-shaped line inside a here-document body is not indexed", () 
     "          EOF",
   ].join("\n")).get("FLAG"), undefined,
     "a space-separated heredoc operator still hides body text from scalar indexing");
-  assert.equal(shellScalars([
-    "          cat <<A <<B",
-    "          body a",
-    "          A",
-    "          FLAG=--provenance",
-    "          B",
-  ].join("\n")).get("FLAG"), undefined,
-    "all heredoc bodies opened by one command remain non-executable text");
+  for (const multipleOpeners of ["cat <<A <<B", "cat<<A<<B"]) {
+    assert.equal(shellScalars([
+      `          ${multipleOpeners}`,
+      "          body a",
+      "          A",
+      "          FLAG=--provenance",
+      "          B",
+    ].join("\n")).get("FLAG"), undefined,
+    `all heredoc bodies opened by ${multipleOpeners} remain non-executable text`);
+  }
   // <<< (here-string) must NOT be mistaken for a heredoc.
   assert.equal(shellScalars([
     "          cat <<<word",
@@ -1219,7 +1221,7 @@ test("an assignment-shaped line inside a here-document body is not indexed", () 
     "a here-string (<<<) does not open a heredoc, so the following line is still indexed");
 
   // The bypass, end to end: without the fix this audit returns no failures.
-  for (const opener of ["cat <<EOF", "cat << EOF", "cat<<EOF", "2<<EOF"]) {
+  for (const opener of ["cat <<EOF", "cat << EOF", "cat<<EOF", "2<<EOF", "cat<< EOF"]) {
     const result = auditPublishAttestation([{ file: "release.yml", text: [
       `          ${opener}`,
       "          FLAG=--provenance",
@@ -1229,6 +1231,16 @@ test("an assignment-shaped line inside a here-document body is not indexed", () 
     assert.equal(result.failures.length, 1, `a publish flagged only by a ${opener} body line is unattested`);
     assert.match(result.failures[0]!, /does not enable --provenance/);
   }
+  const chained = auditPublishAttestation([{ file: "release.yml", text: [
+    "          cat<<A<<B",
+    "          body a",
+    "          A",
+    "          FLAG=--provenance",
+    "          B",
+    "          npm publish --access public $FLAG",
+  ].join("\n") }]);
+  assert.equal(chained.failures.length, 1, "a chained second heredoc body cannot lend provenance");
+  assert.match(chained.failures[0]!, /does not enable --provenance/);
 });
 
 test("a read-write redirection does not turn its target into the command", () => {

@@ -905,19 +905,26 @@ export function shellScalars(text: string): Map<string, string> {
     for (const command of commands) {
       for (let index = 0; index < command.length; index += 1) {
         const opener = command[index]!;
-        let delimiter: string | undefined;
-        let stripTabs = false;
-        const joined = !opener.startsQuoted ? /^(?:.*?[^<])?[0-9]*<<(-?)([^<\s]+)$/.exec(opener.value) : null;
-        if (joined !== null) {
-          stripTabs = joined[1] === "-";
-          delimiter = joined[2]!;
-        } else if (!opener.startsQuoted && (opener.value === "<<" || opener.value === "<<-")) {
-          stripTabs = opener.value === "<<-";
-          delimiter = command[index + 1]?.value;
-          index += 1;
+        if (opener.startsQuoted) continue;
+        const joined = [...opener.value.matchAll(/(?<!<)<<(-?)([^<\s]+?)(?=<<|$)/g)];
+        for (const match of joined) {
+          heredocs.push({
+            delimiter: match[2]!,
+            stripTabs: match[1] === "-",
+            yamlIndent: /^[ \t]*/.exec(line)![0],
+          });
         }
-        if (delimiter !== undefined) {
-          heredocs.push({ delimiter, stripTabs, yamlIndent: /^[ \t]*/.exec(line)![0] });
+        if (joined.length === 0) {
+          const separated = /(?<!<)<<(-?)$/.exec(opener.value);
+          const delimiter = separated !== null ? command[index + 1]?.value : undefined;
+          if (delimiter !== undefined) {
+            heredocs.push({
+              delimiter,
+              stripTabs: separated![1] === "-",
+              yamlIndent: /^[ \t]*/.exec(line)![0],
+            });
+            index += 1;
+          }
         }
       }
     }
