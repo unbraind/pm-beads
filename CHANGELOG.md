@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Fail closed on unresolved scalar command words ([pm-beads-980d](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-980d.toon))
 - Keep plain-shell heredoc indentation significant ([pm-beads-ur0e](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-ur0e.toon))
 - Reject escaped heredoc operator text ([pm-beads-6aag](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-6aag.toon))
 - Reject quoted heredoc operator text ([pm-beads-jyil](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-jyil.toon))

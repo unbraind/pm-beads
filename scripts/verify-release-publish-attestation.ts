@@ -62,6 +62,7 @@ export const FOREIGN_PUBLISHERS = new Set(["yarn", "pnpm", "bun"]);
  * report the same command twice -- once as unknown and once as what it is.
  */
 const INDEXED_ARRAY_EXPRESSION = /^\$\{[A-Za-z_][A-Za-z0-9_]*\[-?\d+\]\}$/;
+const SCALAR_EXPRESSION = /^(?:\$[A-Za-z_][A-Za-z0-9_]*|\$\{[A-Za-z_][A-Za-z0-9_]*\})$/;
 
 /** Repository subtrees whose contents are build output rather than a publish path. */
 const GENERATED_PREFIXES = ["dist/", "coverage/", "node_modules/", ".agents/pm/runtime/"];
@@ -231,11 +232,12 @@ export function attestationEnabled(command: ShellCommand): boolean {
  * Continuations are joined and shared arrays expanded before tokenising, for
  * the same reason the changelog-date scan does it: a multi-line invocation
  * otherwise looks like fragments, none of which carries the flag. An indexed
- * array expression that remains as the first command word is also returned so
- * the audit can fail closed instead of assuming that unknown command is safe.
+ * array or scalar expression that remains as the first command word is also
+ * returned so the audit can fail closed instead of assuming that unknown
+ * command is safe.
  *
  * @param source - The file's path and contents.
- * @returns Publish invocations and unresolved indexed command expressions.
+ * @returns Publish invocations and unresolved command expressions.
  */
 function scanPublishSource(source: SourceFile): { invocations: PublishInvocation[]; unresolved: string[] } {
   const raw = source.file.endsWith("package.json") ? manifestCommandLines(source.text) : source.text;
@@ -255,8 +257,12 @@ function scanPublishSource(source: SourceFile): { invocations: PublishInvocation
     // shell would run is noise an operator dismisses.
     for (const candidate of commandCandidates(command)) {
       const first = candidate[0];
-      if (first !== undefined && INDEXED_ARRAY_EXPRESSION.test(first.value)) {
-        unresolved.add(first.value);
+      const unresolvedIndexedCommand = first !== undefined && INDEXED_ARRAY_EXPRESSION.test(first.value);
+      const unresolvedScalarPublisher = first !== undefined
+        && SCALAR_EXPRESSION.test(first.value)
+        && candidate.slice(1).some(({ value }) => value === "publish");
+      if (unresolvedIndexedCommand || unresolvedScalarPublisher) {
+        unresolved.add(first!.value);
         continue;
       }
       const program = commandName(candidate);
@@ -302,9 +308,9 @@ export function renderCommand(command: ShellCommand): string {
  * flag. This repository's attested path is npm's `--provenance`; no equivalent
  * is configured for yarn, pnpm or bun, so such an invocation is an unattested
  * publish path regardless of the flags it carries, and guessing at another
- * tool's spelling would be a gate that only looked strict. An indexed array
- * expression left in command position is also refused, because its program
- * cannot be proven not to be an unattested publish.
+ * tool's spelling would be a gate that only looked strict. An unresolved array
+ * or scalar expression left in command position is also refused, because its
+ * program cannot be proven not to be an unattested publish.
  *
  * @param sources - The tracked files to scan.
  * @returns Failures and per-file notes.
@@ -315,8 +321,9 @@ export function auditPublishAttestation(sources: SourceFile[]): VerifierResult {
   const failures: string[] = [];
   for (const { source, scan } of scans) {
     for (const expression of scan.unresolved) {
+      const kind = INDEXED_ARRAY_EXPRESSION.test(expression) ? "indexed Bash-array" : "scalar";
       failures.push(
-        `${source.file}: indexed Bash-array expression ${expression} remains unresolved in command position; refusing to assume it is not an unattested publish`,
+        `${source.file}: ${kind} expression ${expression} remains unresolved in command position; refusing to assume it is not an unattested publish`,
       );
     }
   }

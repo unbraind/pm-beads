@@ -935,6 +935,17 @@ test("literal assignment success carries parent state through a conditional", ()
   ].join("\n") }]);
   assert.equal(result.failures.length, 1, "the conditional assignment keeps the unattested publish visible");
   assert.match(result.failures[0]!, /does not enable --provenance/);
+
+  assert.equal(shellScalars("echo ready && NPM=npm\n").get("NPM"), undefined,
+    "an unknown command outcome does not invent persistent scalar state");
+  const uncertain = auditPublishAttestation([{ file: "release.sh", text: [
+    "echo ready && NPM=npm",
+    "$NPM publish --access public",
+    "npm publish --access public --provenance",
+  ].join("\n") }]);
+  assert.equal(uncertain.failures.length, 1,
+    "an unresolved scalar command word fails closed instead of hiding a possible publish");
+  assert.match(uncertain.failures[0]!, /scalar expression \$NPM remains unresolved in command position/);
 });
 
 test("multiple assignment-only bindings keep variable-routed publishes visible", () => {
