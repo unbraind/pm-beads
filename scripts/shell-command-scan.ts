@@ -864,9 +864,12 @@ export function shellScalars(text: string): Map<string, string> {
   for (const line of text.split("\n")) {
     const activeHeredoc = heredocs[0];
     if (activeHeredoc !== undefined) {
-      const yamlNormalized = line.startsWith(activeHeredoc.yamlIndent)
-        ? line.slice(activeHeredoc.yamlIndent.length)
-        : line;
+      const lineIndent = /^[ \t]*/.exec(line)![0];
+      const yamlNormalized = activeHeredoc.yamlIndent.startsWith(lineIndent)
+        ? line.slice(lineIndent.length)
+        : line.startsWith(activeHeredoc.yamlIndent)
+          ? line.slice(activeHeredoc.yamlIndent.length)
+          : line;
       const candidate = (activeHeredoc.stripTabs ? yamlNormalized.replace(/^\t+/, "") : yamlNormalized).replace(/\r$/, "");
       if (candidate === activeHeredoc.delimiter) heredocs.shift();
       continue;

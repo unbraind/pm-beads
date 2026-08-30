@@ -1141,6 +1141,24 @@ test("a binding cleared by unset is removed from the scalar map", () => {
   }
 });
 
+test("a shallower YAML delimiter closes a more deeply nested heredoc opener", () => {
+  const text = [
+    "            cat <<EOF",
+    "            body",
+    "          EOF",
+    "          NPM=npm",
+  ].join("\n");
+  assert.equal(shellScalars(text).get("NPM"), "npm",
+    "the executable assignment after the delimiter remains visible");
+  const result = auditPublishAttestation([{ file: "release.yml", text: [
+    text,
+    "          $NPM publish --access public",
+    "          npm publish --access public --provenance",
+  ].join("\n") }]);
+  assert.equal(result.failures.length, 1, "the later variable-routed publish cannot be hidden");
+  assert.match(result.failures[0]!, /does not enable --provenance/);
+});
+
 test("an assignment-shaped line inside a here-document body is not indexed", () => {
   // A line inside a heredoc body is text fed to a command, not a shell binding.
   // The scanner used to index it and let an unattested publish borrow the flag.
