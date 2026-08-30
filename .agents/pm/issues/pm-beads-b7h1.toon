@@ -1,0 +1,31 @@
+id: pm-beads-b7h1
+title: Close CodeRabbit scalar scope follow-ups
+description: "Resolve PR 88 CodeRabbit findings 3890205942, 3890205947, 3890205949, 3890205951, and 3890205952."
+type: Issue
+status: closed
+priority: 1
+tags: []
+created_at: "2026-08-30T18:50:39.900Z"
+updated_at: "2026-08-30T18:55:44.794Z"
+closed_at: "2026-08-30T18:55:44.341Z"
+completed_at: "2026-08-30T18:55:44.341Z"
+author: pi-agent
+severity: high
+repro_steps: Brace groups with trailing redirections leak state; brace-suffixed values truncate; comment-shaped YAML markers normalize plain shell; two pm records have lifecycle/evidence drift.
+resolution: "Skip trailing group redirections before scope operators, retain attached braces as word characters and reject them from literals, restrict YAML markers to plain keys, and repair the two pm evidence records."
+expected_result: Scanner models the reported shell forms and pm evidence remains internally attributable.
+actual_result: Three scanner bypasses and two pm record integrity findings remain open.
+comments[1]{created_at,author,text}:
+  "2026-08-30T18:55:43.505Z",pi-agent,"All five CodeRabbit findings addressed. pm-beads-dhgs was reopened/reclosed so timestamps follow its final fixes; pm-beads-t9nz gained an immutable clarification naming 3889880095. Three scanner regressions failed 3/3 on source-only revert (each retained false provenance) and pass restored. npm test, 100% coverage, and docstring pass; release:check reached the expected stale changelog check before this item was closed."
+files[4]{path,scope}:
+  scripts/shell-command-scan.ts,project
+  test/verify-release-publish-attestation.test.ts,project
+  .agents/pm/issues/pm-beads-dhgs.toon,project
+  .agents/pm/issues/pm-beads-t9nz.toon,project
+tests[4]{command,scope,timeout_seconds,provenance{author,created_at,source_kind,source_ref}}:
+  npm test,project,2400,pi-agent,"2026-08-30T18:52:59.006Z",local_mutation,pi-pr88
+  npm run coverage,project,2400,pi-agent,"2026-08-30T18:52:59.006Z",local_mutation,pi-pr88
+  npm run docstring,project,2400,pi-agent,"2026-08-30T18:52:59.006Z",local_mutation,pi-pr88
+  "npm run release:check",project,2400,pi-agent,"2026-08-30T18:52:59.006Z",local_mutation,pi-pr88
+close_reason: Five CodeRabbit findings resolved with three audit regressions and two append-only pm evidence repairs.
+body: ""

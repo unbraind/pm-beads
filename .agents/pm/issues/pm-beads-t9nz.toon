@@ -6,7 +6,7 @@ status: closed
 priority: 1
 tags: []
 created_at: "2026-08-30T16:20:19.781Z"
-updated_at: "2026-08-30T16:21:31.958Z"
+updated_at: "2026-08-30T18:50:54.491Z"
 closed_at: "2026-08-30T16:21:31.936Z"
 completed_at: "2026-08-30T16:21:31.936Z"
 claim_principal: pi-agent
@@ -16,8 +16,9 @@ repro_steps: "{ NPM=npm; }; later run $NPM publish beside an attested sibling."
 resolution: Finding rejected with focused audit-level measurement against unchanged source.
 expected_result: NPM remains indexed and the unattested publish is audited.
 actual_result: Brace syntax prevents the persistent assignment from being indexed.
-comments[1]{created_at,author,text}:
+comments[2]{created_at,author,text}:
   "2026-08-30T16:21:30.693Z",pi-agent,"Finding 3889880095 does not reproduce on the pre-finding source. Added an audit-level measurement for , reverted only source, rebuilt, and the focused test still passed 1/1; restored source also passed 1/1. Existing tokenization already strips brace operators and indexes NPM. No source or test change retained."
+  "2026-08-30T18:50:54.491Z",pi-agent,"Clarification for the immutable prior evidence entry: the audit-level measurement was for finding 3889880095 and the `{ NPM=npm; }` brace-group regression."
 files[2]{path,scope}:
   scripts/shell-command-scan.ts,project
   test/verify-release-publish-attestation.test.ts,project

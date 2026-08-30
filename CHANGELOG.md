@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- Close CodeRabbit scalar scope follow-ups ([pm-beads-b7h1](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-b7h1.toon))
+- Shell scalar assignments are read from raw text, so a comment can flag an unattested publish ([pm-beads-dhgs](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-dhgs.toon))
 - Fail closed on unresolved scalar command words ([pm-beads-980d](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-980d.toon))
 - Keep plain-shell heredoc indentation significant ([pm-beads-ur0e](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-ur0e.toon))
 - Reject escaped heredoc operator text ([pm-beads-6aag](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-6aag.toon))
@@ -32,7 +34,6 @@
 
 ### Fixed
 
-- Shell scalar assignments are read from raw text, so a comment can flag an unattested publish ([pm-beads-dhgs](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-dhgs.toon))
 - Track scalar unset and heredoc body lines in shellScalars ([pm-beads-vsnb](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-vsnb.toon))
 
 ## 2026.8.28 - 2026-08-28

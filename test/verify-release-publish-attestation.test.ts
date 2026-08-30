@@ -913,7 +913,12 @@ test("an assignment the shell never makes is not indexed", () => {
 test("piped and backgrounded brace groups do not mutate parent-shell state", () => {
   assert.equal(shellScalars("} | cat; FLAG=--provenance\n").get("FLAG"), "--provenance",
     "an unmatched closing brace cannot mask a later independent assignment");
-  for (const grouped of ["{ FLAG=--provenance; } | cat", "{ FLAG=--provenance; } &"]) {
+  for (const grouped of [
+    "{ FLAG=--provenance; } | cat",
+    "{ FLAG=--provenance; } &",
+    "{ FLAG=--provenance; } >/dev/null | cat",
+    "{ FLAG=--provenance; } 2>&1 &",
+  ]) {
     assert.equal(shellScalars(`${grouped}\n`).get("FLAG"), undefined,
       `${grouped} runs outside parent-shell state`);
     const result = auditPublishAttestation([{ file: "release.yml", text: [
@@ -999,14 +1004,16 @@ test("assignment redirections do not erase persistent scalar state", () => {
 });
 
 test("escaped scalar operators cannot become attestation syntax after expansion", () => {
-  assert.equal(shellScalars("FLAG=--provenance\\;ignored\n").get("FLAG"), undefined,
-    "an escaped operator is not stored where expansion could reparse it as syntax");
-  const result = auditPublishAttestation([{ file: "release.yml", text: [
-    "          FLAG=--provenance\\;ignored",
-    "          npm publish --access public $FLAG",
-  ].join("\n") }]);
-  assert.equal(result.failures.length, 1, "the escaped semicolon remains part of one non-attestation argument");
-  assert.match(result.failures[0]!, /does not enable --provenance/);
+  for (const assignment of ["FLAG=--provenance\\;ignored", "FLAG=--provenance{"]) {
+    assert.equal(shellScalars(`${assignment}\n`).get("FLAG"), undefined,
+      `${assignment} is not stored where expansion could reparse or truncate it`);
+    const result = auditPublishAttestation([{ file: "release.sh", text: [
+      assignment,
+      "npm publish --access public $FLAG",
+    ].join("\n") }]);
+    assert.equal(result.failures.length, 1, `${assignment} remains one non-attestation argument`);
+    assert.match(result.failures[0]!, /does not enable --provenance/);
+  }
 });
 
 test("literal guard outcomes apply scalar deletion when the unset executes", () => {
@@ -1222,6 +1229,21 @@ test("a delimiter-looking body line keeps shell-significant indentation", () => 
   assert.equal(plainResult.failures.length, 1,
     "an indented plain-shell body line cannot expose a provenance-shaped assignment");
   assert.match(plainResult.failures[0]!, /does not enable --provenance/);
+
+  const commentedMarker = [
+    "# usage: |",
+    "    cat <<EOF",
+    "    EOF",
+    "FLAG=--provenance",
+    "EOF",
+    "npm publish --access public $FLAG",
+  ].join("\n");
+  assert.equal(shellScalars(commentedMarker).get("FLAG"), undefined,
+    "a commented block marker cannot enable YAML indentation normalization");
+  const commentResult = auditPublishAttestation([{ file: "release.sh", text: commentedMarker }]);
+  assert.equal(commentResult.failures.length, 1,
+    "a commented YAML example cannot expose a provenance-shaped heredoc body assignment");
+  assert.match(commentResult.failures[0]!, /does not enable --provenance/);
 });
 
 test("an assignment-shaped line inside a here-document body is not indexed", () => {

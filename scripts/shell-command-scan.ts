@@ -334,6 +334,12 @@ export function tokenizeCommands(text: string, depth = 0): ShellCommand[] {
       endWord();
       continue;
     }
+    // Braces are reserved words only when they stand alone. In `value{` the
+    // brace remains part of the argument rather than truncating the word.
+    if ((character === "{" || character === "}") && started) {
+      value += character;
+      continue;
+    }
     if (isOperatorStart(character)) {
       // `2>&1` is one redirection, not a command ended by a backgrounding `&`.
       // The `&` belongs to the word only while that word is still an operator
@@ -694,6 +700,10 @@ function maskExternalBraceGroups(line: string): string {
       if (start === undefined) continue;
       let next = index + 1;
       while (line[next] === " " || line[next] === "\t") next += 1;
+      // Redirections belong to the brace-group command and may sit between its
+      // closing brace and the pipe/background operator that changes its scope.
+      const redirections = /^(?:(?:[0-9]*(?:<>|>>?|<<?<?)|&>>?)(?:&[0-9-]+|[^\s;&|]+|[ \t]+[^\s;&|]+)?[ \t]*)+/.exec(line.slice(next));
+      if (redirections !== null) next += redirections[0].length;
       const operator = line[next];
       const following = line[next + 1];
       if ((operator === "|" && following !== "|")
@@ -819,7 +829,7 @@ const SCALAR_DECLARATIONS = new Set(["export", "readonly", "declare", "typeset"]
 
 /** A scalar value must remain inert when textually expanded and re-tokenised. */
 function isLiteralScalar(value: string): boolean {
-  return !/[$`"'();&|<>]/.test(value);
+  return !/[$`"'(){};&|<>]/.test(value);
 }
 
 /** Return the indentation YAML removes from each block-scalar content line. */
@@ -847,7 +857,7 @@ function yamlBlockIndents(lines: string[]): Array<string | undefined> {
       contentIndent = undefined;
       explicitIndent = undefined;
     }
-    const marker = /^([ \t]*).*:\s*[>|](?:([1-9])[+-]?|[+-]?([1-9])?)\s*(?:#.*)?$/.exec(line);
+    const marker = /^([ \t]*)(?:-\s+)?[A-Za-z_][A-Za-z0-9_-]*:\s*[>|](?:([1-9])[+-]?|[+-]?([1-9])?)\s*(?:#.*)?$/.exec(line);
     if (marker !== null) {
       keyIndent = marker[1]!.length;
       explicitIndent = Number(marker[2] ?? marker[3]) || undefined;
