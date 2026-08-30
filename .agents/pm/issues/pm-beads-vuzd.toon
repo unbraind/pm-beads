@@ -1,0 +1,26 @@
+id: pm-beads-vuzd
+title: Rebase the changelog date verifier onto the current release workflow
+description: "Rebase PR 79 onto current main while preserving the version-derived changelog date behavior, reconciling release-workflow conflicts, and validating the regression guard."
+type: Issue
+status: closed
+priority: 2
+tags: []
+created_at: "2026-08-30T15:15:54.555Z"
+updated_at: "2026-08-30T15:18:49.775Z"
+closed_at: "2026-08-30T15:18:49.754Z"
+completed_at: "2026-08-30T15:18:49.754Z"
+claim_principal: pi-agent
+author: pi-agent
+comments[1]{created_at,author,text}:
+  "2026-08-30T15:18:48.860Z",pi-agent,"Rebased onto origin/main. Resolved .github/workflows/release.yml by retaining main current protected-release and provenance flow while adding --date-from-version to all three generator invocations; resolved package.json by retaining the provenance verifier and release gate while adding --date-from-version and the changelog-date verifier; resolved .github/workflows/ci.yml by retaining both verifier jobs. npm run verify:release-changelog-date, npm test, and npm run release:check passed; coverage remained 100% statements, branches, functions, and lines. Regression proof: removing --date-from-version from package.json made npm run verify:release-changelog-date exit nonzero with four package.json failures, then restoring it passed."
+files[5]{path,scope,note}:
+  .github/workflows/release.yml,project,Preserve the current release transaction while carrying the date flag
+  .github/workflows/ci.yml,project,Run both release verifiers
+  package.json,project,Retain both release gates and version-derived changelog dates
+  scripts/verify-release-changelog-date.ts,project,Substantive verifier
+  test/verify-release-changelog-date.test.ts,project,Regression coverage
+tests[2]{command,scope,provenance{author,created_at,source_kind,source_ref}}:
+  npm test,project,pi-agent,"2026-08-30T15:16:16.310Z",local_mutation,fix/stabilise-changelog-date-from-version
+  "npm run release:check",project,pi-agent,"2026-08-30T15:16:16.310Z",local_mutation,fix/stabilise-changelog-date-from-version
+close_reason: Rebase conflicts resolved and all release/changelog regression gates pass.
+body: ""
