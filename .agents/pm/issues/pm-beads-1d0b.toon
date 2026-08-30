@@ -1,0 +1,24 @@
+id: pm-beads-1d0b
+title: CodeQL action updates split into mutually blocking pull requests
+description: Dependabot updates the CodeQL init and analyze actions separately even though CodeQL requires every action in a workflow to run the same release. Update the pair together and group future github/codeql-action updates so each bump remains mergeable.
+type: Issue
+status: closed
+priority: 2
+tags: []
+created_at: "2026-08-30T15:07:55.071Z"
+updated_at: "2026-08-30T15:13:49.461Z"
+closed_at: "2026-08-30T15:13:49.433Z"
+completed_at: "2026-08-30T15:13:49.433Z"
+claim_principal: pi-agent
+author: pi-agent
+comments[1]{created_at,author,text}:
+  "2026-08-30T15:13:40.008Z",pi-agent,"Updated every CodeQL action reference from the 4.37.8 SHA to the 4.37.9 SHA and added the github/codeql-action* Dependabot group. Regression proof: with both configuration edits reverted, test/codeql-workflow.test.ts failed on the missing group (exit 1); after restoration, both focused tests passed. npm test passed 380/380; npm run coverage reported 100% lines, branches, and functions across all seven measured source files; npm run docstring documented all 90 declarations; npm run typecheck passed."
+files[3]{path,scope,note}:
+  .github/workflows/codeql.yml,project,paired CodeQL init and analyze release pin
+  .github/dependabot.yml,project,Dependabot group for CodeQL action family
+  test/codeql-workflow.test.ts,project,regression coverage for paired pins and grouping
+tests[2]{command,path,scope,timeout_seconds,pm_context_mode,provenance{author,created_at,source_kind,source_ref}}:
+  npm test,test/codeql-workflow.test.ts,project,120,schema,pi-agent,"2026-08-30T15:13:39.506Z",local_mutation,main
+  npm run coverage,package.json,project,180,schema,pi-agent,"2026-08-30T15:13:39.506Z",local_mutation,main
+close_reason: "Bumped all CodeQL workflow actions as one release, grouped future Dependabot updates, and added a regression test enforcing both invariants."
+body: ""
