@@ -5,6 +5,9 @@
 ### Fixed
 
 - Pin pm-changelog 2026.8.30 before the next release ([pm-beads-h8cp](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-h8cp.toon))
+- Remove the unused changelog verifier test import ([pm-beads-3uet](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-3uet.toon))
+- Run the changelog date guard against same-day release suffixes ([pm-beads-7uxj](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-7uxj.toon))
+- Rebase the changelog date verifier onto the current release workflow ([pm-beads-vuzd](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-vuzd.toon))
 - CodeQL action updates split into mutually blocking pull requests ([pm-beads-1d0b](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-1d0b.toon))
 
 ## 2026.8.28 - 2026-08-28
