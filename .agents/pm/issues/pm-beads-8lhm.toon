@@ -1,0 +1,25 @@
+id: pm-beads-8lhm
+title: Recognize ampersand-first scalar redirections
+description: "Fix Greptile thread 3889785677: &> and &>> redirections must remain shell words rather than background separators during tokenization and scalar-state segmentation."
+type: Issue
+status: closed
+priority: 1
+tags: []
+created_at: "2026-08-30T15:41:19.540Z"
+updated_at: "2026-08-30T15:42:09.874Z"
+closed_at: "2026-08-30T15:42:09.863Z"
+completed_at: "2026-08-30T15:42:09.863Z"
+claim_principal: pi-agent
+author: pi-agent
+severity: high
+repro_steps: NPM=npm &>/dev/null; later run $NPM publish beside an attested sibling.
+resolution: Keep &>/&>> together in tokenization and parent-shell state segmentation.
+expected_result: NPM remains indexed and the unattested variable-routed publish fails audit.
+actual_result: The scanner treats & as background execution and drops the assignment.
+comments[1]{created_at,author,text}:
+  "2026-08-30T15:42:09.448Z",pi-agent,Fixed thread 3889785677 for joined and separated &> redirections. Source-only revert proof failed with undefined !== 'npm' for &>/dev/null; restored source passed 1/1. Audit-level coverage includes an attested sibling.
+files[2]{path,scope}:
+  scripts/shell-command-scan.ts,project
+  test/verify-release-publish-attestation.test.ts,project
+close_reason: Ampersand-first redirections now remain redirection tokens and preserve scalar state.
+body: ""

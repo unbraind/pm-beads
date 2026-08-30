@@ -324,7 +324,7 @@ export function tokenizeCommands(text: string, depth = 0): ShellCommand[] {
       // `2>&1` is one redirection, not a command ended by a backgrounding `&`.
       // The `&` belongs to the word only while that word is still an operator
       // awaiting its target.
-      if (character === "&" && /^[0-9]*[<>]>?$/.test(value)) {
+      if (character === "&" && (/^[0-9]*[<>]>?$/.test(value) || (!started && text[index + 1] === ">"))) {
         value += character;
         started = true;
         continue;
@@ -705,7 +705,7 @@ function parentShellStateCommands(line: string): ShellCommand[] {
     }
     // In `2>&1`, the ampersand is part of the redirection word rather than a
     // background operator, so it cannot change the assignment's shell scope.
-    if (character === "&" && /^[0-9]*[<>]>?$/.test(masked.slice(wordStart, index))) {
+    if (character === "&" && (/^[0-9]*[<>]>?$/.test(masked.slice(wordStart, index)) || masked[index + 1] === ">")) {
       wordStarted = true;
       continue;
     }

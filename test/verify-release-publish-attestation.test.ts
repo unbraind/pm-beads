@@ -920,10 +920,12 @@ test("every literal binding in a multi-name export is audited", () => {
 });
 
 test("assignment redirections do not erase persistent scalar state", () => {
-  assert.equal(shellScalars("NPM=npm 2>&1\n").get("NPM"), "npm",
-    "the ampersand belongs to the redirection, not a background operator");
+  for (const redirection of ["2>&1", "&>/dev/null", "&> /dev/null"]) {
+    assert.equal(shellScalars(`NPM=npm ${redirection}\n`).get("NPM"), "npm",
+      `the ampersand in ${redirection} belongs to the redirection, not a background operator`);
+  }
   const result = auditPublishAttestation([{ file: "release.yml", text: [
-    "          NPM=npm 2>&1",
+    "          NPM=npm &>/dev/null",
     "          $NPM publish --access public",
     "          npm publish --access public --provenance",
   ].join("\n") }]);
