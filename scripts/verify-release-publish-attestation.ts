@@ -268,12 +268,13 @@ function scanPublishSource(source: SourceFile): { invocations: PublishInvocation
     // value (`sudo -u root npm publish`) moves the program past where naming it
     // once would look. Missing a publish is a failed audit; offering one that no
     // shell would run is noise an operator dismisses.
-    for (const candidate of commandCandidates(command)) {
+    for (const [candidateIndex, candidate] of commandCandidates(command).entries()) {
       const first = candidate[0];
       const unresolvedIndexedCommand = first !== undefined && INDEXED_ARRAY_EXPRESSION.test(first.value);
       const unresolvedScalarPublisher = first !== undefined
         && SCALAR_EXPRESSION.test(first.value)
-        && candidate.slice(1).some(({ value }) => value === "publish");
+        && (candidate.slice(1).some(({ value }) => value === "publish")
+          || (candidateIndex === 0 && candidate.length === 2 && SCALAR_EXPRESSION.test(candidate[1]!.value)));
       const unresolvedScalarSubcommand = unresolvedNpmScalarSubcommand(candidate);
       const unresolvedExpression = unresolvedScalarSubcommand ?? first?.value;
       if ((unresolvedIndexedCommand || unresolvedScalarPublisher || unresolvedScalarSubcommand !== undefined)
