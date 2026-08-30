@@ -922,7 +922,7 @@ export function shellScalars(text: string): Map<string, string> {
     const line = lines[lineIndex]!;
     const activeHeredoc = heredocs[0];
     if (activeHeredoc !== undefined) {
-      const yamlNormalized = line.startsWith(activeHeredoc.yamlIndent)
+      const yamlNormalized = activeHeredoc.yamlIndent !== "" && line.startsWith(activeHeredoc.yamlIndent)
         ? line.slice(activeHeredoc.yamlIndent.length)
         : line;
       const candidate = (activeHeredoc.stripTabs ? yamlNormalized.replace(/^\t+/, "") : yamlNormalized).replace(/\r$/, "");
@@ -971,7 +971,7 @@ export function shellScalars(text: string): Map<string, string> {
           heredocs.push({
             delimiter: match[2]!,
             stripTabs: match[1] === "-",
-            yamlIndent: blockIndents[lineIndex] ?? /^[ \t]*/.exec(line)![0],
+            yamlIndent: blockIndents[lineIndex] ?? "",
           });
         }
         const separatedMatch = /(?<!<)<<(-?)$/.exec(opener.value);
@@ -988,7 +988,7 @@ export function shellScalars(text: string): Map<string, string> {
           heredocs.push({
             delimiter,
             stripTabs: separated![1] === "-",
-            yamlIndent: blockIndents[lineIndex] ?? /^[ \t]*/.exec(line)![0],
+            yamlIndent: blockIndents[lineIndex] ?? "",
           });
         }
       }

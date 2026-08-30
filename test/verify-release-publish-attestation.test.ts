@@ -1197,145 +1197,101 @@ test("a delimiter-looking body line keeps shell-significant indentation", () => 
   const result = auditPublishAttestation([{ file: "release.yml", text }]);
   assert.equal(result.failures.length, 1, "the body assignment cannot lend provenance");
   assert.match(result.failures[0]!, /does not enable --provenance/);
+
+  const plainShell = [
+    "  cat <<EOF",
+    "  EOF",
+    "FLAG=--provenance",
+    "EOF",
+    "npm publish --access public $FLAG",
+  ].join("\n");
+  assert.equal(shellScalars(plainShell).get("FLAG"), undefined,
+    "plain shell indentation remains part of an ordinary heredoc body line");
+  const plainResult = auditPublishAttestation([{ file: "release.sh", text: plainShell }]);
+  assert.equal(plainResult.failures.length, 1,
+    "an indented plain-shell body line cannot expose a provenance-shaped assignment");
+  assert.match(plainResult.failures[0]!, /does not enable --provenance/);
 });
 
 test("an assignment-shaped line inside a here-document body is not indexed", () => {
   // A line inside a heredoc body is text fed to a command, not a shell binding.
   // The scanner used to index it and let an unattested publish borrow the flag.
-  assert.equal(shellScalars([
-    "          cat <<EOF",
-    "          FLAG=--provenance",
-    "          EOF",
-  ].join("\n")).get("FLAG"), undefined,
+  assert.equal(shellScalars(["cat <<EOF", "FLAG=--provenance", "EOF"].join("\n")).get("FLAG"), undefined,
     "an assignment inside a heredoc body is not a binding");
-  // A real assignment after the heredoc is still indexed.
-  assert.equal(shellScalars([
-    "          cat <<EOF",
-    "          FLAG=--provenance",
-    "          EOF",
-    "          REAL=--provenance",
-  ].join("\n")).get("REAL"), "--provenance",
-    "an assignment after the heredoc is indexed normally");
-  // The <<- form strips leading tabs from the delimiter line.
-  assert.equal(shellScalars([
-    "          cat <<-EOF",
-    "	  FLAG=--provenance",
-    "	  EOF",
-  ].join("\n")).get("FLAG"), undefined,
+  assert.equal(shellScalars(["cat <<EOF", "FLAG=--provenance", "EOF", "REAL=--provenance"].join("\n"))
+    .get("REAL"), "--provenance", "an assignment after the heredoc is indexed normally");
+  assert.equal(shellScalars(["cat <<-EOF", "\tFLAG=--provenance", "\tEOF"].join("\n")).get("FLAG"), undefined,
     "an assignment inside a <<- heredoc body is not a binding");
-  // A quoted delimiter is handled the same way, joined or separated.
+
   for (const quotedOpener of ["cat <<'EOF'", "cat << 'EOF'"]) {
-    assert.equal(shellScalars([
-      `          ${quotedOpener}`,
-      "          FLAG=--provenance",
-      "          EOF",
-    ].join("\n")).get("FLAG"), undefined,
-    `an assignment inside the ${quotedOpener} heredoc body is not a binding`);
+    assert.equal(shellScalars([quotedOpener, "FLAG=--provenance", "EOF"].join("\n")).get("FLAG"), undefined,
+      `an assignment inside the ${quotedOpener} heredoc body is not a binding`);
   }
-  for (const falseOpener of [
-    "          # <<EOF",
-    "          echo '<<EOF'",
-    "          echo x'<<EOF'",
-    "          echo x'<<' EOF",
-    "          echo x\\<\\<EOF",
-  ]) {
-    assert.equal(shellScalars(`${falseOpener}\n          REAL=--provenance\n`).get("REAL"), "--provenance",
-      `${falseOpener.trim()} does not open a heredoc`);
+  for (const falseOpener of ["# <<EOF", "echo '<<EOF'", "echo x'<<EOF'", "echo x'<<' EOF", "echo x\\<\\<EOF"]) {
+    assert.equal(shellScalars(`${falseOpener}\nREAL=--provenance\n`).get("REAL"), "--provenance",
+      `${falseOpener} does not open a heredoc`);
   }
   for (const falseOperator of ["echo x'<<EOF'", "echo x\\<\\<EOF"]) {
-    const literalOperator = auditPublishAttestation([{ file: "release.yml", text: [
-      `          ${falseOperator}`,
-      "          CMD=\"npm publish\"",
-      "          $CMD --access public",
-      "          npm publish --access public --provenance",
+    const literalOperator = auditPublishAttestation([{ file: "release.sh", text: [
+      falseOperator,
+      "CMD=\"npm publish\"",
+      "$CMD --access public",
+      "npm publish --access public --provenance",
     ].join("\n") }]);
     assert.equal(literalOperator.failures.length, 1,
       `${falseOperator} cannot suppress a variable-routed unattested publish`);
     assert.match(literalOperator.failures[0]!, /does not enable --provenance/);
   }
-  assert.equal(shellScalars([
-    "          cat <<EOF",
-    "            EOF",
-    "          FLAG=--provenance",
-    "          EOF",
-  ].join("\n")).get("FLAG"), undefined,
+
+  assert.equal(shellScalars(["cat <<EOF", "  EOF", "FLAG=--provenance", "EOF"].join("\n")).get("FLAG"), undefined,
     "extra indentation does not close an ordinary heredoc");
-  assert.equal(shellScalars([
-    "          cat <<123",
-    "          FLAG=--provenance",
-    "          123",
-  ].join("\n")).get("FLAG"), undefined,
+  assert.equal(shellScalars(["cat <<123", "FLAG=--provenance", "123"].join("\n")).get("FLAG"), undefined,
     "a non-identifier heredoc delimiter still hides body text from scalar indexing");
   for (const joinedOpener of ["cat<<EOF", "2<<EOF", "cat<< EOF"]) {
-    assert.equal(shellScalars([
-      `          ${joinedOpener}`,
-      "          FLAG=--provenance",
-      "          EOF",
-    ].join("\n")).get("FLAG"), undefined,
-    `${joinedOpener} still opens a heredoc whose body is not shell state`);
+    assert.equal(shellScalars([joinedOpener, "FLAG=--provenance", "EOF"].join("\n")).get("FLAG"), undefined,
+      `${joinedOpener} still opens a heredoc whose body is not shell state`);
   }
-  assert.equal(shellScalars([
-    "          cat << EOF",
-    "          FLAG=--provenance",
-    "          EOF",
-  ].join("\n")).get("FLAG"), undefined,
+  assert.equal(shellScalars(["cat << EOF", "FLAG=--provenance", "EOF"].join("\n")).get("FLAG"), undefined,
     "a space-separated heredoc operator still hides body text from scalar indexing");
   for (const multipleOpeners of ["cat <<A <<B", "cat<<A<<B", "cat <<A<< B"]) {
-    assert.equal(shellScalars([
-      `          ${multipleOpeners}`,
-      "          body a",
-      "          A",
-      "          FLAG=--provenance",
-      "          B",
-    ].join("\n")).get("FLAG"), undefined,
-    `all heredoc bodies opened by ${multipleOpeners} remain non-executable text`);
+    assert.equal(shellScalars([multipleOpeners, "body a", "A", "FLAG=--provenance", "B"].join("\n"))
+      .get("FLAG"), undefined, `all heredoc bodies opened by ${multipleOpeners} remain non-executable text`);
   }
-  assert.equal(shellScalars([
-    "          cat << A<<B",
-    "          A<<B",
-    "          A",
-    "          FLAG=--provenance",
-    "          B",
-  ].join("\n")).get("FLAG"), undefined,
-    "a delimiter-looking first body line cannot expose the reverse-mixed second body");
-  // <<< (here-string) must NOT be mistaken for a heredoc.
-  assert.equal(shellScalars([
-    "          cat <<<word",
-    "          FLAG=--provenance",
-  ].join("\n")).get("FLAG"), "--provenance",
+  assert.equal(shellScalars(["cat << A<<B", "A<<B", "A", "FLAG=--provenance", "B"].join("\n"))
+    .get("FLAG"), undefined, "a delimiter-looking first body line cannot expose the reverse-mixed second body");
+  assert.equal(shellScalars(["cat <<<word", "FLAG=--provenance"].join("\n")).get("FLAG"), "--provenance",
     "a here-string (<<<) does not open a heredoc, so the following line is still indexed");
 
-  // The bypass, end to end: without the fix this audit returns no failures.
   for (const opener of ["cat <<EOF", "cat << EOF", "cat<<EOF", "2<<EOF", "cat<< EOF"]) {
-    const result = auditPublishAttestation([{ file: "release.yml", text: [
-      `          ${opener}`,
-      "          FLAG=--provenance",
-      "          EOF",
-      "          npm publish --access public $FLAG",
+    const result = auditPublishAttestation([{ file: "release.sh", text: [
+      opener,
+      "FLAG=--provenance",
+      "EOF",
+      "npm publish --access public $FLAG",
     ].join("\n") }]);
     assert.equal(result.failures.length, 1, `a publish flagged only by a ${opener} body line is unattested`);
     assert.match(result.failures[0]!, /does not enable --provenance/);
   }
   for (const multipleOpeners of ["cat<<A<<B", "cat <<A<< B"]) {
-    const chained = auditPublishAttestation([{ file: "release.yml", text: [
-      `          ${multipleOpeners}`,
-      "          body a",
-      "          A",
-      "          FLAG=--provenance",
-      "          B",
-      "          npm publish --access public $FLAG",
+    const chained = auditPublishAttestation([{ file: "release.sh", text: [
+      multipleOpeners,
+      "body a",
+      "A",
+      "FLAG=--provenance",
+      "B",
+      "npm publish --access public $FLAG",
     ].join("\n") }]);
     assert.equal(chained.failures.length, 1,
       `a second heredoc body opened by ${multipleOpeners} cannot lend provenance`);
     assert.match(chained.failures[0]!, /does not enable --provenance/);
   }
-  const reverseMixed = auditPublishAttestation([{ file: "release.yml", text: [
-    "          cat << A<<B",
-    "          A<<B",
-    "          A",
-    "          FLAG=--provenance",
-    "          B",
-    "          npm publish --access public $FLAG",
+  const reverseMixed = auditPublishAttestation([{ file: "release.sh", text: [
+    "cat << A<<B",
+    "A<<B",
+    "A",
+    "FLAG=--provenance",
+    "B",
+    "npm publish --access public $FLAG",
   ].join("\n") }]);
   assert.equal(reverseMixed.failures.length, 1,
     "a reverse-mixed second heredoc body cannot lend provenance");
