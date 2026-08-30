@@ -1,0 +1,24 @@
+id: pm-beads-7uxj
+title: Run the changelog date guard against same-day release suffixes
+description: "Resolve the remaining review finding now that a suffix-capable pm-changelog release is published: upgrade the pinned generator and make the executable verifier exercise a suffixed calendar version."
+type: Issue
+status: closed
+priority: 2
+tags: []
+created_at: "2026-08-30T15:20:00.434Z"
+updated_at: "2026-08-30T15:23:47.901Z"
+closed_at: "2026-08-30T15:23:47.886Z"
+completed_at: "2026-08-30T15:23:47.886Z"
+claim_principal: pi-agent
+author: pi-agent
+comments[1]{created_at,author,text}:
+  "2026-08-30T15:23:47.373Z",pi-agent,"Upgraded pm-changelog from 2026.8.17 to 2026.8.29 and changed the executable verifier probe to 2026.1.2-2. npm run verify:release-changelog-date, npm test, and npm run release:check pass, with 100% coverage. Regression proof: reinstalling 2026.8.17 while retaining the suffixed probe made the verifier exit nonzero because --date-from-version rejected 2026.1.2-2; restoring package.json and package-lock.json plus npm ci passed."
+files[3]{path,scope,note}:
+  package.json,project,Raise the pm-changelog floor to a suffix-capable release
+  package-lock.json,project,Lock the updated generator
+  scripts/verify-release-changelog-date.ts,project,Exercise a same-day release suffix
+tests[2]{command,scope,provenance{author,created_at,source_kind,source_ref}}:
+  "npm run verify:release-changelog-date",project,pi-agent,"2026-08-30T15:20:14.112Z",local_mutation,fix/stabilise-changelog-date-from-version
+  npm test,project,pi-agent,"2026-08-30T15:20:14.112Z",local_mutation,fix/stabilise-changelog-date-from-version
+close_reason: The installed generator and executable release guard now support and test same-day suffixed versions.
+body: ""

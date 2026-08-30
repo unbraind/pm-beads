@@ -1,0 +1,22 @@
+id: pm-beads-znub
+title: "The changelog gate stamps an untagged version with the current date, so its verdict flips every midnight with no commit"
+description: "pm-changelog synthesises a pending release window for a version with no matching git tag and stamps it with the current UTC date rather than anything derived from the input. The release workflow tags only after npm publish succeeds, and publish has failed fleet wide since 2026-08-21, so this package carries an untagged version and sits on that clock dependent path. It passes today only because the package version and today's date are the same calendar day. Verified on pm-ops where those two differ, which is what makes the comparison decisive: an untagged 2026.8.22 generates heading 2026.8.22 - 2026-08-24 without the flag and 2026.8.22 - 2026-08-22 with it. The flag already shipped in pm-changelog 2026.8.17 and no fleet package passed it. Applied to every invocation of the generator here rather than only the scripts named changelog, because the release workflow invokes it directly and generation and check must not disagree. Site audit: package.json 4 of 4 flagged, release.yml 3 of 3 flagged."
+type: Issue
+status: open
+priority: 1
+tags[3]: changelog,gates,release
+created_at: "2026-08-24T09:45:25.555Z"
+updated_at: "2026-08-27T17:18:36.080Z"
+author: "harness:claude-code"
+comments[2]{created_at,author,text}:
+  "2026-08-24T10:03:22.643Z","harness:claude-code","CodeRabbit was right that the linked test only covered the package.json invocation and never reached the direct pm-changelog commands in the release workflow. Added an executable check that does both halves. The static half enumerates every tracked file containing a generator invocation and asserts each file's flagged count is not below its site count, which fails when any single site loses the flag; verified by removing the flag from one of two release.yml sites and watching it report one of two and exit non-zero. The behavioural half runs the generator twice on the same probe version 2026.1.2, deliberately chosen so its calendar date cannot coincide with today, and asserts the heading is 2026.1.2 - 2026-01-02 with the flag and 2026.1.2 - 2026-08-24 without it, so the test states the defect rather than merely asserting the fix."
+  "2026-08-27T17:18:35.623Z",claude-agent,"The verifier this issue added was a file the repository shipped and nothing executed. It was absent from release:check and from every CI step, in thirteen of the fifteen repositories that carry it, so a later edit could have removed --date-from-version from the workflow and both generation and --check would have agreed on a clock-derived date without anything failing. It is now a named script, the last step of release:check, and its own CI step. Reported by CodeRabbit on unbraind/pm-graph#70.\n\nThe verifier itself gained two fixes in the same pass, also from CodeRabbit. Its static section now balances flags per line rather than per file, which closes two hiding places at once: a single line carrying several invocations where only one is flagged, and an unflagged invocation hiding behind a mention of the flag on a line that invokes nothing. Its behavioural section no longer runs the unflagged control under || true, so a control that fails to produce a heading now fails the gate instead of printing a note while the script exits zero. Both were confirmed by executing the old script against the defect and watching it exit zero."
+files[4]{path,scope,note}:
+  .github/workflows/ci.yml,project,runs the changelog-date verifier as its own step
+  .github/workflows/release.yml,project,all three release-time generator invocations carry the same flag so generation and check cannot disagree
+  package.json,project,all four generator invocations derive the no-tag date from the calendar version
+  scripts/verify-release-changelog-date.sh,project,"executable proof for the release workflow invocations, which the package.json changelog check never reaches"
+tests[2]{command,path,scope,note}:
+  "npm run changelog:check",package.json,project,without the flag the heading date is stamped from the clock and the comparison fails on any day after generation
+  bash scripts/verify-release-changelog-date.sh,scripts/verify-release-changelog-date.sh,project,"exercises the release workflow path that npm run changelog:check does not: asserts every generator invocation in every tracked file carries the flag, and shows the same probe version yielding its own calendar date with the flag and today's date without it"
+body: ""
