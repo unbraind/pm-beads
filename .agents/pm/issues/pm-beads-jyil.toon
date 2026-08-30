@@ -1,0 +1,29 @@
+id: pm-beads-jyil
+title: Reject quoted heredoc operator text
+description: "Fix Greptile PR 88 finding 3890108579: operator-looking characters inside a mixed quoted shell word open a synthetic heredoc."
+type: Issue
+status: closed
+priority: 1
+tags: []
+created_at: "2026-08-30T17:59:27.668Z"
+updated_at: "2026-08-30T18:04:26.597Z"
+closed_at: "2026-08-30T18:04:26.169Z"
+completed_at: "2026-08-30T18:04:26.169Z"
+author: pi-agent
+severity: high
+repro_steps: "echo x'<<EOF' followed by CMD=\"npm publish\" suppresses scalar indexing."
+resolution: Retain quote provenance privately per token and accept heredoc operators only when both operator characters were unquoted.
+expected_result: Only unquoted heredoc operators suppress following body lines.
+actual_result: startsQuoted cannot distinguish an unquoted prefix from an internally quoted operator.
+comments[1]{created_at,author,text}:
+  "2026-08-30T18:04:25.177Z",pi-agent,"Greptile 3890108579 reproduced: source-only revert made the focused regression fail because echo x'<<EOF' opened a synthetic heredoc and suppressed REAL; SOURCE_ONLY_REVERT_EXIT=1. Restored source tracks per-character quote provenance and passes map/audit regressions for joined and separated quoted operators. npm test, 100% coverage, docstring, and release:check all pass."
+files[2]{path,scope}:
+  scripts/shell-command-scan.ts,project
+  test/verify-release-publish-attestation.test.ts,project
+tests[4]{command,scope,timeout_seconds,provenance{author,created_at,source_kind,source_ref}}:
+  npm test,project,2400,pi-agent,"2026-08-30T18:01:58.067Z",local_mutation,pi-pr88
+  npm run coverage,project,2400,pi-agent,"2026-08-30T18:01:58.067Z",local_mutation,pi-pr88
+  npm run docstring,project,2400,pi-agent,"2026-08-30T18:01:58.067Z",local_mutation,pi-pr88
+  "npm run release:check",project,2400,pi-agent,"2026-08-30T18:01:58.067Z",local_mutation,pi-pr88
+close_reason: Quoted operator text no longer opens synthetic heredocs; regressions and release gates pass.
+body: ""

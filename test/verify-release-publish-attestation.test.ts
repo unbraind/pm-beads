@@ -1232,10 +1232,19 @@ test("an assignment-shaped line inside a here-document body is not indexed", () 
     ].join("\n")).get("FLAG"), undefined,
     `an assignment inside the ${quotedOpener} heredoc body is not a binding`);
   }
-  for (const falseOpener of ["          # <<EOF", "          echo '<<EOF'"]) {
+  for (const falseOpener of ["          # <<EOF", "          echo '<<EOF'", "          echo x'<<EOF'", "          echo x'<<' EOF"]) {
     assert.equal(shellScalars(`${falseOpener}\n          REAL=--provenance\n`).get("REAL"), "--provenance",
       `${falseOpener.trim()} does not open a heredoc`);
   }
+  const mixedQuotedOperator = auditPublishAttestation([{ file: "release.yml", text: [
+    "          echo x'<<EOF'",
+    "          CMD=\"npm publish\"",
+    "          $CMD --access public",
+    "          npm publish --access public --provenance",
+  ].join("\n") }]);
+  assert.equal(mixedQuotedOperator.failures.length, 1,
+    "quoted operator text cannot suppress a variable-routed unattested publish");
+  assert.match(mixedQuotedOperator.failures[0]!, /does not enable --provenance/);
   assert.equal(shellScalars([
     "          cat <<EOF",
     "            EOF",

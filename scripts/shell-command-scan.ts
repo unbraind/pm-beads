@@ -52,6 +52,9 @@ export interface ShellToken {
   startsQuoted: boolean;
 }
 
+/** Quote provenance for syntax-sensitive characters after quote removal. */
+const quotedCharacterIndexes = new WeakMap<ShellToken, ReadonlySet<number>>();
+
 /** One simple command: the words it would run, in order. */
 export type ShellCommand = ShellToken[];
 
@@ -218,14 +221,18 @@ export function tokenizeCommands(text: string, depth = 0): ShellCommand[] {
   let value = "";
   let quoted = false;
   let startsQuoted = false;
+  let quotedIndexes: number[] = [];
   let started = false;
 
   const endWord = (): void => {
     if (!started) return;
-    command.push({ value, quoted, startsQuoted });
+    const token = { value, quoted, startsQuoted };
+    quotedCharacterIndexes.set(token, new Set(quotedIndexes));
+    command.push(token);
     value = "";
     quoted = false;
     startsQuoted = false;
+    quotedIndexes = [];
     started = false;
   };
   const endCommand = (): void => {
@@ -255,7 +262,9 @@ export function tokenizeCommands(text: string, depth = 0): ShellCommand[] {
     if (character === "'") {
       const close = text.indexOf("'", index + 1);
       const end = close === -1 ? text.length : close;
-      value += text.slice(index + 1, end);
+      const content = text.slice(index + 1, end);
+      for (let offset = 0; offset < content.length; offset += 1) quotedIndexes.push(value.length + offset);
+      value += content;
       quoted = true;
       if (!started) startsQuoted = true;
       started = true;
@@ -269,7 +278,10 @@ export function tokenizeCommands(text: string, depth = 0): ShellCommand[] {
         if (inner === "\\") {
           const next = text[index + 1];
           if (next !== undefined) {
-            if (next !== "\n") value += next;
+            if (next !== "\n") {
+              quotedIndexes.push(value.length);
+              value += next;
+            }
             index += 2;
             continue;
           }
@@ -282,6 +294,7 @@ export function tokenizeCommands(text: string, depth = 0): ShellCommand[] {
           index = end;
           continue;
         }
+        quotedIndexes.push(value.length);
         value += inner;
         index += 1;
       }
@@ -950,7 +963,9 @@ export function shellScalars(text: string): Map<string, string> {
       for (let index = 0; index < command.length; index += 1) {
         const opener = command[index]!;
         if (opener.startsQuoted) continue;
-        const joined = [...opener.value.matchAll(/(?<!<)<<(-?)([^<\s]+?)(?=<<|$)/g)];
+        const quotedIndexes = quotedCharacterIndexes.get(opener)!;
+        const joined = [...opener.value.matchAll(/(?<!<)<<(-?)([^<\s]+?)(?=<<|$)/g)]
+          .filter((match) => !quotedIndexes.has(match.index!) && !quotedIndexes.has(match.index! + 1));
         for (const match of joined) {
           heredocs.push({
             delimiter: match[2]!,
@@ -958,7 +973,12 @@ export function shellScalars(text: string): Map<string, string> {
             yamlIndent: blockIndents[lineIndex] ?? /^[ \t]*/.exec(line)![0],
           });
         }
-        const separated = /(?<!<)<<(-?)$/.exec(opener.value);
+        const separatedMatch = /(?<!<)<<(-?)$/.exec(opener.value);
+        const separated = separatedMatch !== null
+          && !quotedIndexes.has(separatedMatch.index)
+          && !quotedIndexes.has(separatedMatch.index + 1)
+          ? separatedMatch
+          : null;
         const delimiterToken = separated !== null ? command[index + 1] : undefined;
         const delimiter = delimiterToken?.startsQuoted
           ? delimiterToken.value
