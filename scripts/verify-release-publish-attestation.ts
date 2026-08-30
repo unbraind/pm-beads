@@ -181,6 +181,19 @@ export function isPublishCommand(command: ShellCommand): boolean {
   return false;
 }
 
+/** Return an unresolved scalar in npm subcommand position, after known options. */
+function unresolvedNpmScalarSubcommand(command: ShellCommand): string | undefined {
+  if (commandName(command) !== "npm") return undefined;
+  const args = commandArguments(command);
+  for (let index = 0; index < args.length; index += 1) {
+    const token = args[index]!;
+    if (VALUE_TAKING_FLAGS.has(token.value)) { index += 1; continue; }
+    if (token.value.startsWith("-")) continue;
+    return SCALAR_EXPRESSION.test(token.value) ? token.value : undefined;
+  }
+  return undefined;
+}
+
 /**
  * Decide whether one publish command actually enables the attestation.
  *
@@ -261,12 +274,9 @@ function scanPublishSource(source: SourceFile): { invocations: PublishInvocation
       const unresolvedScalarPublisher = first !== undefined
         && SCALAR_EXPRESSION.test(first.value)
         && candidate.slice(1).some(({ value }) => value === "publish");
-      const subcommand = candidate[1];
-      const unresolvedScalarSubcommand = commandName(candidate) === "npm"
-        && subcommand !== undefined
-        && SCALAR_EXPRESSION.test(subcommand.value);
-      const unresolvedExpression = unresolvedScalarSubcommand ? subcommand.value : first?.value;
-      if ((unresolvedIndexedCommand || unresolvedScalarPublisher || unresolvedScalarSubcommand)
+      const unresolvedScalarSubcommand = unresolvedNpmScalarSubcommand(candidate);
+      const unresolvedExpression = unresolvedScalarSubcommand ?? first?.value;
+      if ((unresolvedIndexedCommand || unresolvedScalarPublisher || unresolvedScalarSubcommand !== undefined)
         && unresolvedExpression !== undefined) {
         unresolved.add(unresolvedExpression);
         continue;

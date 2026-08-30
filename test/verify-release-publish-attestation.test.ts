@@ -952,16 +952,26 @@ test("literal assignment success carries parent state through a conditional", ()
     "an unresolved scalar command word fails closed instead of hiding a possible publish");
   assert.match(uncertain.failures[0]!, /scalar expression \$NPM remains unresolved in command position/);
 
-  const dynamicPublishes = ["${CMD:-npm} publish", "npm $SUB"];
+  const dynamicPublishes = [
+    "${CMD:-npm} publish",
+    "npm $SUB",
+    "npm --access public $SUB",
+    "npm --ignore-scripts $SUB",
+  ];
   const dynamicResults = dynamicPublishes.map((dynamicPublish) => auditPublishAttestation([{ file: "release.sh", text: [
     dynamicPublish,
     "npm publish --access public --provenance",
   ].join("\n") }]));
-  assert.deepEqual(dynamicResults.map(({ failures }) => failures.length), [1, 1],
-    "both dynamic publish forms fail closed rather than hiding behind the attested sibling");
+  assert.deepEqual(dynamicResults.map(({ failures }) => failures.length), [1, 1, 1, 1],
+    "all dynamic publish forms fail closed rather than hiding behind the attested sibling");
   for (const dynamic of dynamicResults) {
     assert.match(dynamic.failures[0]!, /scalar expression .* remains unresolved in command position/);
   }
+  const noSubcommand = auditPublishAttestation([{ file: "release.sh", text: [
+    "npm",
+    "npm publish --access public --provenance",
+  ].join("\n") }]);
+  assert.equal(noSubcommand.failures.length, 0, "npm without any subcommand does not invent a dynamic publish");
 });
 
 test("multiple assignment-only bindings keep variable-routed publishes visible", () => {

@@ -1,0 +1,29 @@
+id: pm-beads-vu7d
+title: Fail closed on option-prefixed dynamic npm subcommands
+description: Fix Greptile PR 88 finding 3890282373 while rejecting non-reproducing redirected-brace finding 3890282370 with measurement.
+type: Issue
+status: closed
+priority: 1
+tags: []
+created_at: "2026-08-30T19:16:59.952Z"
+updated_at: "2026-08-30T19:23:50.925Z"
+closed_at: "2026-08-30T19:23:50.400Z"
+completed_at: "2026-08-30T19:23:50.400Z"
+author: pi-agent
+severity: high
+repro_steps: npm --access public $SUB is omitted beside an attested sibling.
+resolution: Walk npm arguments past known option/value pairs before rejecting an unresolved scalar in subcommand position.
+expected_result: Known npm option values are skipped before dynamic subcommand refusal.
+actual_result: Only the immediate npm argument is checked for an unresolved scalar.
+comments[1]{created_at,author,text}:
+  "2026-08-30T19:23:49.271Z",pi-agent,"Finding 3890282373 reproduced: source-only revert produced dynamic failure counts [1,1,0] rather than [1,1,1], SOURCE_ONLY_REVERT_EXIT=1. Restored code skips known value-taking and flag-only npm options before testing the first subcommand token; coverage also exercises no-subcommand and flag-only controls. Finding 3890282370 was measured on current source and rejected: scalar=null and the audit returned the expected unprovenanced failure. Full test, 100% coverage, docstring, release, and real workflow verification pass."
+files[2]{path,scope}:
+  scripts/verify-release-publish-attestation.ts,project
+  test/verify-release-publish-attestation.test.ts,project
+tests[4]{command,scope,timeout_seconds,provenance{author,created_at,source_kind,source_ref}}:
+  npm test,project,2400,pi-agent,"2026-08-30T19:18:26.718Z",local_mutation,pi-pr88
+  npm run coverage,project,2400,pi-agent,"2026-08-30T19:18:26.718Z",local_mutation,pi-pr88
+  npm run docstring,project,2400,pi-agent,"2026-08-30T19:18:26.718Z",local_mutation,pi-pr88
+  "npm run release:check",project,2400,pi-agent,"2026-08-30T19:18:26.718Z",local_mutation,pi-pr88
+close_reason: Option-prefixed dynamic npm subcommands fail closed; redirected-brace finding rejected with direct evidence.
+body: ""
