@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Close reverse heredoc and uncertain unset review bypasses ([pm-beads-yaua](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-yaua.toon))
 - Queue trailing separated heredoc after joined opener ([pm-beads-uwkq](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-uwkq.toon))
 - Restore YAML indentation branch coverage after rebase ([pm-beads-mnb5](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-mnb5.toon))
 - Use YAML block indentation for heredoc delimiters ([pm-beads-zroe](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-zroe.toon))

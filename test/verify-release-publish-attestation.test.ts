@@ -1103,7 +1103,7 @@ test("a scalar is taken only from a line that is exactly one literal assignment"
 
 test("a binding cleared by unset is removed from the scalar map", () => {
   // `FLAG=--provenance; unset FLAG` makes the shell forget FLAG, so a later
-  // `` expands to empty. The scanner used to keep the binding and let an
+  // `$FLAG` expands to empty. The scanner used to keep the binding and let an
   // unattested publish borrow the flag from a variable the shell no longer holds.
   assert.equal(shellScalars("FLAG=--provenance; unset FLAG\n").get("FLAG"), undefined,
     "unset on the same line removes the binding");
@@ -1111,6 +1111,8 @@ test("a binding cleared by unset is removed from the scalar map", () => {
     "unset on a later line removes the binding");
   assert.equal(shellScalars("FLAG=--provenance\necho ready; unset FLAG\n").get("FLAG"), undefined,
     "unset after an ordinary completed command removes the binding");
+  assert.equal(shellScalars("FLAG=--provenance\necho ready && unset FLAG\n").get("FLAG"), undefined,
+    "an unset that may execute removes a binding rather than retaining false provenance");
   assert.equal(shellScalars("FLAG=--provenance\nunset -v FLAG\n").get("FLAG"), undefined,
     "unset -v (explicit variable) removes the binding");
   // A binding NOT cleared by unset is preserved.
@@ -1136,6 +1138,7 @@ test("a binding cleared by unset is removed from the scalar map", () => {
     ["separate line", ["          FLAG=--provenance", "          unset FLAG", "          npm publish --access public $FLAG"]],
     ["before a later command", ["          FLAG=--provenance", "          unset FLAG; npm publish --access public $FLAG"]],
     ["after an earlier command", ["          FLAG=--provenance", "          echo ready; unset FLAG", "          npm publish --access public $FLAG"]],
+    ["after a possibly successful command", ["          FLAG=--provenance", "          echo ready && unset FLAG", "          npm publish --access public $FLAG"]],
   ] as const) {
     const result = auditPublishAttestation([{ file: "release.yml", text: text.join("\n") }]);
     assert.equal(result.failures.length, 1, `a publish flagged only by a binding cleared by unset (${label}) is unattested`);
@@ -1220,13 +1223,15 @@ test("an assignment-shaped line inside a here-document body is not indexed", () 
     "	  EOF",
   ].join("\n")).get("FLAG"), undefined,
     "an assignment inside a <<- heredoc body is not a binding");
-  // A quoted delimiter is handled the same way.
-  assert.equal(shellScalars([
-    "          cat <<'EOF'",
-    "          FLAG=--provenance",
-    "          EOF",
-  ].join("\n")).get("FLAG"), undefined,
-    "an assignment inside a quoted-delimiter heredoc body is not a binding");
+  // A quoted delimiter is handled the same way, joined or separated.
+  for (const quotedOpener of ["cat <<'EOF'", "cat << 'EOF'"]) {
+    assert.equal(shellScalars([
+      `          ${quotedOpener}`,
+      "          FLAG=--provenance",
+      "          EOF",
+    ].join("\n")).get("FLAG"), undefined,
+    `an assignment inside the ${quotedOpener} heredoc body is not a binding`);
+  }
   for (const falseOpener of ["          # <<EOF", "          echo '<<EOF'"]) {
     assert.equal(shellScalars(`${falseOpener}\n          REAL=--provenance\n`).get("REAL"), "--provenance",
       `${falseOpener.trim()} does not open a heredoc`);
@@ -1268,6 +1273,14 @@ test("an assignment-shaped line inside a here-document body is not indexed", () 
     ].join("\n")).get("FLAG"), undefined,
     `all heredoc bodies opened by ${multipleOpeners} remain non-executable text`);
   }
+  assert.equal(shellScalars([
+    "          cat << A<<B",
+    "          A<<B",
+    "          A",
+    "          FLAG=--provenance",
+    "          B",
+  ].join("\n")).get("FLAG"), undefined,
+    "a delimiter-looking first body line cannot expose the reverse-mixed second body");
   // <<< (here-string) must NOT be mistaken for a heredoc.
   assert.equal(shellScalars([
     "          cat <<<word",
@@ -1299,6 +1312,17 @@ test("an assignment-shaped line inside a here-document body is not indexed", () 
       `a second heredoc body opened by ${multipleOpeners} cannot lend provenance`);
     assert.match(chained.failures[0]!, /does not enable --provenance/);
   }
+  const reverseMixed = auditPublishAttestation([{ file: "release.yml", text: [
+    "          cat << A<<B",
+    "          A<<B",
+    "          A",
+    "          FLAG=--provenance",
+    "          B",
+    "          npm publish --access public $FLAG",
+  ].join("\n") }]);
+  assert.equal(reverseMixed.failures.length, 1,
+    "a reverse-mixed second heredoc body cannot lend provenance");
+  assert.match(reverseMixed.failures[0]!, /does not enable --provenance/);
 });
 
 test("a read-write redirection does not turn its target into the command", () => {

@@ -1,0 +1,29 @@
+id: pm-beads-yaua
+title: Close reverse heredoc and uncertain unset review bypasses
+description: "Fix PR 88 Greptile 3890039791 and CodeRabbit 3890050169, plus documentation finding 3890050172."
+type: Issue
+status: closed
+priority: 1
+tags: []
+created_at: "2026-08-30T17:45:31.658Z"
+updated_at: "2026-08-30T17:52:37.468Z"
+closed_at: "2026-08-30T17:52:37.033Z"
+completed_at: "2026-08-30T17:52:37.033Z"
+author: pi-agent
+severity: high
+repro_steps: cat << A<<B drops B; FLAG=--provenance followed by echo ready && unset FLAG retains stale provenance.
+resolution: "Parse the leading delimiter separately from embedded joined operators, continue scanning that token for later heredocs, and fail closed by applying possibly executed guarded unsets."
+expected_result: Every real heredoc body remains non-executable scanner text and possibly executed unsets fail closed.
+actual_result: Reverse mixed heredocs and unknown-status guarded unsets can lend stale provenance to an unattested publish.
+comments[1]{created_at,author,text}:
+  "2026-08-30T17:52:36.175Z",pi-agent,"Findings 3890039791 and 3890050169 reproduced together: with only scanner source reverted, focused tests failed 2/2 (both retained actual --provenance), SOURCE_ONLY_REVERT_EXIT=1. Restored source passes. Added separated quoted-delimiter coverage to restore the unchanged 100% gate. npm test, coverage, docstring, and release:check pass after the final test addition."
+files[2]{path,scope}:
+  scripts/shell-command-scan.ts,project
+  test/verify-release-publish-attestation.test.ts,project
+tests[4]{command,scope,timeout_seconds,provenance{author,created_at,source_kind,source_ref}}:
+  npm test,project,2400,pi-agent,"2026-08-30T17:47:07.537Z",local_mutation,pi-pr88
+  npm run coverage,project,2400,pi-agent,"2026-08-30T17:47:07.537Z",local_mutation,pi-pr88
+  npm run docstring,project,2400,pi-agent,"2026-08-30T17:47:07.537Z",local_mutation,pi-pr88
+  "npm run release:check",project,2400,pi-agent,"2026-08-30T17:47:07.537Z",local_mutation,pi-pr88
+close_reason: Reverse heredocs and uncertain guarded unsets no longer lend false provenance; documentation comment restored.
+body: ""

@@ -771,9 +771,16 @@ function parentShellStateCommands(line: string): ShellCommand[] {
     const executes = preceding === "&&" ? status === true
       : preceding === "||" ? status === false
         : preceding === "" || preceding === ";";
+    const mayExecute = (preceding === "&&" || preceding === "||") && status === undefined;
     const commands = tokenizeCommands(text);
     const command = commands.length === 1 ? commands[0] : undefined;
-    if (executes && command !== undefined && after !== "|" && after !== "&") stateCommands.push(command);
+    const firstWord = command !== undefined ? withoutRedirections(command)[0] : undefined;
+    // An uncertain unset must fail closed: retaining a possibly deleted
+    // provenance flag could turn an unattested publish into a clean result.
+    const uncertainUnset = mayExecute && firstWord?.value === "unset" && !firstWord.startsQuoted;
+    if ((executes || uncertainUnset) && command !== undefined && after !== "|" && after !== "&") {
+      stateCommands.push(command);
+    }
 
     if (preceding === "|" || preceding === "&" || preceding === "(" || preceding === ")"
       || after === "|" || after === "&" || after === "(" || after === ")") {
@@ -952,14 +959,16 @@ export function shellScalars(text: string): Map<string, string> {
           });
         }
         const separated = /(?<!<)<<(-?)$/.exec(opener.value);
-        const delimiter = separated !== null ? command[index + 1]?.value : undefined;
+        const delimiterToken = separated !== null ? command[index + 1] : undefined;
+        const delimiter = delimiterToken?.startsQuoted
+          ? delimiterToken.value
+          : /^[^<\s]+/.exec(delimiterToken?.value ?? "")?.[0];
         if (delimiter !== undefined) {
           heredocs.push({
             delimiter,
             stripTabs: separated![1] === "-",
             yamlIndent: blockIndents[lineIndex] ?? /^[ \t]*/.exec(line)![0],
           });
-          index += 1;
         }
       }
     }
