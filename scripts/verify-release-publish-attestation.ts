@@ -274,7 +274,7 @@ function scanPublishSource(source: SourceFile): { invocations: PublishInvocation
       const unresolvedScalarPublisher = first !== undefined
         && SCALAR_EXPRESSION.test(first.value)
         && (candidate.slice(1).some(({ value }) => value === "publish")
-          || (candidateIndex === 0 && candidate.length === 2 && SCALAR_EXPRESSION.test(candidate[1]!.value)));
+          || (candidateIndex === 0 && SCALAR_EXPRESSION.test(candidate[1]?.value ?? "")));
       const unresolvedScalarSubcommand = unresolvedNpmScalarSubcommand(candidate);
       const unresolvedExpression = unresolvedScalarSubcommand ?? first?.value;
       if ((unresolvedIndexedCommand || unresolvedScalarPublisher || unresolvedScalarSubcommand !== undefined)
