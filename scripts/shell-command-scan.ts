@@ -653,6 +653,47 @@ function topLevelCommands(line: string): ShellCommand[] {
   return tokenizeCommands(maskSubstitutions(line));
 }
 
+/** Mask brace groups that a pipe or background operator runs outside the parent shell. */
+function maskExternalBraceGroups(line: string): string {
+  const stack: number[] = [];
+  const ranges: Array<{ start: number; end: number }> = [];
+  let single = false;
+  let double = false;
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index]!;
+    if (character === "\\") {
+      index += 1;
+      continue;
+    }
+    if (character === "'" && !double) {
+      single = !single;
+      continue;
+    }
+    if (character === '"' && !single) {
+      double = !double;
+      continue;
+    }
+    if (single || double) continue;
+    if (character === "{") stack.push(index);
+    else if (character === "}") {
+      const start = stack.pop();
+      if (start === undefined) continue;
+      let next = index + 1;
+      while (line[next] === " " || line[next] === "\t") next += 1;
+      const operator = line[next];
+      const following = line[next + 1];
+      if ((operator === "|" && following !== "|")
+        || (operator === "&" && following !== "&" && following !== ">")) {
+        ranges.push({ start, end: index + 1 });
+      }
+    }
+  }
+  if (ranges.length === 0) return line;
+  const characters = [...line];
+  for (const { start, end } of ranges) characters.fill(" ", start, end);
+  return characters.join("");
+}
+
 /**
  * Return commands whose scalar mutations certainly run in the parent shell.
  *
@@ -661,7 +702,7 @@ function topLevelCommands(line: string): ShellCommand[] {
  * command runs outside the parent-shell state tracked by `shellScalars`.
  */
 function parentShellStateCommands(line: string): ShellCommand[] {
-  const masked = maskSubstitutions(line);
+  const masked = maskExternalBraceGroups(maskSubstitutions(line));
   const segments: Array<{ text: string; before: string; after: string }> = [];
   let start = 0;
   let before = "";

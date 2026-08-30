@@ -910,6 +910,19 @@ test("an assignment the shell never makes is not indexed", () => {
   assert.match(result.failures[0]!, /does not enable --provenance/);
 });
 
+test("piped and backgrounded brace groups do not mutate parent-shell state", () => {
+  for (const grouped of ["{ FLAG=--provenance; } | cat", "{ FLAG=--provenance; } &"]) {
+    assert.equal(shellScalars(`${grouped}\n`).get("FLAG"), undefined,
+      `${grouped} runs outside parent-shell state`);
+    const result = auditPublishAttestation([{ file: "release.yml", text: [
+      `          ${grouped}`,
+      "          npm publish --access public $FLAG",
+    ].join("\n") }]);
+    assert.equal(result.failures.length, 1, `${grouped} cannot lend provenance to the parent publish`);
+    assert.match(result.failures[0]!, /does not enable --provenance/);
+  }
+});
+
 test("multiple assignment-only bindings keep variable-routed publishes visible", () => {
   const scalars = shellScalars("NPM=npm FLAG=--provenance\n");
   assert.equal(scalars.get("NPM"), "npm");
@@ -1187,8 +1200,11 @@ test("an assignment-shaped line inside a here-document body is not indexed", () 
   ].join("\n")).get("FLAG"), undefined,
     "all heredoc bodies opened by one command remain non-executable text");
   // <<< (here-string) must NOT be mistaken for a heredoc.
-  assert.equal(shellScalars("FLAG=--provenance\n".trim()).get("FLAG"), "--provenance",
-    "a here-string (<<<) does not suppress the line it is on");
+  assert.equal(shellScalars([
+    "          cat <<<word",
+    "          FLAG=--provenance",
+  ].join("\n")).get("FLAG"), "--provenance",
+    "a here-string (<<<) does not open a heredoc, so the following line is still indexed");
 
   // The bypass, end to end: without the fix this audit returns no failures.
   for (const opener of ["cat <<EOF", "cat << EOF", "cat<<EOF", "2<<EOF"]) {
