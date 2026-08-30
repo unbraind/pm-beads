@@ -1,0 +1,25 @@
+id: pm-beads-zcje
+title: "Close declaration, conditional-unset, and subshell scalar bypasses"
+description: "Fix Greptile threads 3889831753, 3889831760, and 3889831763 with audit-level regressions."
+type: Issue
+status: closed
+priority: 1
+tags: []
+created_at: "2026-08-30T15:59:59.249Z"
+updated_at: "2026-08-30T16:01:35.903Z"
+closed_at: "2026-08-30T16:01:35.889Z"
+completed_at: "2026-08-30T16:01:35.889Z"
+claim_principal: pi-agent
+author: pi-agent
+severity: high
+repro_steps: "Use readonly/declare/typeset assignment, a literal true&& or false|| unset, or a parenthesized assignment before a publish."
+resolution: "Index persistent declaration builtins, evaluate literal true/false guard outcomes, and retain parenthesis boundaries during state segmentation."
+expected_result: Persistent declarations remain visible; executed literal guards clear state; subshell assignments do not leak.
+actual_result: The scalar map diverges from shell state and can hide or falsely attest publishes.
+comments[1]{created_at,author,text}:
+  "2026-08-30T16:01:35.389Z",pi-agent,"Fixed threads 3889831753, 3889831760, and 3889831763. Source-only revert proof failed 3/3: readonly NPM was undefined, true&&unset retained '--provenance', and subshell assignment retained '--provenance'; restored source passed 3/3. Every case is also asserted at audit level."
+files[2]{path,scope}:
+  scripts/shell-command-scan.ts,project
+  test/verify-release-publish-attestation.test.ts,project
+close_reason: "Declarations, known literal guard outcomes, and subshell boundaries now preserve fail-closed scalar state."
+body: ""

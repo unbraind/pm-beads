@@ -709,8 +709,8 @@ function parentShellStateCommands(line: string): ShellCommand[] {
       wordStarted = true;
       continue;
     }
-    if (character === ";" || character === "&" || character === "|") {
-      const doubled = masked[index + 1] === character && character !== ";";
+    if (character === ";" || character === "&" || character === "|" || character === "(" || character === ")") {
+      const doubled = masked[index + 1] === character && (character === "&" || character === "|");
       const operator = doubled ? character + character : character;
       segments.push({ text: masked.slice(start, index), before, after: operator });
       index += doubled ? 1 : 0;
@@ -723,12 +723,29 @@ function parentShellStateCommands(line: string): ShellCommand[] {
     wordStarted = true;
   }
 
-  return segments.flatMap(({ text, before: preceding, after }) => {
-    if ((preceding !== "" && preceding !== ";") || after === "|" || after === "&") return [];
+  const stateCommands: ShellCommand[] = [];
+  let status: boolean | undefined;
+  for (const { text, before: preceding, after } of segments) {
+    if (preceding === "" || preceding === ";") status = true;
+    const executes = preceding === "&&" ? status === true
+      : preceding === "||" ? status === false
+        : preceding === "" || preceding === ";";
     const commands = tokenizeCommands(text);
-    return commands.length === 1 ? commands : [];
-  });
+    const command = commands.length === 1 ? commands[0] : undefined;
+    if (executes && command !== undefined && after !== "|" && after !== "&") stateCommands.push(command);
+
+    if (executes && command !== undefined) {
+      const words = withoutRedirections(command);
+      if (words.length === 1 && words[0]?.value === "true") status = true;
+      else if (words.length === 1 && words[0]?.value === "false") status = false;
+      else status = undefined;
+    }
+  }
+  return stateCommands;
 }
+
+/** Shell builtins whose assignment operands persist in the current shell. */
+const SCALAR_DECLARATIONS = new Set(["export", "readonly", "declare", "typeset"]);
 
 /** A scalar value must remain inert when textually expanded and re-tokenised. */
 function isLiteralScalar(value: string): boolean {
@@ -814,7 +831,7 @@ export function shellScalars(text: string): Map<string, string> {
         const binding = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(first.value);
         if (binding !== null && isLiteralScalar(binding[2]!)) scalars.set(binding[1]!, binding[2]!);
       }
-      if (first?.value === "export" && !first.startsQuoted) {
+      if (first !== undefined && !first.startsQuoted && SCALAR_DECLARATIONS.has(first.value)) {
         for (const token of command.slice(1)) {
           const binding = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(token.value);
           if (binding !== null && isLiteralScalar(binding[2]!)) scalars.set(binding[1]!, binding[2]!);

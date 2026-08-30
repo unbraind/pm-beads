@@ -910,6 +910,20 @@ test("an assignment the shell never makes is not indexed", () => {
   assert.match(result.failures[0]!, /does not enable --provenance/);
 });
 
+test("persistent declaration builtins keep variable-routed publishes visible", () => {
+  for (const declaration of ["readonly", "declare", "typeset"]) {
+    assert.equal(shellScalars(`${declaration} NPM=npm\n`).get("NPM"), "npm",
+      `${declaration} creates a persistent scalar binding`);
+    const result = auditPublishAttestation([{ file: "release.yml", text: [
+      `          ${declaration} NPM=npm`,
+      "          $NPM publish --access public",
+      "          npm publish --access public --provenance",
+    ].join("\n") }]);
+    assert.equal(result.failures.length, 1, `${declaration} cannot hide the unattested publish`);
+    assert.match(result.failures[0]!, /does not enable --provenance/);
+  }
+});
+
 test("every literal binding in a multi-name export is audited", () => {
   const result = auditPublishAttestation([{ file: "release.yml", text: [
     "          export NPM=npm FLAG=--provenance",
@@ -941,6 +955,31 @@ test("escaped scalar operators cannot become attestation syntax after expansion"
     "          npm publish --access public $FLAG",
   ].join("\n") }]);
   assert.equal(result.failures.length, 1, "the escaped semicolon remains part of one non-attestation argument");
+  assert.match(result.failures[0]!, /does not enable --provenance/);
+});
+
+test("literal guard outcomes apply scalar deletion when the unset executes", () => {
+  for (const guardedUnset of ["true && unset FLAG", "false || unset FLAG"]) {
+    assert.equal(shellScalars(`FLAG=--provenance\n${guardedUnset}\n`).get("FLAG"), undefined,
+      `${guardedUnset} executes and clears the binding`);
+    const result = auditPublishAttestation([{ file: "release.yml", text: [
+      "          FLAG=--provenance",
+      `          ${guardedUnset}`,
+      "          npm publish --access public $FLAG",
+    ].join("\n") }]);
+    assert.equal(result.failures.length, 1, `${guardedUnset} cannot leave stale provenance`);
+    assert.match(result.failures[0]!, /does not enable --provenance/);
+  }
+});
+
+test("subshell scalar assignments do not leak into parent-shell state", () => {
+  assert.equal(shellScalars("( FLAG=--provenance )\n").get("FLAG"), undefined,
+    "a parenthesized assignment ends with its subshell");
+  const result = auditPublishAttestation([{ file: "release.yml", text: [
+    "          ( FLAG=--provenance )",
+    "          npm publish --access public $FLAG",
+  ].join("\n") }]);
+  assert.equal(result.failures.length, 1, "the parent publish cannot borrow a subshell binding");
   assert.match(result.failures[0]!, /does not enable --provenance/);
 });
 
