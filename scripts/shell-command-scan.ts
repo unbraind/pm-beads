@@ -951,17 +951,15 @@ export function shellScalars(text: string): Map<string, string> {
             yamlIndent: blockIndents[lineIndex] ?? /^[ \t]*/.exec(line)![0],
           });
         }
-        if (joined.length === 0) {
-          const separated = /(?<!<)<<(-?)$/.exec(opener.value);
-          const delimiter = separated !== null ? command[index + 1]?.value : undefined;
-          if (delimiter !== undefined) {
-            heredocs.push({
-              delimiter,
-              stripTabs: separated![1] === "-",
-              yamlIndent: blockIndents[lineIndex] ?? /^[ \t]*/.exec(line)![0],
-            });
-            index += 1;
-          }
+        const separated = /(?<!<)<<(-?)$/.exec(opener.value);
+        const delimiter = separated !== null ? command[index + 1]?.value : undefined;
+        if (delimiter !== undefined) {
+          heredocs.push({
+            delimiter,
+            stripTabs: separated![1] === "-",
+            yamlIndent: blockIndents[lineIndex] ?? /^[ \t]*/.exec(line)![0],
+          });
+          index += 1;
         }
       }
     }

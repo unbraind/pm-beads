@@ -1258,7 +1258,7 @@ test("an assignment-shaped line inside a here-document body is not indexed", () 
     "          EOF",
   ].join("\n")).get("FLAG"), undefined,
     "a space-separated heredoc operator still hides body text from scalar indexing");
-  for (const multipleOpeners of ["cat <<A <<B", "cat<<A<<B"]) {
+  for (const multipleOpeners of ["cat <<A <<B", "cat<<A<<B", "cat <<A<< B"]) {
     assert.equal(shellScalars([
       `          ${multipleOpeners}`,
       "          body a",
@@ -1286,16 +1286,19 @@ test("an assignment-shaped line inside a here-document body is not indexed", () 
     assert.equal(result.failures.length, 1, `a publish flagged only by a ${opener} body line is unattested`);
     assert.match(result.failures[0]!, /does not enable --provenance/);
   }
-  const chained = auditPublishAttestation([{ file: "release.yml", text: [
-    "          cat<<A<<B",
-    "          body a",
-    "          A",
-    "          FLAG=--provenance",
-    "          B",
-    "          npm publish --access public $FLAG",
-  ].join("\n") }]);
-  assert.equal(chained.failures.length, 1, "a chained second heredoc body cannot lend provenance");
-  assert.match(chained.failures[0]!, /does not enable --provenance/);
+  for (const multipleOpeners of ["cat<<A<<B", "cat <<A<< B"]) {
+    const chained = auditPublishAttestation([{ file: "release.yml", text: [
+      `          ${multipleOpeners}`,
+      "          body a",
+      "          A",
+      "          FLAG=--provenance",
+      "          B",
+      "          npm publish --access public $FLAG",
+    ].join("\n") }]);
+    assert.equal(chained.failures.length, 1,
+      `a second heredoc body opened by ${multipleOpeners} cannot lend provenance`);
+    assert.match(chained.failures[0]!, /does not enable --provenance/);
+  }
 });
 
 test("a read-write redirection does not turn its target into the command", () => {
