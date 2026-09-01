@@ -479,7 +479,7 @@ test("patchTimestampLines round-trips a created_at through normalize+patch lossl
   const iso = normalizeIsoTimestamp("2024-12-25T08:30:00Z")!;
   const file = `created_at: "2026-06-03T23:00:00.000Z"\nupdated_at: "2026-06-03T23:00:00.000Z"\n`;
   const out = patchTimestampLines(file, { created_at: iso, updated_at: iso })!;
-  assert.match(out, new RegExp(`created_at: "${iso.replace(/[.]/g, "\\.")}"`));
+  assert.ok(out.includes(`created_at: "${iso}"`), `expected created_at: "${iso}" in output`);
 });
 
 test("locateItemFile finds the per-type item file and skips sidecars", () => {
@@ -1984,4 +1984,33 @@ test("readPmItems asks pm for the canonical complete unbounded workspace", { ski
     !capturing.args?.includes("list-all") && !capturing.args?.includes("--full") && !capturing.args?.includes("--include-body"),
     "deprecated command and projection aliases must not return",
   );
+});
+
+test("encodeBeadId stays linear on adversarial whitespace input (polynomial-redos regression)", () => {
+  // Old regex /\[bead_id:\s*([^\]]+)\]/ had O(n²) overlap between \s* and
+  // [^\]]+ on a long whitespace run with no closing ]. Fixed to [^\]\s]+.
+  const n = 64000;
+  const input = "[bead_id: " + " ".repeat(n) + "!";
+  const start = process.hrtime.bigint();
+  encodeBeadId(input, "bd-1");
+  const ms = Number(process.hrtime.bigint() - start) / 1e6;
+  assert.ok(ms < 250, `encodeBeadId took ${ms.toFixed(1)} ms (expected < 250 ms)`);
+});
+
+test("decodeBeadId stays linear on adversarial whitespace input (polynomial-redos regression)", () => {
+  const n = 64000;
+  const description = "[bead_id: " + " ".repeat(n) + "!";
+  const start = process.hrtime.bigint();
+  decodeBeadId({ description });
+  const ms = Number(process.hrtime.bigint() - start) / 1e6;
+  assert.ok(ms < 250, `decodeBeadId took ${ms.toFixed(1)} ms (expected < 250 ms)`);
+});
+
+test("stripBeadIdMarker stays linear on adversarial whitespace input (polynomial-redos regression)", () => {
+  const n = 64000;
+  const input = "[bead_id: " + " ".repeat(n) + "!";
+  const start = process.hrtime.bigint();
+  stripBeadIdMarker(input);
+  const ms = Number(process.hrtime.bigint() - start) / 1e6;
+  assert.ok(ms < 250, `stripBeadIdMarker took ${ms.toFixed(1)} ms (expected < 250 ms)`);
 });

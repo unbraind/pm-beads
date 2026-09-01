@@ -336,7 +336,10 @@ export function mapPriority(raw: number | string | undefined): string | undefine
 
 // The marker we embed in the description to persist the native Beads id through
 // `pm create` (which exposes no generic custom-field setter for extensions).
-const BEAD_ID_MARKER = /\[bead_id:\s*([^\]]+)\]/;
+// The capture uses `[^\]\s]+` (not `[^\]]+`) so it cannot match whitespace,
+// eliminating the O(n²) overlap between `\s*` and the capture group that
+// occurred when both could consume the same space characters.
+const BEAD_ID_MARKER = /\[bead_id:\s*([^\]\s]+)\]/;
 
 /**
  * Embed the native Beads id into an item description behind a parseable marker.
