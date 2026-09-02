@@ -1586,8 +1586,13 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
   // This mirrors the structural fail-fast gate above, which exists for the same
   // reason - a rejection that can only happen after some writes is not a gate.
   if (opts.preserveIds) {
+    // Only records this import would actually WRITE. The write loop skips a
+    // record the filter excludes, so validating one would abort an import over
+    // an id that was never going to be persisted - a gate stricter than the
+    // operation it guards, which is its own kind of false refusal.
     const unencodable = records
-      .map((item, index) => ({ line: index + 1, id: normalizeBeadKey(item.id) }))
+      .map((item, index) => ({ line: index + 1, item, id: normalizeBeadKey(item.id) }))
+      .filter((row) => !hasFilter || beadPassesFilter(row.item, opts.typeOverride, opts.filter))
       .filter((row) => row.id !== undefined && !isEncodableBeadId(row.id));
     if (unencodable.length > 0) {
       const detail = unencodable

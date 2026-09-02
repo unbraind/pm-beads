@@ -230,6 +230,31 @@ test("an unencodable id aborts the import BEFORE any record is written", async (
   await ext.deactivate();
 });
 
+test("a filtered-out record's unencodable id does not abort the import", async () => {
+  // The write loop skips a record the filter excludes, so validating one would
+  // abort an import over an id that was never going to be persisted - a gate
+  // stricter than the operation it guards. The unencodable record here is
+  // excluded by status, so the import must proceed.
+  const ext = await harness();
+  const dir = mkdtempSync(join(tmpdir(), "beads-filtered-"));
+  const file = join(dir, "ids.jsonl");
+  writeFileSync(
+    file,
+    `${JSON.stringify({ id: "bd-1", title: "kept", status: "open" })}\n` +
+      `${JSON.stringify({ id: "b".repeat(4098), title: "excluded", status: "closed" })}\n`,
+    "utf-8",
+  );
+  await assert.doesNotReject(
+    () => runImport(ext, {
+      args: [file],
+      options: { "preserve-ids": true, "filter-status": "open", "dry-run": true },
+      global: { json: false },
+    }),
+    "an id on a record the filter excludes must not abort the import",
+  );
+  await ext.deactivate();
+});
+
 test("beads importer rejects a missing file argument with a USAGE exit code", async () => {
   const ext = await harness();
   await assert.rejects(
