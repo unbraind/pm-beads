@@ -257,6 +257,31 @@ test("a filtered-out record's unencodable id does not abort the import", async (
   await ext.deactivate();
 });
 
+test("the skip exclusion is scoped to records the loop would actually leave alone", async () => {
+  // The gate must mirror exactly what the loop writes. A record matched to an
+  // existing item under `--merge-strategy skip` is not written, so refusing on
+  // its behalf aborts an import that had nothing to lose. The encode moved past
+  // the skip decision for the same reason - it refuses an unreadable id, and a
+  // record that is not being written should never reach it.
+  const ext = await harness();
+  const dir = mkdtempSync(join(tmpdir(), "beads-skip-"));
+  const file = join(dir, "ids.jsonl");
+  writeFileSync(file, `${JSON.stringify({ id: "b".repeat(4098), title: "skipped" })}\n`, "utf-8");
+  // Nothing matches this id, so the skip strategy does not apply and the record
+  // IS written - the gate must still refuse it. The exclusion is scoped to
+  // records the loop would actually leave alone, not to the strategy being set.
+  await assert.rejects(
+    () => runImport(ext, {
+      args: [file],
+      options: { "preserve-ids": true, upsert: true, "merge-strategy": "skip", "dry-run": true },
+      global: { json: false },
+    }),
+    (err: unknown) => (err as Error).message.includes("cannot read back"),
+    "an unmatched record is written, so its unreadable id must still abort",
+  );
+  await ext.deactivate();
+});
+
 test("beads importer rejects a missing file argument with a USAGE exit code", async () => {
   const ext = await harness();
   await assert.rejects(

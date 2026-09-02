@@ -1593,6 +1593,11 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
     const unencodable = records
       .map((item, index) => ({ line: index + 1, item, id: normalizeBeadKey(item.id) }))
       .filter((row) => !hasFilter || beadPassesFilter(row.item, opts.typeOverride, opts.filter))
+      // A record the skip strategy matches to an existing item is not written
+      // either, so it must not be validated. The gate has to mirror what the
+      // loop writes exactly: every record it checks that the loop would leave
+      // alone is a refusal of an import that would have succeeded.
+      .filter((row) => !(opts.upsert && opts.mergeStrategy === "skip" && row.id !== undefined && existingIndex.has(row.id)))
       .filter((row) => row.id !== undefined && !isEncodableBeadId(row.id));
     if (unencodable.length > 0) {
       const detail = unencodable
@@ -1639,7 +1644,6 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
           : undefined;
       const beadId = opts.preserveIds ? normalizeBeadKey(item.id) : undefined;
       const baseDescription = (item.description as string) || title;
-      const description = encodeBeadId(baseDescription, beadId);
       const blockers = extractBlockerIds(item);
       const key = beadId;
       const existing = opts.upsert && key ? existingIndex.get(key) : undefined;
@@ -1674,6 +1678,13 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
         skipped++;
         continue;
       }
+
+      // Encoded here rather than above, so a record this loop is about to skip
+      // never encodes at all. `encodeBeadId` refuses an id the marker cannot
+      // read back, and refusing on behalf of a record that is not being written
+      // would abort an import that had nothing to lose - which is the same
+      // scope mismatch the pre-write gate was corrected for.
+      const description = encodeBeadId(baseDescription, beadId);
 
       try {
         let pmId: string;
