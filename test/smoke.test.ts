@@ -1989,7 +1989,7 @@ test("readPmItems asks pm for the canonical complete unbounded workspace", { ski
 test("encodeBeadId stays linear on adversarial whitespace input (polynomial-redos regression)", () => {
   // The pre-fix regex /\[bead_id:\s*([^\]]+)\]/ had O(n²) overlap between \s*
   // and [^\]]+ on a long whitespace run with no closing ] (measured 3900 ms at
-  // n=64000). The current /\[bead_id:[ \t]{0,64}(\S[^\]]{0,256})\]/ bounds both
+  // n=64000). The current /\[bead_id:[ \t]{0,64}(\S[^\]]{0,4096})\]/ bounds both
   // quantifiers so the worst case is constant-bounded = linear (measured < 1 ms at n=64000).
   const n = 64000;
   const input = "[bead_id: " + " ".repeat(n) + "!";
@@ -2062,9 +2062,9 @@ test("BEAD_ID_MARKER accepts multi-word ids and bounds leading spaces (behaviour
   // degenerate externally-authored markers.
   assert.equal(decodeBeadId({ description: "[bead_id:" + " ".repeat(64) + "abc]" }), "abc");
   assert.equal(decodeBeadId({ description: "[bead_id:" + " ".repeat(65) + "abc]" }), undefined);
-  // The capture tail is bounded to 256 chars after the first id char (257 total):
-  // a 257-char id round-trips, a 300-char id does not. Real Beads ids are short
-  // slugs, so this only affects degenerate externally-authored markers.
-  assert.equal(decodeBeadId({ description: "[bead_id: " + "a".repeat(257) + "]" }), "a".repeat(257));
-  assert.equal(decodeBeadId({ description: "[bead_id: " + "a".repeat(300) + "]" }), undefined);
+  // The capture tail is bounded to 4096 chars after the first id char (4097 total):
+  // a 4097-char id round-trips, a 5000-char id does not. Real Beads ids are short
+  // slugs (<20 chars), so this only affects degenerate externally-authored markers.
+  assert.equal(decodeBeadId({ description: "[bead_id: " + "a".repeat(4097) + "]" }), "a".repeat(4097));
+  assert.equal(decodeBeadId({ description: "[bead_id: " + "a".repeat(5000) + "]" }), undefined);
 });

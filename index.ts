@@ -337,11 +337,14 @@ export function mapPriority(raw: number | string | undefined): string | undefine
 // The marker we embed in the description to persist the native Beads id through
 // `pm create` (which exposes no generic custom-field setter for extensions).
 //
-// Both the separator `[ \t]{0,64}` and the capture tail `[^\]]{0,256}` are
+// Both the separator `[ \t]{0,64}` and the capture tail `[^\]]{0,4096}` are
 // BOUNDED, and the capture starts with a single (non-quantified) `\S`. CodeQL
 // flags `js/polynomial-redos` for any regex with two unbounded quantifiers whose
 // character classes overlap; bounding both quantifiers makes the worst case
-// constant-bounded (O(64·256) = linear) and is the documented CodeQL remedy.
+// constant-bounded (O(64·4096) = linear) and is the documented CodeQL remedy.
+// The tail bound of 4096 is ~200x the longest real Beads id (the test suite's ids
+// are short slugs like `bd-42`), so no realistic id is rejected; the bound only
+// excludes degenerate externally-authored markers with >4097-char ids.
 // The earlier forms were all still flagged:
 //   * `\s*([^\]]+)` — O(n²): `\s*` and `[^\]]+` both match a space (3900 ms at n=64000).
 //   * `\s*([^\]\s]+` — runtime-linear, but CodeQL cannot prove `\s`/`[^\]\s]` disjoint.
@@ -357,11 +360,11 @@ export function mapPriority(raw: number | string | undefined): string | undefine
 //    matches and decodes to `"abc"` via the existing `.trim()`. `encodeBeadId`
 //    only ever writes single-token slug ids, so round-trip data is unaffected.
 //  * A whitespace-only id (`[bead_id:   ]`) no longer matches (degenerate).
-//  * More than 64 leading spaces after the colon, or an id longer than 257
+//  * More than 64 leading spaces after the colon, or an id longer than 4097
 //    characters, no longer match — `encodeBeadId` writes one space and short slug
 //    ids, so this only affects degenerate externally-authored markers. Pinned in
 //    `test/smoke.test.ts`.
-const BEAD_ID_MARKER = /\[bead_id:[ \t]{0,64}(\S[^\]]{0,256})\]/;
+const BEAD_ID_MARKER = /\[bead_id:[ \t]{0,64}(\S[^\]]{0,4096})\]/;
 
 /**
  * Embed the native Beads id into an item description behind a parseable marker.
