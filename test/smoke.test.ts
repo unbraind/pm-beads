@@ -244,14 +244,16 @@ test("a filtered-out record's unencodable id does not abort the import", async (
       `${JSON.stringify({ id: "b".repeat(4098), title: "excluded", status: "closed" })}\n`,
     "utf-8",
   );
-  await assert.doesNotReject(
-    () => runImport(ext, {
-      args: [file],
-      options: { "preserve-ids": true, "filter-status": "open", "dry-run": true },
-      global: { json: false },
-    }),
-    "an id on a record the filter excludes must not abort the import",
-  );
+  // Asserting only that it does not reject would pass if the filter silently
+  // excluded EVERYTHING - the import would do nothing and the test would be
+  // satisfied. The count is what proves the kept record was selected and the
+  // unencodable one skipped.
+  const result = await runImport(ext, {
+    args: [file],
+    options: { "preserve-ids": true, "filter-status": "open", "dry-run": true },
+    global: { json: false },
+  });
+  assert.strictEqual(result.wouldImport, 1, "exactly the open record must be selected");
   await ext.deactivate();
 });
 
