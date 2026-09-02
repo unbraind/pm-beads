@@ -270,9 +270,9 @@ test("an existing item can carry an id the marker cannot read back, which is wha
   // catch - V8 reports no branch for a path it never reaches.
   const unreadable = "b".repeat(4098);
   assert.equal(isEncodableBeadId(unreadable), false);
-  const index = buildBeadIndex([
-    { id: "pm-1", status: "open", bead_id: unreadable } as unknown as PmItem,
-  ]);
+  const index = buildBeadIndex(
+    [{ id: "pm-1", status: "open", bead_id: unreadable }] as unknown as Parameters<typeof buildBeadIndex>[0],
+  );
   assert.equal(index.has(unreadable), true, "the index must be able to hold an id the marker cannot read back");
   assert.equal(index.get(unreadable)?.pmId, "pm-1");
 });
