@@ -1987,8 +1987,11 @@ test("readPmItems asks pm for the canonical complete unbounded workspace", { ski
 });
 
 test("encodeBeadId stays linear on adversarial whitespace input (polynomial-redos regression)", () => {
-  // Old regex /\[bead_id:\s*([^\]]+)\]/ had O(n²) overlap between \s* and
-  // [^\]]+ on a long whitespace run with no closing ]. Fixed to [^\]\s]+.
+  // The pre-fix regex /\[bead_id:\s*([^\]]+)\]/ had O(n²) overlap between \s*
+  // and [^\]]+ on a long whitespace run with no closing ] (measured 3900 ms at
+  // n=64000). The current /\[bead_id:[ \t]*(\S[^\]]*)\]/ makes the separator and
+  // the capture disjoint and separates the two quantifiers with a single \S,
+  // so the match is linear (measured < 1 ms at n=64000).
   const n = 64000;
   const input = "[bead_id: " + " ".repeat(n) + "!";
   const start = process.hrtime.bigint();
@@ -2013,4 +2016,42 @@ test("stripBeadIdMarker stays linear on adversarial whitespace input (polynomial
   stripBeadIdMarker(input);
   const ms = Number(process.hrtime.bigint() - start) / 1e6;
   assert.ok(ms < 250, `stripBeadIdMarker took ${ms.toFixed(1)} ms (expected < 250 ms)`);
+});
+
+test("BEAD_ID_MARKER growth is linear, not quadratic (n vs 2n doubling)", () => {
+  // Measures wall-clock at N and 2N on the exact shape CodeQL names — a string
+  // starting `[bead_id:` followed by many spaces (no closing `]`, which forces
+  // the pre-fix regex to backtrack). Asserts time(2N) < max(3·time(N), 100 ms):
+  // the 100 ms floor absorbs sub-millisecond noise so the linear regex never
+  // flakes, while a quadratic regex blows past both clauses (the pre-fix
+  // `[^\]]+` measured ~240 ms at N=16000 and ~1250 ms at 2N=32000, a 5x ratio).
+  // Verified RED on revert to /\[bead_id:\s*([^\]]+)\]/.
+  const n = 16000;
+  const inputN = "[bead_id: " + " ".repeat(n) + "!";
+  const input2N = "[bead_id: " + " ".repeat(n * 2) + "!";
+  const s1 = process.hrtime.bigint();
+  decodeBeadId({ description: inputN });
+  const msN = Number(process.hrtime.bigint() - s1) / 1e6;
+  const s2 = process.hrtime.bigint();
+  decodeBeadId({ description: input2N });
+  const ms2N = Number(process.hrtime.bigint() - s2) / 1e6;
+  const bound = Math.max(3 * msN, 100);
+  assert.ok(
+    ms2N < bound,
+    `BEAD_ID_MARKER not linear: N=${msN.toFixed(3)} ms, 2N=${ms2N.toFixed(3)} ms, bound=${bound.toFixed(3)} ms (ratio ${(ms2N / msN).toFixed(2)}x)`
+  );
+});
+
+test("BEAD_ID_MARKER accepts multi-word ids (behaviour pin for the disjoint rewrite)", () => {
+  // The disjoint rewrite `\S[^\]]*` allows spaces inside the capture, restoring
+  // the permissive behaviour of the original `[^\]]+` (the intermediate
+  // `[^\]\s]+` narrowed the language and did NOT match this). `encodeBeadId`
+  // only writes single-token slugs, so this only affects externally-authored
+  // markers; pinned here so a future narrowing is caught.
+  assert.equal(decodeBeadId({ description: "[bead_id: multi word]" }), "multi word");
+  // The slug forms the exporter actually writes still round-trip unchanged.
+  assert.equal(decodeBeadId({ description: "[bead_id: bd-42]" }), "bd-42");
+  assert.equal(decodeBeadId({ description: "[bead_id:bd-42]" }), "bd-42");
+  // A whitespace-only id is not a valid bead id and must not match.
+  assert.equal(decodeBeadId({ description: "[bead_id:   ]" }), undefined);
 });

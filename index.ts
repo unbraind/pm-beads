@@ -336,10 +336,25 @@ export function mapPriority(raw: number | string | undefined): string | undefine
 
 // The marker we embed in the description to persist the native Beads id through
 // `pm create` (which exposes no generic custom-field setter for extensions).
-// The capture uses `[^\]\s]+` (not `[^\]]+`) so it cannot match whitespace,
-// eliminating the O(n²) overlap between `\s*` and the capture group that
-// occurred when both could consume the same space characters.
-const BEAD_ID_MARKER = /\[bead_id:\s*([^\]\s]+)\]/;
+//
+// The separator `[ \t]*` and the capture `\S[^\]]*` are built from DISJOINT
+// character sets and are separated by the single (non-quantified) `\S`, so any
+// input splits in exactly one way and the match is provably linear. The earlier
+// `\s*([^\]]+` form was O(n²) — `\s*` and `[^\]]+` both match a space, so on a
+// long whitespace run with no closing `]` the engine retried `\s*` at every
+// position (measured 3900 ms at n=64000). The intermediate `[^\]\s]+` narrowed
+// the capture and was runtime-linear but CodeQL still flagged it statically
+// (it cannot prove disjointness of `\s` against the negated class `[^\]\s]`),
+// so this form makes the disjointness syntactically explicit with `\S`.
+//
+// Accepted-language note: unlike `[^\]\s]+`, this capture MAY contain spaces
+// (e.g. `[bead_id: multi word]` decodes to `"multi word"`). That restores the
+// permissive behaviour of the original `[^\]]+` for real inputs while staying
+// linear; `encodeBeadId` only ever writes single-token slug ids, so round-trip
+// data is unaffected. A whitespace-only id (`[bead_id:   ]`) and a non-space/tab
+// separator after the colon (e.g. a newline) no longer match — both are
+// degenerate and never produced by `encodeBeadId`.
+const BEAD_ID_MARKER = /\[bead_id:[ \t]*(\S[^\]]*)\]/;
 
 /**
  * Embed the native Beads id into an item description behind a parseable marker.
