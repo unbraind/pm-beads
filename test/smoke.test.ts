@@ -204,6 +204,32 @@ test("beads importer fail-fast: a malformed file aborts BEFORE any pm write", as
   await ext.deactivate();
 });
 
+test("an unencodable id aborts the import BEFORE any record is written", async () => {
+  // The rejection has to happen in the pre-write pass, not when the write loop
+  // reaches the bad record. Throwing mid-loop leaves a partial import: every
+  // record before the bad one already created, with nothing recording where it
+  // stopped. The bad record is deliberately placed SECOND, so a check that ran
+  // per-record would already have written the first one.
+  const ext = await harness();
+  const dir = mkdtempSync(join(tmpdir(), "beads-encodable-"));
+  const file = join(dir, "ids.jsonl");
+  writeFileSync(
+    file,
+    `${JSON.stringify({ id: "bd-1", title: "fine" })}\n${JSON.stringify({ id: "b".repeat(4098), title: "unreadable" })}\n`,
+    "utf-8",
+  );
+  await assert.rejects(
+    () => runImport(ext, { args: [file], options: { "preserve-ids": true }, global: { json: false } }),
+    (err: unknown) => {
+      assert.match((err as Error).message, /cannot read back/);
+      assert.match((err as Error).message, /4098 characters/);
+      assert.strictEqual((err as CommandError).exitCode, EXIT_CODE.USAGE);
+      return true;
+    },
+  );
+  await ext.deactivate();
+});
+
 test("beads importer rejects a missing file argument with a USAGE exit code", async () => {
   const ext = await harness();
   await assert.rejects(
@@ -1987,39 +2013,87 @@ test("readPmItems asks pm for the canonical complete unbounded workspace", { ski
 });
 
 /**
+ * Time a call over a prepared input, reporting the fastest of several rounds.
+ *
+ * Three details make this a measurement rather than a coin toss.
+ *
+ * The input is built by the caller, never inside the timed loop: constructing a
+ * 32000-character string is itself linear work, and including it measured
+ * allocation rather than the pattern - enough to make a correct implementation
+ * read as 5.4x superlinear.
+ *
+ * The call is repeated until the total is comfortably above timer granularity,
+ * since a ratio taken from a sub-millisecond sample is mostly noise. The loop
+ * is self-limiting: an implementation slow enough to matter reaches the target
+ * on its first iteration.
+ *
+ * The MINIMUM across rounds is reported, after a warm-up round. Scheduling
+ * noise and garbage collection only ever add time, so the fastest round is the
+ * closest estimate of the real cost - taking a single sample instead made this
+ * assertion pass alone and fail when run beside its neighbours.
+ *
+ * @param call - The call to time.
+ * @param input - The prepared input to pass it.
+ * @param iterations - Fixed iteration count, or `undefined` to choose one.
+ * @returns The fastest elapsed milliseconds and the iteration count used.
+ */
+function measure<TInput>(call: (input: TInput) => void, input: TInput, iterations?: number): { ms: number; iterations: number } {
+  let count = iterations ?? 1;
+  const time = (): number => {
+    const started = process.hrtime.bigint();
+    for (let index = 0; index < count; index += 1) call(input);
+    return Number(process.hrtime.bigint() - started) / 1e6;
+  };
+  while (iterations === undefined && count < 4096 && time() < 5) count *= 2;
+  time(); // warm-up, discarded: the first pass pays JIT and page-fault costs.
+  return { ms: Math.min(time(), time(), time()), iterations: count };
+}
+
+/**
  * Assert that a call's cost grows linearly, by measuring it at N and at 2N.
  *
- * An absolute deadline cannot tell a quadratic regex from a loaded runner: the
- * same 250 ms budget that a linear implementation clears in under a millisecond
- * is reachable by a correct implementation under CI scheduling or coverage
- * overhead, so the test fails for a reason that has nothing to do with the
- * behaviour it guards. A ratio is scheduling-independent - both halves absorb
- * the same load - which is what makes it a regression test rather than a
- * benchmark.
+ * An absolute deadline cannot tell a quadratic implementation from a loaded
+ * runner, and a generous one cannot catch a partial regression either: a
+ * hundredfold slowdown still lands under 250 ms. A ratio catches both.
  *
- * The floor absorbs sub-millisecond noise, where a ratio is meaningless because
- * the denominator is mostly timer granularity.
+ * The ratio is the only constraint - there is no absolute floor. An earlier
+ * version floored the bound at 100 ms, which for these sub-millisecond paths
+ * meant the floor always won and a thousandfold regression would have passed.
  *
  * @param label - Name of the call under measurement, for the failure message.
- * @param run - Invokes the call with an adversarial input of the given size.
+ * @param build - Builds the adversarial input for a given size.
+ * @param call - Invokes the call under measurement on that input.
  */
-function assertLinearGrowth(label: string, run: (size: number) => void): void {
-  const n = 16000;
-  const s1 = process.hrtime.bigint();
-  run(n);
-  const msN = Number(process.hrtime.bigint() - s1) / 1e6;
-  const s2 = process.hrtime.bigint();
-  run(n * 2);
-  const ms2N = Number(process.hrtime.bigint() - s2) / 1e6;
-  const bound = Math.max(3 * msN, 100);
+function assertLinearGrowth<TInput>(label: string, build: (size: number) => TInput, call: (input: TInput) => void): void {
+  const n = 8_000;
+  const factor = 4;
+  const base = measure(call, build(n), undefined);
+  const grown = measure(call, build(n * factor), base.iterations);
+  // Quadrupling the input separates the two shapes with headroom on each side:
+  // linear work grows 4x and quadratic 16x, so a bound of 8x is twice the
+  // linear expectation and half the quadratic one. A 2x step with a 3x bound
+  // left no such margin and flaked when the suite ran under load.
+  const bound = base.ms * 8;
   assert.ok(
-    ms2N < bound,
-    `${label} is not linear: N=${msN.toFixed(3)} ms, 2N=${ms2N.toFixed(3)} ms, bound=${bound.toFixed(3)} ms (ratio ${(ms2N / msN).toFixed(2)}x)`,
+    grown.ms < bound,
+    `${label} is not linear: N=${base.ms.toFixed(3)} ms, ${factor}N=${grown.ms.toFixed(3)} ms over ${base.iterations} iteration(s), bound=${bound.toFixed(3)} ms (ratio ${(grown.ms / base.ms).toFixed(2)}x, linear would be ~${factor}x)`
   );
 }
 
 /** The shape CodeQL names: the marker prefix, a long space run, no closing bracket. */
 const adversarialMarker = (size: number): string => "[bead_id: " + " ".repeat(size) + "!";
+
+test("a marker written with a newline or Unicode separator still decodes", () => {
+  // The original separator was `\s*`, so markers already written as
+  // `[bead_id:\nbd-42]` decode today. Narrowing to space-and-tab to bound the
+  // quantifier would have made those unreadable and lost the id they carry -
+  // a compatibility regression on data already on disk, which is worse than
+  // the alert it was closing. The separator is bounded whitespace instead, and
+  // the capture's leading non-space is what keeps the two disjoint.
+  assert.strictEqual(decodeBeadId({ description: "[bead_id:\nbd-42]" } as never), "bd-42");
+  assert.strictEqual(decodeBeadId({ description: "[bead_id:\u00a0bd-9]" } as never), "bd-9");
+  assert.strictEqual(decodeBeadId({ description: "[bead_id:bd-7]" } as never), "bd-7");
+});
 
 test("an id the marker cannot read back is refused rather than silently dropped", () => {
   // The marker is the ONLY record of the native id. Bounding the capture to
@@ -2048,33 +2122,17 @@ test("every BEAD_ID_MARKER call site stays linear on adversarial whitespace (pol
   // whitespace run with no closing bracket. All three call sites are measured,
   // not just the one the alert named, because the regex is shared and a future
   // narrowing could reintroduce the cost at any of them.
-  assertLinearGrowth("encodeBeadId", (size) => void encodeBeadId(adversarialMarker(size), "bd-1"));
-  assertLinearGrowth("decodeBeadId", (size) => void decodeBeadId({ description: adversarialMarker(size) }));
-  assertLinearGrowth("stripBeadIdMarker", (size) => void stripBeadIdMarker(adversarialMarker(size)));
+  assertLinearGrowth("encodeBeadId", adversarialMarker, (input) => void encodeBeadId(input, "bd-1"));
+  assertLinearGrowth("decodeBeadId", adversarialMarker, (input) => void decodeBeadId({ description: input }));
+  assertLinearGrowth("stripBeadIdMarker", adversarialMarker, (input) => void stripBeadIdMarker(input));
 });
 
-test("BEAD_ID_MARKER growth is linear, not quadratic (n vs 2n doubling)", () => {
-  // Measures wall-clock at N and 2N on the exact shape CodeQL names — a string
-  // starting `[bead_id:` followed by many spaces (no closing `]`, which forces
-  // the pre-fix regex to backtrack). Asserts time(2N) < max(3·time(N), 100 ms):
-  // the 100 ms floor absorbs sub-millisecond noise so the linear regex never
-  // flakes, while a quadratic regex blows past both clauses (the pre-fix
-  // `[^\]]+` measured ~240 ms at N=16000 and ~1250 ms at 2N=32000, a 5x ratio).
-  // Verified RED on revert to /\[bead_id:\s*([^\]]+)\]/.
-  const n = 16000;
-  const inputN = "[bead_id: " + " ".repeat(n) + "!";
-  const input2N = "[bead_id: " + " ".repeat(n * 2) + "!";
-  const s1 = process.hrtime.bigint();
-  decodeBeadId({ description: inputN });
-  const msN = Number(process.hrtime.bigint() - s1) / 1e6;
-  const s2 = process.hrtime.bigint();
-  decodeBeadId({ description: input2N });
-  const ms2N = Number(process.hrtime.bigint() - s2) / 1e6;
-  const bound = Math.max(3 * msN, 100);
-  assert.ok(
-    ms2N < bound,
-    `BEAD_ID_MARKER not linear: N=${msN.toFixed(3)} ms, 2N=${ms2N.toFixed(3)} ms, bound=${bound.toFixed(3)} ms (ratio ${(ms2N / msN).toFixed(2)}x)`
-  );
+test("BEAD_ID_MARKER growth is linear, not quadratic", () => {
+  // Measured on the exact shape CodeQL names - a string starting `[bead_id:`
+  // followed by many spaces with no closing bracket, which forces the pre-fix
+  // regex to backtrack. Verified RED on revert to `/\[bead_id:\s*([^\]]+)\]/`,
+  // where it measured over a second at the larger size.
+  assertLinearGrowth("BEAD_ID_MARKER", adversarialMarker, (input) => void decodeBeadId({ description: input }));
 });
 
 test("BEAD_ID_MARKER accepts multi-word ids and bounds leading spaces (behaviour pin)", () => {

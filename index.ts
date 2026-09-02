@@ -364,7 +364,30 @@ export function mapPriority(raw: number | string | undefined): string | undefine
 //    characters, no longer match — `encodeBeadId` writes one space and short slug
 //    ids, so this only affects degenerate externally-authored markers. Pinned in
 //    `test/smoke.test.ts`.
-const BEAD_ID_MARKER = /\[bead_id:[ \t]{0,64}(\S[^\]]{0,4096})\]/;
+// 3. The separator is `\s{0,64}`, not `[ \t]{0,64}`. The original `\s*` accepted a
+//    newline or a Unicode space, so a marker already written as
+//    `[bead_id:\nbd-42]` decodes today; narrowing to space-and-tab would have
+//    made those markers unreadable and lost the id they carry. Bounding it keeps
+//    the expression linear, and the capture's leading `\S` keeps the separator
+//    and the capture disjoint, which is what removed the overlap in the first
+//    place.
+const BEAD_ID_MARKER = /\[bead_id:\s{0,64}(\S[^\]]{0,4096})\]/;
+
+/**
+ * Whether an id survives a write through the marker and a read back out.
+ *
+ * The marker is the only record of a native id, so an id the reader rejects is
+ * an id that vanishes on the next export - and a later `--upsert` then creates
+ * a duplicate instead of matching. Checked by RUNNING the matcher rather than
+ * by comparing a length to a second copy of its bound, so this cannot drift
+ * away from the expression it protects.
+ *
+ * @param beadId - The native Beads id about to be persisted.
+ * @returns True when {@link decodeBeadId} would recover exactly this id.
+ */
+export function isEncodableBeadId(beadId: string): boolean {
+  return BEAD_ID_MARKER.exec(`[bead_id: ${beadId}]`)?.[1]?.trim() === beadId;
+}
 
 /**
  * Embed the native Beads id into an item description behind a parseable marker.
@@ -391,8 +414,7 @@ export function encodeBeadId(description: string, beadId: string | undefined): s
   //
   // Derived from the matcher rather than from a second copy of its bound, so
   // the check cannot drift away from the regex it is protecting.
-  const roundTrip = BEAD_ID_MARKER.exec(marker);
-  if (roundTrip?.[1]?.trim() !== beadId) {
+  if (!isEncodableBeadId(beadId)) {
     throw new CommandError(
       `bead id cannot be persisted: it is ${beadId.length} characters and the id marker cannot read it back, so the identity would be lost on export`,
       EXIT_CODE.USAGE,
@@ -1557,6 +1579,28 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
   const batchSize = opts.batchSize && opts.batchSize > 0 ? opts.batchSize : Math.max(1, records.length);
   const batchCount = Math.max(1, Math.ceil(records.length / batchSize));
   const multiBatch = batchCount > 1;
+
+  // Reject an unencodable id BEFORE the first write, not when the loop reaches
+  // it. Throwing mid-loop would leave a partial import: every record before the
+  // bad one already created or updated, with no record of where it stopped.
+  // This mirrors the structural fail-fast gate above, which exists for the same
+  // reason - a rejection that can only happen after some writes is not a gate.
+  if (opts.preserveIds) {
+    const unencodable = records
+      .map((item, index) => ({ line: index + 1, id: normalizeBeadKey(item.id) }))
+      .filter((row) => row.id !== undefined && !isEncodableBeadId(row.id));
+    if (unencodable.length > 0) {
+      const detail = unencodable
+        .slice(0, 5)
+        .map((row) => `  record ${row.line}: id is ${row.id!.length} characters`)
+        .join("\n");
+      const more = unencodable.length > 5 ? `\n  ... and ${unencodable.length - 5} more` : "";
+      throw new CommandError(
+        `refusing to import: ${unencodable.length} record(s) carry an id the bead-id marker cannot read back, so the identity would be lost on export:\n${detail}${more}`,
+        EXIT_CODE.USAGE,
+      );
+    }
+  }
 
   for (let batchIdx = 0; batchIdx < batchCount; batchIdx++) {
     const batchStart = batchIdx * batchSize;
