@@ -10,6 +10,7 @@ import extension, {
   assertBeadsImportable,
   IncompleteWorkspaceReadError,
   buildBeadIndex,
+  isEncodableBeadId,
   beadPassesFilter,
   decodeBeadId,
   encodeBeadId,
@@ -255,6 +256,25 @@ test("a filtered-out record's unencodable id does not abort the import", async (
   });
   assert.strictEqual(result.wouldImport, 1, "exactly the open record must be selected");
   await ext.deactivate();
+});
+
+test("an existing item can carry an id the marker cannot read back, which is what makes the skip exclusion reachable", () => {
+  // The upsert index is keyed by decodeBeadId, and decodeBeadId prefers the
+  // `bead_id` SCHEMA FIELD over the description marker. That field is not
+  // length-bounded, so an existing item can be indexed under an id the marker
+  // itself could never round-trip.
+  //
+  // Without this, the skip exclusion would be unreachable: every key would have
+  // come from a marker and would therefore be encodable by construction, and a
+  // filter clause that can never fire is dead code the coverage gate would not
+  // catch - V8 reports no branch for a path it never reaches.
+  const unreadable = "b".repeat(4098);
+  assert.equal(isEncodableBeadId(unreadable), false);
+  const index = buildBeadIndex([
+    { id: "pm-1", status: "open", bead_id: unreadable } as unknown as PmItem,
+  ]);
+  assert.equal(index.has(unreadable), true, "the index must be able to hold an id the marker cannot read back");
+  assert.equal(index.get(unreadable)?.pmId, "pm-1");
 });
 
 test("the skip exclusion is scoped to records the loop would actually leave alone", async () => {
