@@ -1989,9 +1989,8 @@ test("readPmItems asks pm for the canonical complete unbounded workspace", { ski
 test("encodeBeadId stays linear on adversarial whitespace input (polynomial-redos regression)", () => {
   // The pre-fix regex /\[bead_id:\s*([^\]]+)\]/ had O(n²) overlap between \s*
   // and [^\]]+ on a long whitespace run with no closing ] (measured 3900 ms at
-  // n=64000). The current /\[bead_id:[ \t]*(\S[^\]]*)\]/ makes the separator and
-  // the capture disjoint and separates the two quantifiers with a single \S,
-  // so the match is linear (measured < 1 ms at n=64000).
+  // n=64000). The current /\[bead_id:[ \t]{0,64}(\S[^\]]*)\]/ bounds the
+  // separator so the worst case is O(64·n) = linear (measured < 1 ms at n=64000).
   const n = 64000;
   const input = "[bead_id: " + " ".repeat(n) + "!";
   const start = process.hrtime.bigint();
@@ -2042,16 +2041,25 @@ test("BEAD_ID_MARKER growth is linear, not quadratic (n vs 2n doubling)", () => 
   );
 });
 
-test("BEAD_ID_MARKER accepts multi-word ids (behaviour pin for the disjoint rewrite)", () => {
-  // The disjoint rewrite `\S[^\]]*` allows spaces inside the capture, restoring
-  // the permissive behaviour of the original `[^\]]+` (the intermediate
-  // `[^\]\s]+` narrowed the language and did NOT match this). `encodeBeadId`
-  // only writes single-token slugs, so this only affects externally-authored
-  // markers; pinned here so a future narrowing is caught.
+test("BEAD_ID_MARKER accepts multi-word ids and bounds leading spaces (behaviour pin)", () => {
+  // The capture `\S[^\]]*` allows spaces inside the id, restoring the
+  // permissive behaviour of the original `[^\]]+` (the intermediate
+  // `[^\]\s]+` narrowed the language and did NOT match multi-word ids —
+  // Greptile P1 / cubic P1: a Beads id with internal whitespace lost its
+  // persisted identity). `encodeBeadId` only writes single-token slugs, so this
+  // only affects externally-authored markers; pinned here so a future narrowing
+  // is caught.
   assert.equal(decodeBeadId({ description: "[bead_id: multi word]" }), "multi word");
+  // A trailing space inside the brackets is captured then trimmed away.
+  assert.equal(decodeBeadId({ description: "[bead_id: abc ]" }), "abc");
   // The slug forms the exporter actually writes still round-trip unchanged.
   assert.equal(decodeBeadId({ description: "[bead_id: bd-42]" }), "bd-42");
   assert.equal(decodeBeadId({ description: "[bead_id:bd-42]" }), "bd-42");
   // A whitespace-only id is not a valid bead id and must not match.
   assert.equal(decodeBeadId({ description: "[bead_id:   ]" }), undefined);
+  // The separator is bounded to 64 space/tab chars: 64 leading spaces still
+  // match, 65 do not. `encodeBeadId` writes exactly one, so this only affects
+  // degenerate externally-authored markers.
+  assert.equal(decodeBeadId({ description: "[bead_id:" + " ".repeat(64) + "abc]" }), "abc");
+  assert.equal(decodeBeadId({ description: "[bead_id:" + " ".repeat(65) + "abc]" }), undefined);
 });
