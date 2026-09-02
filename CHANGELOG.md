@@ -2,7 +2,7 @@
 
 ## 2026.9.1 - 2026-09-01
 
-### Fixed
+### Security
 
 - Resolve polynomial-redos and incomplete-sanitization code-scanning alerts by measurement ([pm-beads-3pk9](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-3pk9.toon))
 

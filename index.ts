@@ -383,6 +383,21 @@ export function encodeBeadId(description: string, beadId: string | undefined): s
   if (BEAD_ID_MARKER.test(description)) return description;
   const trimmed = description.trim();
   const marker = `[bead_id: ${beadId}]`;
+  // Refuse to persist an identity this module cannot read back. The marker is
+  // the ONLY record of the native id, so writing one `decodeBeadId` rejects
+  // loses the id silently - and a later `--upsert` then fails to match the
+  // existing item and creates a duplicate instead. Failing loudly on a
+  // degenerate id is recoverable; silently forking an item's identity is not.
+  //
+  // Derived from the matcher rather than from a second copy of its bound, so
+  // the check cannot drift away from the regex it is protecting.
+  const roundTrip = BEAD_ID_MARKER.exec(marker);
+  if (roundTrip?.[1]?.trim() !== beadId) {
+    throw new CommandError(
+      `bead id cannot be persisted: it is ${beadId.length} characters and the id marker cannot read it back, so the identity would be lost on export`,
+      EXIT_CODE.USAGE,
+    );
+  }
   return trimmed ? `${trimmed}\n\n${marker}` : marker;
 }
 

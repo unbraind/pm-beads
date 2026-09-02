@@ -1986,35 +1986,71 @@ test("readPmItems asks pm for the canonical complete unbounded workspace", { ski
   );
 });
 
-test("encodeBeadId stays linear on adversarial whitespace input (polynomial-redos regression)", () => {
-  // The pre-fix regex /\[bead_id:\s*([^\]]+)\]/ had O(n²) overlap between \s*
-  // and [^\]]+ on a long whitespace run with no closing ] (measured 3900 ms at
-  // n=64000). The current /\[bead_id:[ \t]{0,64}(\S[^\]]{0,4096})\]/ bounds both
-  // quantifiers so the worst case is constant-bounded = linear (measured < 1 ms at n=64000).
-  const n = 64000;
-  const input = "[bead_id: " + " ".repeat(n) + "!";
-  const start = process.hrtime.bigint();
-  encodeBeadId(input, "bd-1");
-  const ms = Number(process.hrtime.bigint() - start) / 1e6;
-  assert.ok(ms < 250, `encodeBeadId took ${ms.toFixed(1)} ms (expected < 250 ms)`);
+/**
+ * Assert that a call's cost grows linearly, by measuring it at N and at 2N.
+ *
+ * An absolute deadline cannot tell a quadratic regex from a loaded runner: the
+ * same 250 ms budget that a linear implementation clears in under a millisecond
+ * is reachable by a correct implementation under CI scheduling or coverage
+ * overhead, so the test fails for a reason that has nothing to do with the
+ * behaviour it guards. A ratio is scheduling-independent - both halves absorb
+ * the same load - which is what makes it a regression test rather than a
+ * benchmark.
+ *
+ * The floor absorbs sub-millisecond noise, where a ratio is meaningless because
+ * the denominator is mostly timer granularity.
+ *
+ * @param label - Name of the call under measurement, for the failure message.
+ * @param run - Invokes the call with an adversarial input of the given size.
+ */
+function assertLinearGrowth(label: string, run: (size: number) => void): void {
+  const n = 16000;
+  const s1 = process.hrtime.bigint();
+  run(n);
+  const msN = Number(process.hrtime.bigint() - s1) / 1e6;
+  const s2 = process.hrtime.bigint();
+  run(n * 2);
+  const ms2N = Number(process.hrtime.bigint() - s2) / 1e6;
+  const bound = Math.max(3 * msN, 100);
+  assert.ok(
+    ms2N < bound,
+    `${label} is not linear: N=${msN.toFixed(3)} ms, 2N=${ms2N.toFixed(3)} ms, bound=${bound.toFixed(3)} ms (ratio ${(ms2N / msN).toFixed(2)}x)`,
+  );
+}
+
+/** The shape CodeQL names: the marker prefix, a long space run, no closing bracket. */
+const adversarialMarker = (size: number): string => "[bead_id: " + " ".repeat(size) + "!";
+
+test("an id the marker cannot read back is refused rather than silently dropped", () => {
+  // The marker is the ONLY record of the native id. Bounding the capture to
+  // keep the regex provably linear created a length past which `encodeBeadId`
+  // would still write a marker that `decodeBeadId` rejects - so the id vanished
+  // on the next export, and `--upsert` then created a duplicate instead of
+  // matching the existing item. That is identity corruption, and it was silent.
+  const readable = "b".repeat(4097);
+  assert.strictEqual(decodeBeadId({ description: encodeBeadId("", readable) } as never), readable);
+
+  const unreadable = "b".repeat(4098);
+  assert.throws(
+    () => encodeBeadId("", unreadable),
+    (error: unknown) => {
+      assert.ok(error instanceof CommandError);
+      assert.strictEqual(error.exitCode, EXIT_CODE.USAGE);
+      assert.match(error.message, /4098 characters/u);
+      return true;
+    },
+    "an unreadable id must fail loudly, because a lost identity cannot be recovered later",
+  );
 });
 
-test("decodeBeadId stays linear on adversarial whitespace input (polynomial-redos regression)", () => {
-  const n = 64000;
-  const description = "[bead_id: " + " ".repeat(n) + "!";
-  const start = process.hrtime.bigint();
-  decodeBeadId({ description });
-  const ms = Number(process.hrtime.bigint() - start) / 1e6;
-  assert.ok(ms < 250, `decodeBeadId took ${ms.toFixed(1)} ms (expected < 250 ms)`);
-});
-
-test("stripBeadIdMarker stays linear on adversarial whitespace input (polynomial-redos regression)", () => {
-  const n = 64000;
-  const input = "[bead_id: " + " ".repeat(n) + "!";
-  const start = process.hrtime.bigint();
-  stripBeadIdMarker(input);
-  const ms = Number(process.hrtime.bigint() - start) / 1e6;
-  assert.ok(ms < 250, `stripBeadIdMarker took ${ms.toFixed(1)} ms (expected < 250 ms)`);
+test("every BEAD_ID_MARKER call site stays linear on adversarial whitespace (polynomial-redos regression)", () => {
+  // The pre-fix regex had O(n^2) overlap between `\s*` and `[^\]]+` on a long
+  // whitespace run with no closing bracket. All three call sites are measured,
+  // not just the one the alert named, because the regex is shared and a future
+  // narrowing could reintroduce the cost at any of them.
+  assertLinearGrowth("encodeBeadId", (size) => void encodeBeadId(adversarialMarker(size), "bd-1"));
+  assertLinearGrowth("decodeBeadId", (size) => void decodeBeadId({ description: adversarialMarker(size) }));
+  assertLinearGrowth("stripBeadIdMarker", (size) => void stripBeadIdMarker(adversarialMarker(size)));
 });
 
 test("BEAD_ID_MARKER growth is linear, not quadratic (n vs 2n doubling)", () => {
