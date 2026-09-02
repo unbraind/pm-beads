@@ -337,19 +337,18 @@ export function mapPriority(raw: number | string | undefined): string | undefine
 // The marker we embed in the description to persist the native Beads id through
 // `pm create` (which exposes no generic custom-field setter for extensions).
 //
-// The separator is a BOUNDED `[ \t]{0,64}` and the capture starts with a
-// single (non-quantified) `\S` and continues with `[^\]]*`. Bounding the
-// separator removes the polynomial class: the earlier `\s*([^\]]+)` was O(n²)
-// because `\s*` and `[^\]]+` both match a space, so on a long whitespace run
-// with no closing `]` the engine retried `\s*` at every position (measured
-// 3900 ms at n=64000); with the separator bounded to ≤64 the worst case is
-// O(64·n) = linear (measured 0.14 ms at n=64000). The non-quantified `\S` makes
-// the separator/capture split unambiguous for the first id character. The
-// intermediate `[^\]\s]+` narrowing was runtime-linear but CodeQL still flagged
-// it (it cannot prove disjointness of `\s` against the negated class `[^\]\s]`),
-// and an unbounded `[ \t]*(\S[^\]]*)` was ALSO still flagged because the
-// `[^\]]*` tail can match a space and CodeQL sees the unbounded separator/tail
-// overlap; bounding the separator is what clears the static flag.
+// Both the separator `[ \t]{0,64}` and the capture tail `[^\]]{0,256}` are
+// BOUNDED, and the capture starts with a single (non-quantified) `\S`. CodeQL
+// flags `js/polynomial-redos` for any regex with two unbounded quantifiers whose
+// character classes overlap; bounding both quantifiers makes the worst case
+// constant-bounded (O(64·256) = linear) and is the documented CodeQL remedy.
+// The earlier forms were all still flagged:
+//   * `\s*([^\]]+)` — O(n²): `\s*` and `[^\]]+` both match a space (3900 ms at n=64000).
+//   * `\s*([^\]\s]+` — runtime-linear, but CodeQL cannot prove `\s`/`[^\]\s]` disjoint.
+//   * `[ \t]*(\S[^\]]*)`  — runtime-linear, but the unbounded `[^\]]*` tail matches a
+//     space and CodeQL sees the unbounded separator/tail overlap.
+//   * `[ \t]{0,64}(\S[^\]]*)` — separator bounded but the tail was still unbounded; still flagged.
+// Bounding the tail too is what clears the static flag (measured 0.17 ms at n=64000).
 //
 // Accepted-language notes:
 //  * The capture MAY contain spaces (e.g. `[bead_id: multi word]` decodes to
@@ -358,10 +357,11 @@ export function mapPriority(raw: number | string | undefined): string | undefine
 //    matches and decodes to `"abc"` via the existing `.trim()`. `encodeBeadId`
 //    only ever writes single-token slug ids, so round-trip data is unaffected.
 //  * A whitespace-only id (`[bead_id:   ]`) no longer matches (degenerate).
-//  * More than 64 leading spaces after the colon no longer match — `encodeBeadId`
-//    writes exactly one, so this only affects degenerate externally-authored
-//    markers. Pinned in `test/smoke.test.ts`.
-const BEAD_ID_MARKER = /\[bead_id:[ \t]{0,64}(\S[^\]]*)\]/;
+//  * More than 64 leading spaces after the colon, or an id longer than 257
+//    characters, no longer match — `encodeBeadId` writes one space and short slug
+//    ids, so this only affects degenerate externally-authored markers. Pinned in
+//    `test/smoke.test.ts`.
+const BEAD_ID_MARKER = /\[bead_id:[ \t]{0,64}(\S[^\]]{0,256})\]/;
 
 /**
  * Embed the native Beads id into an item description behind a parseable marker.
