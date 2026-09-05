@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Other
+
+- Pin the pm toolchain to 2026.9 and stop requiring a clock-stamped changelog control ([pm-beads-3cun](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-3cun.toon))
+
 ## 2026.9.1 - 2026-09-01
 
 ### Security
