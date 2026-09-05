@@ -16,12 +16,44 @@
 
 ### Fixed
 
+- Close dynamic scalar flag and PM claim follow-ups ([pm-beads-pxl7](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-pxl7.toon))
+- Fail closed on wrapped and option-separated combined scalar publishes ([pm-beads-icb4](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-icb4.toon))
+- Fail closed on argument-bearing combined scalar publishes ([pm-beads-ax72](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-ax72.toon))
+- Fail closed on combined scalar publishes and redirection-adjacent heredoc delimiters ([pm-beads-rzz1](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-rzz1.toon))
+- Fail closed on option-prefixed dynamic npm subcommands ([pm-beads-vu7d](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-vu7d.toon))
+- Fail closed on dynamic publish forms and brace status ([pm-beads-9pan](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-9pan.toon))
+- Close CodeRabbit scalar scope follow-ups ([pm-beads-b7h1](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-b7h1.toon))
+- Shell scalar assignments are read from raw text, so a comment can flag an unattested publish ([pm-beads-dhgs](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-dhgs.toon))
+- Fail closed on unresolved scalar command words ([pm-beads-980d](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-980d.toon))
+- Keep plain-shell heredoc indentation significant ([pm-beads-ur0e](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-ur0e.toon))
+- Reject escaped heredoc operator text ([pm-beads-6aag](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-6aag.toon))
+- Reject quoted heredoc operator text ([pm-beads-jyil](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-jyil.toon))
 - Move the host CLI pin and its version-contract constant together so the bump can land ([pm-beads-vb7j](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-vb7j.toon))
+- Close reverse heredoc and uncertain unset review bypasses ([pm-beads-yaua](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-yaua.toon))
+- Queue trailing separated heredoc after joined opener ([pm-beads-uwkq](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-uwkq.toon))
+- Restore YAML indentation branch coverage after rebase ([pm-beads-mnb5](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-mnb5.toon))
+- Use YAML block indentation for heredoc delimiters ([pm-beads-zroe](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-zroe.toon))
+- Normalize shallower YAML heredoc delimiters ([pm-beads-g2p8](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-g2p8.toon))
+- Recognize mixed and chained joined heredoc operators ([pm-beads-n3yd](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-n3yd.toon))
+- Preserve successful assignment status across conditionals ([pm-beads-mdk1](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-mdk1.toon))
+- Prevent piped brace-group state leaks and exercise here-strings ([pm-beads-5s28](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-5s28.toon))
+- Preserve scalar assignments inside brace groups ([pm-beads-t9nz](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-t9nz.toon))
+- Close multi-assignment, compound-status, and joined-heredoc bypasses ([pm-beads-rgro](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-rgro.toon))
+- Close declaration, conditional-unset, and subshell scalar bypasses ([pm-beads-zcje](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-zcje.toon))
+- Recognize ampersand-first scalar redirections ([pm-beads-8lhm](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-8lhm.toon))
 - Pin pm-changelog 2026.8.30 before the next release ([pm-beads-h8cp](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-h8cp.toon))
+- Preserve scalar assignments with ampersand redirections ([pm-beads-pyjj](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-pyjj.toon))
 - Remove the unused changelog verifier test import ([pm-beads-3uet](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-3uet.toon))
 - Run the changelog date guard against same-day release suffixes ([pm-beads-7uxj](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-7uxj.toon))
+- Close remaining PR 88 shell scalar review bypasses ([pm-beads-8001](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-8001.toon))
 - Rebase the changelog date verifier onto the current release workflow ([pm-beads-vuzd](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-vuzd.toon))
 - CodeQL action updates split into mutually blocking pull requests ([pm-beads-1d0b](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-1d0b.toon))
+
+## 2026.8.29 - 2026-08-29
+
+### Fixed
+
+- Track scalar unset and heredoc body lines in shellScalars ([pm-beads-vsnb](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-vsnb.toon))
 
 ## 2026.8.28 - 2026-08-28
 

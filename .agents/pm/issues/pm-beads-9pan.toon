@@ -1,0 +1,30 @@
+id: pm-beads-9pan
+title: Fail closed on dynamic publish forms and brace status
+description: "Fix PR 88 Greptile findings 3890253722, 3890253990, and 3890253992."
+type: Issue
+status: closed
+priority: 1
+tags: []
+created_at: "2026-08-30T19:03:35.219Z"
+updated_at: "2026-08-30T19:09:43.896Z"
+closed_at: "2026-08-30T19:09:42.750Z"
+completed_at: "2026-08-30T19:09:42.750Z"
+author: pi-agent
+severity: high
+repro_steps: "${CMD:-npm} publish, npm $SUB, and { false; } && FLAG=--provenance each evade or corrupt publish auditing."
+resolution: "Recognize braced parameter expansions, reject unresolved npm scalar subcommands, and preserve preceding command status across a standalone closing brace."
+expected_result: Dynamic publish command/subcommand forms fail closed and closing braces preserve compound status.
+actual_result: Narrow scalar matching and closing-brace status reset produce clean false passes.
+comments[1]{created_at,author,text}:
+  "2026-08-30T19:09:40.818Z",pi-agent,"All three findings reproduced. With scanner and verifier source reverted, dynamic publish failure counts were [0,0] instead of [1,1] and the brace-group assignment retained --provenance; SOURCE_ONLY_REVERT_EXIT=1. Restored source broadens parameter-expansion refusal, catches unresolved npm subcommands, and carries group status across the closing brace. npm test, 100% coverage, docstring, release:check, and real workflow attestation verification pass."
+files[3]{path,scope}:
+  scripts/shell-command-scan.ts,project
+  scripts/verify-release-publish-attestation.ts,project
+  test/verify-release-publish-attestation.test.ts,project
+tests[4]{command,scope,timeout_seconds,provenance{author,created_at,source_kind,source_ref}}:
+  npm test,project,2400,pi-agent,"2026-08-30T19:05:48.530Z",local_mutation,pi-pr88
+  npm run coverage,project,2400,pi-agent,"2026-08-30T19:05:48.530Z",local_mutation,pi-pr88
+  npm run docstring,project,2400,pi-agent,"2026-08-30T19:05:48.530Z",local_mutation,pi-pr88
+  "npm run release:check",project,2400,pi-agent,"2026-08-30T19:05:48.530Z",local_mutation,pi-pr88
+close_reason: Three dynamic publish and brace-status bypasses fixed with audit-level regressions.
+body: ""

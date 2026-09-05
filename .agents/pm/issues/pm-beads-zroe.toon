@@ -1,0 +1,24 @@
+id: pm-beads-zroe
+title: Use YAML block indentation for heredoc delimiters
+description: "Fix Greptile thread 3889967593 without reopening 3889951963: derive the YAML block content indentation instead of treating every shallower line as a delimiter."
+type: Issue
+status: closed
+priority: 1
+tags: []
+created_at: "2026-08-30T16:57:34.587Z"
+updated_at: "2026-08-30T20:55:07.420Z"
+closed_at: "2026-08-30T16:59:13.679Z"
+completed_at: "2026-08-30T16:59:13.679Z"
+author: pi-agent
+severity: high
+repro_steps: "Place a near-delimiter body line shallower than the opener but deeper than YAML block indentation, followed by assignment-shaped body text."
+resolution: Track YAML block scalar content indentation per line and remove exactly that prefix before applying shell heredoc rules.
+expected_result: Only a delimiter exact after YAML block normalization closes an ordinary heredoc.
+actual_result: Any shallower delimiter-looking line can close the heredoc prematurely.
+comments[1]{created_at,author,text}:
+  "2026-08-30T16:59:13.239Z",pi-agent,Fixed thread 3889967593 while preserving 3889951963. Source-only revert proof failed because a one-space-indented EOF closed early and indexed '--provenance'; restored source passed 1/1. Audit tests cover both a nested valid delimiter and a delimiter-looking body line.
+files[2]{path,scope}:
+  scripts/shell-command-scan.ts,project
+  test/verify-release-publish-attestation.test.ts,project
+close_reason: Heredoc delimiter comparison now uses YAML block content indentation rather than opener-relative stripping.
+body: ""

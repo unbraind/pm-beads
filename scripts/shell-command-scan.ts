@@ -52,6 +52,9 @@ export interface ShellToken {
   startsQuoted: boolean;
 }
 
+/** Quoted or escaped characters that cannot become shell syntax after normalization. */
+const protectedCharacterIndexes = new WeakMap<ShellToken, ReadonlySet<number>>();
+
 /** One simple command: the words it would run, in order. */
 export type ShellCommand = ShellToken[];
 
@@ -218,14 +221,18 @@ export function tokenizeCommands(text: string, depth = 0): ShellCommand[] {
   let value = "";
   let quoted = false;
   let startsQuoted = false;
+  let protectedIndexes: number[] = [];
   let started = false;
 
   const endWord = (): void => {
     if (!started) return;
-    command.push({ value, quoted, startsQuoted });
+    const token = { value, quoted, startsQuoted };
+    protectedCharacterIndexes.set(token, new Set(protectedIndexes));
+    command.push(token);
     value = "";
     quoted = false;
     startsQuoted = false;
+    protectedIndexes = [];
     started = false;
   };
   const endCommand = (): void => {
@@ -247,6 +254,7 @@ export function tokenizeCommands(text: string, depth = 0): ShellCommand[] {
       index += 1;
       if (next === undefined) break;
       if (next === "\n") continue;
+      protectedIndexes.push(value.length);
       value += next;
       if (!started) startsQuoted = false;
       started = true;
@@ -255,7 +263,9 @@ export function tokenizeCommands(text: string, depth = 0): ShellCommand[] {
     if (character === "'") {
       const close = text.indexOf("'", index + 1);
       const end = close === -1 ? text.length : close;
-      value += text.slice(index + 1, end);
+      const content = text.slice(index + 1, end);
+      for (let offset = 0; offset < content.length; offset += 1) protectedIndexes.push(value.length + offset);
+      value += content;
       quoted = true;
       if (!started) startsQuoted = true;
       started = true;
@@ -269,7 +279,10 @@ export function tokenizeCommands(text: string, depth = 0): ShellCommand[] {
         if (inner === "\\") {
           const next = text[index + 1];
           if (next !== undefined) {
-            if (next !== "\n") value += next;
+            if (next !== "\n") {
+              protectedIndexes.push(value.length);
+              value += next;
+            }
             index += 2;
             continue;
           }
@@ -282,6 +295,7 @@ export function tokenizeCommands(text: string, depth = 0): ShellCommand[] {
           index = end;
           continue;
         }
+        protectedIndexes.push(value.length);
         value += inner;
         index += 1;
       }
@@ -320,11 +334,17 @@ export function tokenizeCommands(text: string, depth = 0): ShellCommand[] {
       endWord();
       continue;
     }
+    // Braces are reserved words only when they stand alone. In `value{` the
+    // brace remains part of the argument rather than truncating the word.
+    if ((character === "{" || character === "}") && started) {
+      value += character;
+      continue;
+    }
     if (isOperatorStart(character)) {
       // `2>&1` is one redirection, not a command ended by a backgrounding `&`.
       // The `&` belongs to the word only while that word is still an operator
       // awaiting its target.
-      if (character === "&" && /^[0-9]*[<>]>?$/.test(value)) {
+      if (character === "&" && (/^[0-9]*[<>]>?$/.test(value) || (!started && text[index + 1] === ">"))) {
         value += character;
         started = true;
         continue;
@@ -397,14 +417,18 @@ export function tokenizeCommands(text: string, depth = 0): ShellCommand[] {
  * `> /dev/null npm publish` runs npm. A scan that reads words in order sees `>`
  * as the program and audits nothing. The forms accepted here are the ones a
  * workflow actually writes: the plain operators, a file-descriptor prefix
- * (`2>`, `2>>`), and the duplicating forms (`>&`, `2>&1`, `&>`).
+ * (`2>`, `2>>`), the duplicating forms (`>&`, `2>&1`, `&>`), and the read-write
+ * form `<>`. `<>` has to be named explicitly: it is not `<` followed by `>`, so
+ * without it the operator was read as a joined redirection that consumes no
+ * target, its target `/dev/null` became the command word, and the real
+ * `npm publish` after it was never audited.
  *
  * @param token - One command word.
  * @returns True when the word is a redirection operator.
  */
 function isRedirection(token: ShellToken): boolean {
   if (token.startsQuoted) return false;
-  return /^(?:[0-9]*(?:>>?|<<?<?)&?[0-9-]*|&>>?)$/.test(token.value);
+  return /^(?:[0-9]*(?:>>?|<>|<<?<?)&?[0-9-]*|&>>?)$/.test(token.value);
 }
 
 /**
@@ -616,35 +640,372 @@ export function bashArrays(text: string): Map<string, string> {
   return arrays;
 }
 
+/** Mask executable substitutions without changing outer shell syntax. */
+function maskSubstitutions(line: string): string {
+  let masked = "";
+  let single = false;
+  let double = false;
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index]!;
+    if (character === "\\") {
+      const escaped = line[index + 1];
+      masked += escaped === undefined ? "$DYNAMIC" : character + escaped;
+      index += 1;
+    } else if (character === "'" && !double) {
+      single = !single;
+      masked += character;
+    } else if (character === '"' && !single) {
+      double = !double;
+      masked += character;
+    } else if (!single && (character === "`" || (character === "$" && line[index + 1] === "("))) {
+      const substitution = readSubstitution(line, index);
+      masked += "$DYNAMIC";
+      index = substitution.end - 1;
+    } else {
+      masked += character;
+    }
+  }
+  return masked;
+}
+
+/** Return only a line's outer commands, masking executable substitutions. */
+function topLevelCommands(line: string): ShellCommand[] {
+  return tokenizeCommands(maskSubstitutions(line));
+}
+
+/** Mask brace groups that a pipe or background operator runs outside the parent shell. */
+function maskExternalBraceGroups(line: string): string {
+  const stack: number[] = [];
+  const ranges: Array<{ start: number; end: number }> = [];
+  let single = false;
+  let double = false;
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index]!;
+    if (character === "\\") {
+      index += 1;
+      continue;
+    }
+    if (character === "'" && !double) {
+      single = !single;
+      continue;
+    }
+    if (character === '"' && !single) {
+      double = !double;
+      continue;
+    }
+    if (single || double) continue;
+    if (character === "{") stack.push(index);
+    else if (character === "}") {
+      const start = stack.pop();
+      if (start === undefined) continue;
+      let next = index + 1;
+      while (line[next] === " " || line[next] === "\t") next += 1;
+      // Redirections belong to the brace-group command and may sit between its
+      // closing brace and the pipe/background operator that changes its scope.
+      const redirections = /^(?:(?:[0-9]*(?:<>|>>?|<<?<?)|&>>?)(?:&[0-9-]+|[^\s;&|]+|[ \t]+[^\s;&|]+)?[ \t]*)+/.exec(line.slice(next));
+      if (redirections !== null) next += redirections[0].length;
+      const operator = line[next];
+      const following = line[next + 1];
+      if ((operator === "|" && following !== "|")
+        || (operator === "&" && following !== "&" && following !== ">")) {
+        ranges.push({ start, end: index + 1 });
+      }
+    }
+  }
+  if (ranges.length === 0) return line;
+  const characters = [...line];
+  for (const { start, end } of ranges) characters.fill(" ", start, end);
+  return characters.join("");
+}
+
+/**
+ * Return commands whose scalar mutations certainly run in the parent shell.
+ *
+ * The first command of a semicolon-delimited list runs unconditionally. A later
+ * `&&`/`||` command is guarded, while either side of a pipe and a backgrounded
+ * command runs outside the parent-shell state tracked by `shellScalars`.
+ */
+function parentShellStateCommands(line: string): ShellCommand[] {
+  const masked = maskExternalBraceGroups(maskSubstitutions(line));
+  const segments: Array<{ text: string; before: string; after: string }> = [];
+  let start = 0;
+  let before = "";
+  let single = false;
+  let double = false;
+  let wordStarted = false;
+  let wordStart = 0;
+  for (let index = 0; index <= masked.length; index += 1) {
+    const character = masked[index];
+    if (character === undefined) {
+      segments.push({ text: masked.slice(start), before, after: "" });
+      break;
+    }
+    if (character === "\\") {
+      wordStarted = true;
+      index += 1;
+      continue;
+    }
+    if (character === "'" && !double) {
+      single = !single;
+      wordStarted = true;
+      continue;
+    }
+    if (character === '"' && !single) {
+      double = !double;
+      wordStarted = true;
+      continue;
+    }
+    if (single || double) {
+      wordStarted = true;
+      continue;
+    }
+    if (character === "#" && !wordStarted) {
+      segments.push({ text: masked.slice(start, index), before, after: "" });
+      break;
+    }
+    if (character === " " || character === "\t" || character === "\r") {
+      wordStarted = false;
+      wordStart = index + 1;
+      continue;
+    }
+    // In `2>&1`, the ampersand is part of the redirection word rather than a
+    // background operator, so it cannot change the assignment's shell scope.
+    if (character === "&" && (/^[0-9]*[<>]>?$/.test(masked.slice(wordStart, index)) || masked[index + 1] === ">")) {
+      wordStarted = true;
+      continue;
+    }
+    if (character === ";" || character === "&" || character === "|" || character === "(" || character === ")") {
+      const doubled = masked[index + 1] === character && (character === "&" || character === "|");
+      const operator = doubled ? character + character : character;
+      segments.push({ text: masked.slice(start, index), before, after: operator });
+      index += doubled ? 1 : 0;
+      start = index + 1;
+      before = operator;
+      wordStarted = false;
+      wordStart = index + 1;
+      continue;
+    }
+    wordStarted = true;
+  }
+
+  const stateCommands: ShellCommand[] = [];
+  let status: boolean | undefined;
+  for (const { text, before: preceding, after } of segments) {
+    // A standalone closing brace completes the preceding command group; the
+    // semicolon before it does not replace that group's status with success.
+    const closesBraceGroup = /^\s*}/.test(text);
+    if ((preceding === "" || preceding === ";") && !closesBraceGroup) status = true;
+    const executes = preceding === "&&" ? status === true
+      : preceding === "||" ? status === false
+        : preceding === "" || preceding === ";";
+    const mayExecute = (preceding === "&&" || preceding === "||") && status === undefined;
+    const commands = tokenizeCommands(text);
+    const command = commands.length === 1 ? commands[0] : undefined;
+    const firstWord = command !== undefined ? withoutRedirections(command)[0] : undefined;
+    // An uncertain unset must fail closed: retaining a possibly deleted
+    // provenance flag could turn an unattested publish into a clean result.
+    const uncertainUnset = mayExecute && firstWord?.value === "unset" && !firstWord.startsQuoted;
+    if ((executes || uncertainUnset) && command !== undefined && after !== "|" && after !== "&") {
+      stateCommands.push(command);
+    }
+
+    if (preceding === "|" || preceding === "&" || preceding === "(" || preceding === ")"
+      || after === "|" || after === "&" || after === "(" || after === ")") {
+      status = undefined;
+    } else if (executes && command !== undefined) {
+      const words = withoutRedirections(command);
+      if (words.length === 1 && words[0]?.value === "true") status = true;
+      else if (words.length === 1 && words[0]?.value === "false") status = false;
+      else if (words.length > 0 && words.every((word) => {
+        if (word.startsQuoted) return false;
+        const binding = /^[A-Za-z_][A-Za-z0-9_]*=(.*)$/.exec(word.value);
+        return binding !== null && isLiteralScalar(binding[1]!);
+      })) status = true;
+      else status = undefined;
+    }
+  }
+  return stateCommands;
+}
+
+/** Shell builtins whose assignment operands persist in the current shell. */
+const SCALAR_DECLARATIONS = new Set(["export", "readonly", "declare", "typeset"]);
+
+/** A scalar value must remain inert when textually expanded and re-tokenised. */
+function isLiteralScalar(value: string): boolean {
+  return !/[$`"'(){};&|<>]/.test(value);
+}
+
+/** Return the indentation YAML removes from each block-scalar content line. */
+function yamlBlockIndents(lines: string[]): Array<string | undefined> {
+  const indents: Array<string | undefined> = Array.from({ length: lines.length });
+  let keyIndent: number | undefined;
+  let contentIndent: string | undefined;
+  let explicitIndent: number | undefined;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]!;
+    const indentation = /^[ \t]*/.exec(line)![0];
+    if (keyIndent !== undefined) {
+      if (line.trim().length === 0) {
+        indents[index] = contentIndent;
+        continue;
+      }
+      if (indentation.length > keyIndent) {
+        contentIndent ??= explicitIndent !== undefined
+          ? indentation.slice(0, keyIndent + explicitIndent)
+          : indentation;
+        indents[index] = contentIndent;
+        continue;
+      }
+      keyIndent = undefined;
+      contentIndent = undefined;
+      explicitIndent = undefined;
+    }
+    const marker = /^([ \t]*)(?:-\s+)?[A-Za-z_][A-Za-z0-9_-]*:\s*[>|](?:([1-9])[+-]?|[+-]?([1-9])?)\s*(?:#.*)?$/.exec(line);
+    if (marker !== null) {
+      keyIndent = marker[1]!.length;
+      explicitIndent = Number(marker[2] ?? marker[3]) || undefined;
+    }
+  }
+  return indents;
+}
+
 /**
  * Index scalar assignments so a command held in a variable can be audited.
  *
  * `CMD="npm publish"` followed by `$CMD` runs a publish that no scan of the
  * invocation line can see, because the invocation line contains no publish. The
- * assignment is where the command actually is.
+ * assignment is where the command actually is. `NPM=npm` followed by
+ * `$NPM publish` hides one the same way, so unquoted values are indexed too.
  *
- * Plain literal values are indexed. Quoted values can hold a multi-word command;
- * an unquoted value can still hold one command word, while a value built from
- * other variables is not resolvable without evaluating the script, which this
- * module deliberately does not do.
+ * A name is taken only where a line OPENS with one assignment carrying a fully
+ * literal value and holds nothing else before its end or a `;`. `NPM=npm; cmd`
+ * therefore binds, because the semicolon ends the assignment and the shell keeps
+ * it afterwards, while `NPM=npm cmd` does not, because that binding lasts only
+ * for the command it precedes. Requiring the line to OPEN with the assignment is
+ * what keeps a `;` inside a comment from exposing one. That single rule keeps
+ * the scan from inventing
+ * bindings the shell never makes, each of which let an unattested publish
+ * borrow a flag and pass the gate:
+ *
+ * - `# FLAG=--provenance` is a comment, and a comment is not a line that is
+ *   only an assignment.
+ * - `echo "config NPM=npm"` is a command with an argument, not an assignment.
+ * - `FLAG=--provenance some-command` binds only for that one command; the shell
+ *   does not keep it afterwards, so neither does this map.
+ * - `$(FLAG=--provenance)` binds inside a subshell that the outer shell never
+ *   sees.
+ * - `NPM=npm$SUFFIX` and `NPM=npm$(printf foo)` are not literal. The value must
+ *   match to the end of the line, so a prefix is never mistaken for the whole
+ *   value -- the mistake that let a scan analyse a different command from the
+ *   one the shell runs.
+ *
+ * `export NPM=npm`, a trailing `# comment` and a CRLF line ending are all still
+ * assignments: refusing them left `$NPM` unresolved, and an attested publish
+ * elsewhere in the file then satisfied the non-vacuity guard, so being too
+ * strict here passes an unattested publish just as being too loose does.
+ *
+ * Escapes are honoured outside single quotes, so `NPM=npm\\ publish` is one word
+ * holding a command while `CMD='"'"'a\\b'"'"' keeps its backslash as the shell does.
+ * A value that still carries a substitution, backtick, quote or parenthesis
+ * after unescaping is refused: inlining `pkg_name="$(node -p …)"` injects an
+ * unbalanced parenthesis into an unrelated command, and the scan then reports
+ * invocations that are not there while losing the one that is -- a false
+ * verdict in both directions, which is worse than not resolving the variable.
+ *
+ * A binding cleared by `unset` is removed, so an expansion after the unset
+ * resolves to empty in the map just as it does in the shell. Without this,
+ * `FLAG=--provenance; unset FLAG` followed by `npm publish $FLAG` would borrow
+ * the flag from a binding the shell no longer holds and pass the gate.
+ *
+ * Lines inside a here-document body are text fed to a command, not shell
+ * assignments. An assignment-shaped line such as `FLAG=--provenance` inside a
+ * `cat <<EOF ... EOF` block must not be indexed, or the same false pass opens.
  *
  * @param text - File contents with continuations already joined.
  * @returns Variable name mapped to the literal text it holds.
  */
 export function shellScalars(text: string): Map<string, string> {
   const scalars = new Map<string, string>();
-  for (const match of text.matchAll(/(?:^|[\s;&|])([A-Za-z_][A-Za-z0-9_]*)=(?:"([^"\n]*)"|'([^'\n]*)'|([^\s"'\n;&|]+))/g)) {
-    // The alternation guarantees exactly one value group matched, so there is
-    // no fourth case to fall back to.
-    const value = match[2] ?? match[3] ?? match[4]!;
-    // Only a plain literal is inlined. A value carrying a substitution, a
-    // backtick, or a quote of its own changes how the line it lands in parses:
-    // inlining `pkg_name="$(node -p …)"` injects an unbalanced parenthesis into
-    // an unrelated command, and the scan then reports invocations that are not
-    // there while losing the one that is. That is a false verdict in both
-    // directions, which is worse than not resolving the variable at all.
-    if (/[$`"'()]/.test(value)) continue;
-    scalars.set(match[1]!, value);
+  // Keep the YAML block indentation separate from shell heredoc semantics.
+  // Only <<- strips tabs; an ordinary << delimiter must otherwise match exactly.
+  const heredocs: Array<{ delimiter: string; stripTabs: boolean; yamlIndent: string }> = [];
+  const lines = text.split("\n");
+  const blockIndents = yamlBlockIndents(lines);
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const line = lines[lineIndex]!;
+    const activeHeredoc = heredocs[0];
+    if (activeHeredoc !== undefined) {
+      const yamlNormalized = activeHeredoc.yamlIndent !== "" && line.startsWith(activeHeredoc.yamlIndent)
+        ? line.slice(activeHeredoc.yamlIndent.length)
+        : line;
+      const candidate = (activeHeredoc.stripTabs ? yamlNormalized.replace(/^\t+/, "") : yamlNormalized).replace(/\r$/, "");
+      if (candidate === activeHeredoc.delimiter) heredocs.shift();
+      continue;
+    }
+
+    const commands = topLevelCommands(line);
+    for (const stateCommand of parentShellStateCommands(line)) {
+      const command = withoutRedirections(stateCommand);
+      const first = command[0];
+      const plainBindings = command.map((token) => !token.startsQuoted
+        ? /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(token.value)
+        : null);
+      if (plainBindings.every((binding) => binding !== null)) {
+        for (const binding of plainBindings) {
+          if (isLiteralScalar(binding![2]!)) scalars.set(binding![1]!, binding![2]!);
+        }
+      }
+      if (first !== undefined && !first.startsQuoted && SCALAR_DECLARATIONS.has(first.value)) {
+        for (const token of command.slice(1)) {
+          const binding = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(token.value);
+          if (binding !== null && isLiteralScalar(binding[2]!)) scalars.set(binding[1]!, binding[2]!);
+        }
+      }
+      if (first?.value === "unset" && !first.startsQuoted) {
+        for (const arg of command.slice(1).map((token) => token.value)) {
+          if (arg === "-v") continue;
+          if (arg === "-f") break;
+          if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(arg)) scalars.delete(arg);
+        }
+      }
+    }
+
+    // Detect the operator from shell tokens, not raw text: quoted and commented
+    // `<<EOF` text is not a heredoc. `<<<` remains a here-string. The shell also
+    // accepts whitespace between `<<`/`<<-` and its delimiter.
+    for (const command of commands) {
+      for (let index = 0; index < command.length; index += 1) {
+        const opener = command[index]!;
+        if (opener.startsQuoted) continue;
+        const protectedIndexes = protectedCharacterIndexes.get(opener)!;
+        const joined = [...opener.value.matchAll(/(?<!<)<<(-?)([^<\s]+?)(?=<<|$)/g)]
+          .filter((match) => !protectedIndexes.has(match.index!) && !protectedIndexes.has(match.index! + 1));
+        for (const match of joined) {
+          heredocs.push({
+            delimiter: match[2]!,
+            stripTabs: match[1] === "-",
+            yamlIndent: blockIndents[lineIndex] ?? "",
+          });
+        }
+        const separatedMatch = /(?<!<)<<(-?)$/.exec(opener.value);
+        const separated = separatedMatch !== null
+          && !protectedIndexes.has(separatedMatch.index)
+          && !protectedIndexes.has(separatedMatch.index + 1)
+          ? separatedMatch
+          : null;
+        const delimiterToken = separated !== null ? command[index + 1] : undefined;
+        const delimiter = delimiterToken?.startsQuoted
+          ? delimiterToken.value
+          : /^[^<\s]+/.exec(delimiterToken?.value ?? "")?.[0];
+        if (delimiter !== undefined) {
+          heredocs.push({
+            delimiter,
+            stripTabs: separated![1] === "-",
+            yamlIndent: blockIndents[lineIndex] ?? "",
+          });
+        }
+      }
+    }
   }
   return scalars;
 }

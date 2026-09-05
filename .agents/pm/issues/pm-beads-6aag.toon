@@ -1,0 +1,29 @@
+id: pm-beads-6aag
+title: Reject escaped heredoc operator text
+description: "Fix Greptile PR 88 finding 3890132430: escaped less-than characters are accepted as a heredoc operator after token normalization."
+type: Issue
+status: closed
+priority: 1
+tags: []
+created_at: "2026-08-30T18:10:30.402Z"
+updated_at: "2026-08-30T18:14:53.032Z"
+closed_at: "2026-08-30T18:14:52.543Z"
+completed_at: "2026-08-30T18:14:52.543Z"
+author: pi-agent
+severity: high
+repro_steps: "echo x\\<\\<EOF suppresses a later scalar assignment and hides its variable-routed publish."
+resolution: Mark normalized escaped characters as protected syntax positions and reject heredoc matches crossing them.
+expected_result: Escaped operator characters remain literal argument text.
+actual_result: "Escape removal loses syntax provenance, opening a synthetic heredoc."
+comments[1]{created_at,author,text}:
+  "2026-08-30T18:14:51.638Z",pi-agent,"Greptile 3890132430 reproduced: source-only revert made echo x\\\\<\\\\<EOF open synthetic heredoc suppression and fail the focused regression, SOURCE_ONLY_REVERT_EXIT=1. Restored source marks escaped characters as syntax-protected alongside quoted characters. Map and attested-sibling audit regressions pass; npm test, 100% coverage, docstring, and release:check all pass."
+files[2]{path,scope}:
+  scripts/shell-command-scan.ts,project
+  test/verify-release-publish-attestation.test.ts,project
+tests[4]{command,scope,timeout_seconds,provenance{author,created_at,source_kind,source_ref}}:
+  npm test,project,2400,pi-agent,"2026-08-30T18:12:09.551Z",local_mutation,pi-pr88
+  npm run coverage,project,2400,pi-agent,"2026-08-30T18:12:09.551Z",local_mutation,pi-pr88
+  npm run docstring,project,2400,pi-agent,"2026-08-30T18:12:09.551Z",local_mutation,pi-pr88
+  "npm run release:check",project,2400,pi-agent,"2026-08-30T18:12:09.551Z",local_mutation,pi-pr88
+close_reason: Escaped less-than characters remain literal argument text; all regressions and gates pass.
+body: ""

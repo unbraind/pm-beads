@@ -1,0 +1,24 @@
+id: pm-beads-5s28
+title: Prevent piped brace-group state leaks and exercise here-strings
+description: "Fix CodeRabbit threads 3889895520 and 3889895522: brace groups piped/backgrounded do not mutate parent state, and the here-string regression must contain an actual <<< token."
+type: Issue
+status: closed
+priority: 1
+tags: []
+created_at: "2026-08-30T16:26:41.059Z"
+updated_at: "2026-08-30T20:55:05.080Z"
+closed_at: "2026-08-30T16:27:42.784Z"
+completed_at: "2026-08-30T16:27:42.784Z"
+author: pi-agent
+severity: high
+repro_steps: "{ FLAG=--provenance; } | cat or background the group, then publish with $FLAG."
+resolution: Mask brace groups followed by pipe/background only for parent-state extraction; exercise an actual here-string token.
+expected_result: Group-local state cannot attest a parent publish; here-string exclusion has direct coverage.
+actual_result: Group assignments leak into the scalar map and the existing here-string assertion is vacuous.
+comments[1]{created_at,author,text}:
+  "2026-08-30T16:27:42.170Z",pi-agent,Fixed CodeRabbit threads 3889895520 and 3889895522. Brace-group source-only revert proof failed with retained '--provenance'; restored source passed 1/1. Audit regressions cover pipe/background. The here-string assertion now contains cat <<<word and proves the following assignment remains indexed.
+files[2]{path,scope}:
+  scripts/shell-command-scan.ts,project
+  test/verify-release-publish-attestation.test.ts,project
+close_reason: External brace groups no longer mutate parent scalar state and here-string coverage is direct.
+body: ""

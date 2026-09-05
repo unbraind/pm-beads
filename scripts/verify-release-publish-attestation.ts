@@ -31,6 +31,7 @@ import {
   joinContinuations,
   shellScalars,
   type ShellCommand,
+  type ShellToken,
   type SourceFile,
   tokenizeCommands,
   type VerifierResult,
@@ -62,6 +63,7 @@ export const FOREIGN_PUBLISHERS = new Set(["yarn", "pnpm", "bun"]);
  * report the same command twice -- once as unknown and once as what it is.
  */
 const INDEXED_ARRAY_EXPRESSION = /^\$\{[A-Za-z_][A-Za-z0-9_]*\[-?\d+\]\}$/;
+const SCALAR_EXPRESSION = /^(?:\$[A-Za-z_][A-Za-z0-9_]*|\$\{[^{}\s]+\})$/;
 
 /** Repository subtrees whose contents are build output rather than a publish path. */
 const GENERATED_PREFIXES = ["dist/", "coverage/", "node_modules/", ".agents/pm/runtime/"];
@@ -164,20 +166,46 @@ const VALUE_TAKING_FLAGS = new Set([
  * @returns True when the command publishes.
  */
 export function isPublishCommand(command: ShellCommand): boolean {
-  const args = commandArguments(command);
+  for (const token of npmSubcommandTokens(commandArguments(command))) {
+    if (RUNNER_SUBCOMMANDS.has(token.value)) return false;
+    if (token.value === "publish") return true;
+  }
+  return false;
+}
+
+/** Yield npm subcommand words after consuming its known option syntax. */
+function* npmSubcommandTokens(args: ShellCommand, unknownFlagsAreOptions = true): Generator<ShellToken> {
   for (let index = 0; index < args.length; index += 1) {
     const token = args[index]!;
     // A flag's separate value is not the subcommand. `npm --tag run publish`
     // configures the tag as "run" and publishes; reading `run` as a runner
     // subcommand discarded a real publish and let an attested sibling carry the
-    // audit. Only npm's own value-taking flags are skipped, so an unknown flag
-    // still leaves its value in subcommand position rather than being ignored.
+    // audit. Unknown flags are options for a direct npm-shaped command, but a
+    // wrapper-tail candidate stops at one so unrelated wrapper arguments do not
+    // become a synthetic scalar subcommand.
     if (VALUE_TAKING_FLAGS.has(token.value)) { index += 1; continue; }
-    if (token.value.startsWith("-")) continue;
-    if (RUNNER_SUBCOMMANDS.has(token.value)) return false;
-    if (token.value === "publish") return true;
+    if (token.value.startsWith("-")) {
+      if (!unknownFlagsAreOptions) return;
+      continue;
+    }
+    yield token;
   }
-  return false;
+}
+
+/** Return an unresolved scalar in npm subcommand position, after known options. */
+function scalarInNpmSubcommandPosition(args: ShellCommand, unknownFlagsAreOptions = true): string | undefined {
+  const token = npmSubcommandTokens(args, unknownFlagsAreOptions).next().value;
+  return token !== undefined && SCALAR_EXPRESSION.test(token.value) ? token.value : undefined;
+}
+
+/** Whether arguments contain options but no explicit npm subcommand. */
+function hasOnlyNpmOptions(args: ShellCommand): boolean {
+  return args.length > 0 && npmSubcommandTokens(args).next().done === true;
+}
+
+/** Return an unresolved scalar in a literal npm command's subcommand position. */
+function unresolvedNpmScalarSubcommand(command: ShellCommand): string | undefined {
+  return commandName(command) === "npm" ? scalarInNpmSubcommandPosition(commandArguments(command)) : undefined;
 }
 
 /**
@@ -231,11 +259,12 @@ export function attestationEnabled(command: ShellCommand): boolean {
  * Continuations are joined and shared arrays expanded before tokenising, for
  * the same reason the changelog-date scan does it: a multi-line invocation
  * otherwise looks like fragments, none of which carries the flag. An indexed
- * array expression that remains as the first command word is also returned so
- * the audit can fail closed instead of assuming that unknown command is safe.
+ * array or scalar expression that remains as the first command word is also
+ * returned so the audit can fail closed instead of assuming that unknown
+ * command is safe.
  *
  * @param source - The file's path and contents.
- * @returns Publish invocations and unresolved indexed command expressions.
+ * @returns Publish invocations and unresolved command expressions.
  */
 function scanPublishSource(source: SourceFile): { invocations: PublishInvocation[]; unresolved: string[] } {
   const raw = source.file.endsWith("package.json") ? manifestCommandLines(source.text) : source.text;
@@ -253,10 +282,20 @@ function scanPublishSource(source: SourceFile): { invocations: PublishInvocation
     // value (`sudo -u root npm publish`) moves the program past where naming it
     // once would look. Missing a publish is a failed audit; offering one that no
     // shell would run is noise an operator dismisses.
-    for (const candidate of commandCandidates(command)) {
+    for (const [candidateIndex, candidate] of commandCandidates(command).entries()) {
       const first = candidate[0];
-      if (first !== undefined && INDEXED_ARRAY_EXPRESSION.test(first.value)) {
-        unresolved.add(first.value);
+      const unresolvedIndexedCommand = first !== undefined && INDEXED_ARRAY_EXPRESSION.test(first.value);
+      const unresolvedScalarPublisher = first !== undefined
+        && SCALAR_EXPRESSION.test(first.value)
+        && (candidate.slice(1).some(({ value }) => value === "publish")
+          || SCALAR_EXPRESSION.test(candidate[1]?.value ?? "")
+          || scalarInNpmSubcommandPosition(candidate.slice(1), candidateIndex === 0) !== undefined
+          || (candidateIndex === 0 && hasOnlyNpmOptions(candidate.slice(1))));
+      const unresolvedScalarSubcommand = unresolvedNpmScalarSubcommand(candidate);
+      const unresolvedExpression = unresolvedScalarSubcommand ?? first?.value;
+      if ((unresolvedIndexedCommand || unresolvedScalarPublisher || unresolvedScalarSubcommand !== undefined)
+        && unresolvedExpression !== undefined) {
+        unresolved.add(unresolvedExpression);
         continue;
       }
       const program = commandName(candidate);
@@ -302,9 +341,9 @@ export function renderCommand(command: ShellCommand): string {
  * flag. This repository's attested path is npm's `--provenance`; no equivalent
  * is configured for yarn, pnpm or bun, so such an invocation is an unattested
  * publish path regardless of the flags it carries, and guessing at another
- * tool's spelling would be a gate that only looked strict. An indexed array
- * expression left in command position is also refused, because its program
- * cannot be proven not to be an unattested publish.
+ * tool's spelling would be a gate that only looked strict. An unresolved array
+ * or scalar expression left in command position is also refused, because its
+ * program cannot be proven not to be an unattested publish.
  *
  * @param sources - The tracked files to scan.
  * @returns Failures and per-file notes.
@@ -315,8 +354,9 @@ export function auditPublishAttestation(sources: SourceFile[]): VerifierResult {
   const failures: string[] = [];
   for (const { source, scan } of scans) {
     for (const expression of scan.unresolved) {
+      const kind = INDEXED_ARRAY_EXPRESSION.test(expression) ? "indexed Bash-array" : "scalar";
       failures.push(
-        `${source.file}: indexed Bash-array expression ${expression} remains unresolved in command position; refusing to assume it is not an unattested publish`,
+        `${source.file}: ${kind} expression ${expression} remains unresolved in command position; refusing to assume it is not an unattested publish`,
       );
     }
   }

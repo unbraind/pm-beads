@@ -1,0 +1,24 @@
+id: pm-beads-8001
+title: Close remaining PR 88 shell scalar review bypasses
+description: "Fix six unresolved Greptile threads covering escaped operators, spaced heredocs, guarded assignments, and unsets after ordinary commands; add audit-level regressions and complete the review loop."
+type: Issue
+status: closed
+priority: 1
+tags: []
+created_at: "2026-08-30T15:17:13.319Z"
+updated_at: "2026-08-30T20:55:07.835Z"
+closed_at: "2026-08-30T15:23:22.670Z"
+completed_at: "2026-08-30T15:23:22.670Z"
+author: pi-agent
+severity: high
+repro_steps: "Review threads 3885642778, 3885642781, 3885642786, 3885643405, 3885643407, and 3885643409."
+resolution: "Track only unconditional parent-shell scalar mutations, reject reparsed operator values, and recognize spaced heredoc delimiters."
+expected_result: Unattested publishes fail auditing and every bot thread is resolved.
+actual_result: Scanner can infer provenance from shell state that never exists.
+comments[1]{created_at,author,text}:
+  "2026-08-30T15:23:22.165Z",pi-agent,"Fixed all six unresolved findings as four verified classes. Revert-only-source proof: focused regressions failed 4/4 on the prior source (escaped operator actual '--provenance;ignored'; guarded assignment actual '--provenance'; stale unset actual '--provenance'; spaced heredoc actual '--provenance') and passed 4/4 after restoring source. npm test passed 386/386; coverage passed at 100% lines/branches/functions; typecheck and docstring gate passed."
+files[2]{path,scope}:
+  scripts/shell-command-scan.ts,project
+  test/verify-release-publish-attestation.test.ts,project
+close_reason: All six unresolved PR 88 review threads fixed with audit-level regressions and revert proof.
+body: ""
