@@ -10,6 +10,7 @@ import extension, {
   assertBeadsImportable,
   IncompleteWorkspaceReadError,
   buildBeadIndex,
+  isEncodableBeadId,
   beadPassesFilter,
   decodeBeadId,
   encodeBeadId,
@@ -200,6 +201,103 @@ test("beads importer fail-fast: a malformed file aborts BEFORE any pm write", as
       assert.strictEqual((err as CommandError).exitCode, EXIT_CODE.GENERIC_FAILURE);
       return true;
     },
+  );
+  await ext.deactivate();
+});
+
+test("an unencodable id aborts the import BEFORE any record is written", async () => {
+  // The rejection has to happen in the pre-write pass, not when the write loop
+  // reaches the bad record. Throwing mid-loop leaves a partial import: every
+  // record before the bad one already created, with nothing recording where it
+  // stopped. The bad record is deliberately placed SECOND, so a check that ran
+  // per-record would already have written the first one.
+  const ext = await harness();
+  const dir = mkdtempSync(join(tmpdir(), "beads-encodable-"));
+  const file = join(dir, "ids.jsonl");
+  writeFileSync(
+    file,
+    `${JSON.stringify({ id: "bd-1", title: "fine" })}\n${JSON.stringify({ id: "b".repeat(4098), title: "unreadable" })}\n`,
+    "utf-8",
+  );
+  await assert.rejects(
+    () => runImport(ext, { args: [file], options: { "preserve-ids": true }, global: { json: false } }),
+    (err: unknown) => {
+      assert.match((err as Error).message, /cannot read back/);
+      assert.match((err as Error).message, /4098 characters/);
+      assert.strictEqual((err as CommandError).exitCode, EXIT_CODE.USAGE);
+      return true;
+    },
+  );
+  await ext.deactivate();
+});
+
+test("a filtered-out record's unencodable id does not abort the import", async () => {
+  // The write loop skips a record the filter excludes, so validating one would
+  // abort an import over an id that was never going to be persisted - a gate
+  // stricter than the operation it guards. The unencodable record here is
+  // excluded by status, so the import must proceed.
+  const ext = await harness();
+  const dir = mkdtempSync(join(tmpdir(), "beads-filtered-"));
+  const file = join(dir, "ids.jsonl");
+  writeFileSync(
+    file,
+    `${JSON.stringify({ id: "bd-1", title: "kept", status: "open" })}\n` +
+      `${JSON.stringify({ id: "b".repeat(4098), title: "excluded", status: "closed" })}\n`,
+    "utf-8",
+  );
+  // Asserting only that it does not reject would pass if the filter silently
+  // excluded EVERYTHING - the import would do nothing and the test would be
+  // satisfied. The count is what proves the kept record was selected and the
+  // unencodable one skipped.
+  const result = await runImport(ext, {
+    args: [file],
+    options: { "preserve-ids": true, "filter-status": "open", "dry-run": true },
+    global: { json: false },
+  });
+  assert.strictEqual(result.wouldImport, 1, "exactly the open record must be selected");
+  await ext.deactivate();
+});
+
+test("an existing item can carry an id the marker cannot read back, which is what makes the skip exclusion reachable", () => {
+  // The upsert index is keyed by decodeBeadId, and decodeBeadId prefers the
+  // `bead_id` SCHEMA FIELD over the description marker. That field is not
+  // length-bounded, so an existing item can be indexed under an id the marker
+  // itself could never round-trip.
+  //
+  // Without this, the skip exclusion would be unreachable: every key would have
+  // come from a marker and would therefore be encodable by construction, and a
+  // filter clause that can never fire is dead code the coverage gate would not
+  // catch - V8 reports no branch for a path it never reaches.
+  const unreadable = "b".repeat(4098);
+  assert.equal(isEncodableBeadId(unreadable), false);
+  const index = buildBeadIndex(
+    [{ id: "pm-1", status: "open", bead_id: unreadable }] as unknown as Parameters<typeof buildBeadIndex>[0],
+  );
+  assert.equal(index.has(unreadable), true, "the index must be able to hold an id the marker cannot read back");
+  assert.equal(index.get(unreadable)?.pmId, "pm-1");
+});
+
+test("the skip exclusion is scoped to records the loop would actually leave alone", async () => {
+  // The gate must mirror exactly what the loop writes. A record matched to an
+  // existing item under `--merge-strategy skip` is not written, so refusing on
+  // its behalf aborts an import that had nothing to lose. The encode moved past
+  // the skip decision for the same reason - it refuses an unreadable id, and a
+  // record that is not being written should never reach it.
+  const ext = await harness();
+  const dir = mkdtempSync(join(tmpdir(), "beads-skip-"));
+  const file = join(dir, "ids.jsonl");
+  writeFileSync(file, `${JSON.stringify({ id: "b".repeat(4098), title: "skipped" })}\n`, "utf-8");
+  // Nothing matches this id, so the skip strategy does not apply and the record
+  // IS written - the gate must still refuse it. The exclusion is scoped to
+  // records the loop would actually leave alone, not to the strategy being set.
+  await assert.rejects(
+    () => runImport(ext, {
+      args: [file],
+      options: { "preserve-ids": true, upsert: true, "merge-strategy": "skip", "dry-run": true },
+      global: { json: false },
+    }),
+    (err: unknown) => (err as Error).message.includes("cannot read back"),
+    "an unmatched record is written, so its unreadable id must still abort",
   );
   await ext.deactivate();
 });
@@ -479,7 +577,7 @@ test("patchTimestampLines round-trips a created_at through normalize+patch lossl
   const iso = normalizeIsoTimestamp("2024-12-25T08:30:00Z")!;
   const file = `created_at: "2026-06-03T23:00:00.000Z"\nupdated_at: "2026-06-03T23:00:00.000Z"\n`;
   const out = patchTimestampLines(file, { created_at: iso, updated_at: iso })!;
-  assert.match(out, new RegExp(`created_at: "${iso.replace(/[.]/g, "\\.")}"`));
+  assert.ok(out.includes(`created_at: "${iso}"`), `expected created_at: "${iso}" in output`);
 });
 
 test("locateItemFile finds the per-type item file and skips sidecars", () => {
@@ -1984,4 +2082,155 @@ test("readPmItems asks pm for the canonical complete unbounded workspace", { ski
     !capturing.args?.includes("list-all") && !capturing.args?.includes("--full") && !capturing.args?.includes("--include-body"),
     "deprecated command and projection aliases must not return",
   );
+});
+
+/**
+ * Time a call over a prepared input, reporting the fastest of several rounds.
+ *
+ * Three details make this a measurement rather than a coin toss.
+ *
+ * The input is built by the caller, never inside the timed loop: constructing a
+ * 32000-character string is itself linear work, and including it measured
+ * allocation rather than the pattern - enough to make a correct implementation
+ * read as 5.4x superlinear.
+ *
+ * The call is repeated until the total is comfortably above timer granularity,
+ * since a ratio taken from a sub-millisecond sample is mostly noise. The loop
+ * is self-limiting: an implementation slow enough to matter reaches the target
+ * on its first iteration.
+ *
+ * The MINIMUM across rounds is reported, after a warm-up round. Scheduling
+ * noise and garbage collection only ever add time, so the fastest round is the
+ * closest estimate of the real cost - taking a single sample instead made this
+ * assertion pass alone and fail when run beside its neighbours.
+ *
+ * @param call - The call to time.
+ * @param input - The prepared input to pass it.
+ * @param iterations - Fixed iteration count, or `undefined` to choose one.
+ * @returns The fastest elapsed milliseconds and the iteration count used.
+ */
+function measure<TInput>(call: (input: TInput) => void, input: TInput, iterations?: number): { ms: number; iterations: number } {
+  let count = iterations ?? 1;
+  const time = (): number => {
+    const started = process.hrtime.bigint();
+    for (let index = 0; index < count; index += 1) call(input);
+    return Number(process.hrtime.bigint() - started) / 1e6;
+  };
+  while (iterations === undefined && count < 4096 && time() < 5) count *= 2;
+  time(); // warm-up, discarded: the first pass pays JIT and page-fault costs.
+  return { ms: Math.min(time(), time(), time()), iterations: count };
+}
+
+/**
+ * Assert that a call's cost grows linearly, by measuring it at N and at 2N.
+ *
+ * An absolute deadline cannot tell a quadratic implementation from a loaded
+ * runner, and a generous one cannot catch a partial regression either: a
+ * hundredfold slowdown still lands under 250 ms. A ratio catches both.
+ *
+ * The ratio is the only constraint - there is no absolute floor. An earlier
+ * version floored the bound at 100 ms, which for these sub-millisecond paths
+ * meant the floor always won and a thousandfold regression would have passed.
+ *
+ * @param label - Name of the call under measurement, for the failure message.
+ * @param build - Builds the adversarial input for a given size.
+ * @param call - Invokes the call under measurement on that input.
+ */
+function assertLinearGrowth<TInput>(label: string, build: (size: number) => TInput, call: (input: TInput) => void): void {
+  const n = 8_000;
+  const factor = 4;
+  const base = measure(call, build(n), undefined);
+  const grown = measure(call, build(n * factor), base.iterations);
+  // Quadrupling the input separates the two shapes with headroom on each side:
+  // linear work grows 4x and quadratic 16x, so a bound of 8x is twice the
+  // linear expectation and half the quadratic one. A 2x step with a 3x bound
+  // left no such margin and flaked when the suite ran under load.
+  const bound = base.ms * 8;
+  assert.ok(
+    grown.ms < bound,
+    `${label} is not linear: N=${base.ms.toFixed(3)} ms, ${factor}N=${grown.ms.toFixed(3)} ms over ${base.iterations} iteration(s), bound=${bound.toFixed(3)} ms (ratio ${(grown.ms / base.ms).toFixed(2)}x, linear would be ~${factor}x)`
+  );
+}
+
+/** The shape CodeQL names: the marker prefix, a long space run, no closing bracket. */
+const adversarialMarker = (size: number): string => "[bead_id: " + " ".repeat(size) + "!";
+
+test("a marker written with a newline or Unicode separator still decodes", () => {
+  // The original separator was `\s*`, so markers already written as
+  // `[bead_id:\nbd-42]` decode today. Narrowing to space-and-tab to bound the
+  // quantifier would have made those unreadable and lost the id they carry -
+  // a compatibility regression on data already on disk, which is worse than
+  // the alert it was closing. The separator is bounded whitespace instead, and
+  // the capture's leading non-space is what keeps the two disjoint.
+  assert.strictEqual(decodeBeadId({ description: "[bead_id:\nbd-42]" } as never), "bd-42");
+  assert.strictEqual(decodeBeadId({ description: "[bead_id:\u00a0bd-9]" } as never), "bd-9");
+  assert.strictEqual(decodeBeadId({ description: "[bead_id:bd-7]" } as never), "bd-7");
+});
+
+test("an id the marker cannot read back is refused rather than silently dropped", () => {
+  // The marker is the ONLY record of the native id. Bounding the capture to
+  // keep the regex provably linear created a length past which `encodeBeadId`
+  // would still write a marker that `decodeBeadId` rejects - so the id vanished
+  // on the next export, and `--upsert` then created a duplicate instead of
+  // matching the existing item. That is identity corruption, and it was silent.
+  const readable = "b".repeat(4097);
+  assert.strictEqual(decodeBeadId({ description: encodeBeadId("", readable) } as never), readable);
+
+  const unreadable = "b".repeat(4098);
+  assert.throws(
+    () => encodeBeadId("", unreadable),
+    (error: unknown) => {
+      assert.ok(error instanceof CommandError);
+      assert.strictEqual(error.exitCode, EXIT_CODE.USAGE);
+      assert.match(error.message, /4098 characters/u);
+      return true;
+    },
+    "an unreadable id must fail loudly, because a lost identity cannot be recovered later",
+  );
+});
+
+test("every BEAD_ID_MARKER call site stays linear on adversarial whitespace (polynomial-redos regression)", () => {
+  // The pre-fix regex had O(n^2) overlap between `\s*` and `[^\]]+` on a long
+  // whitespace run with no closing bracket. All three call sites are measured,
+  // not just the one the alert named, because the regex is shared and a future
+  // narrowing could reintroduce the cost at any of them.
+  assertLinearGrowth("encodeBeadId", adversarialMarker, (input) => void encodeBeadId(input, "bd-1"));
+  assertLinearGrowth("decodeBeadId", adversarialMarker, (input) => void decodeBeadId({ description: input }));
+  assertLinearGrowth("stripBeadIdMarker", adversarialMarker, (input) => void stripBeadIdMarker(input));
+});
+
+test("BEAD_ID_MARKER growth is linear, not quadratic", () => {
+  // Measured on the exact shape CodeQL names - a string starting `[bead_id:`
+  // followed by many spaces with no closing bracket, which forces the pre-fix
+  // regex to backtrack. Verified RED on revert to `/\[bead_id:\s*([^\]]+)\]/`,
+  // where it measured over a second at the larger size.
+  assertLinearGrowth("BEAD_ID_MARKER", adversarialMarker, (input) => void decodeBeadId({ description: input }));
+});
+
+test("BEAD_ID_MARKER accepts multi-word ids and bounds leading spaces (behaviour pin)", () => {
+  // The capture `\S[^\]]*` allows spaces inside the id, restoring the
+  // permissive behaviour of the original `[^\]]+` (the intermediate
+  // `[^\]\s]+` narrowed the language and did NOT match multi-word ids —
+  // Greptile P1 / cubic P1: a Beads id with internal whitespace lost its
+  // persisted identity). `encodeBeadId` only writes single-token slugs, so this
+  // only affects externally-authored markers; pinned here so a future narrowing
+  // is caught.
+  assert.equal(decodeBeadId({ description: "[bead_id: multi word]" }), "multi word");
+  // A trailing space inside the brackets is captured then trimmed away.
+  assert.equal(decodeBeadId({ description: "[bead_id: abc ]" }), "abc");
+  // The slug forms the exporter actually writes still round-trip unchanged.
+  assert.equal(decodeBeadId({ description: "[bead_id: bd-42]" }), "bd-42");
+  assert.equal(decodeBeadId({ description: "[bead_id:bd-42]" }), "bd-42");
+  // A whitespace-only id is not a valid bead id and must not match.
+  assert.equal(decodeBeadId({ description: "[bead_id:   ]" }), undefined);
+  // The separator is bounded to 64 space/tab chars: 64 leading spaces still
+  // match, 65 do not. `encodeBeadId` writes exactly one, so this only affects
+  // degenerate externally-authored markers.
+  assert.equal(decodeBeadId({ description: "[bead_id:" + " ".repeat(64) + "abc]" }), "abc");
+  assert.equal(decodeBeadId({ description: "[bead_id:" + " ".repeat(65) + "abc]" }), undefined);
+  // The capture tail is bounded to 4096 chars after the first id char (4097 total):
+  // a 4097-char id round-trips, a 5000-char id does not. Real Beads ids are short
+  // slugs (<20 chars), so this only affects degenerate externally-authored markers.
+  assert.equal(decodeBeadId({ description: "[bead_id: " + "a".repeat(4097) + "]" }), "a".repeat(4097));
+  assert.equal(decodeBeadId({ description: "[bead_id: " + "a".repeat(5000) + "]" }), undefined);
 });

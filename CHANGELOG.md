@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Other
+
+- Pin the pm toolchain to 2026.9 and stop requiring a clock-stamped changelog control ([pm-beads-3cun](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-3cun.toon))
+
+## 2026.9.1 - 2026-09-01
+
+### Security
+
+- Resolve polynomial-redos and incomplete-sanitization code-scanning alerts by measurement ([pm-beads-3pk9](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-3pk9.toon))
+
+## 2026.8.31 - 2026-08-31
+
 ### Fixed
 
 - Close dynamic scalar flag and PM claim follow-ups ([pm-beads-pxl7](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-pxl7.toon))
@@ -16,6 +28,7 @@
 - Keep plain-shell heredoc indentation significant ([pm-beads-ur0e](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-ur0e.toon))
 - Reject escaped heredoc operator text ([pm-beads-6aag](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-6aag.toon))
 - Reject quoted heredoc operator text ([pm-beads-jyil](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-jyil.toon))
+- Move the host CLI pin and its version-contract constant together so the bump can land ([pm-beads-vb7j](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-vb7j.toon))
 - Close reverse heredoc and uncertain unset review bypasses ([pm-beads-yaua](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-yaua.toon))
 - Queue trailing separated heredoc after joined opener ([pm-beads-uwkq](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-uwkq.toon))
 - Restore YAML indentation branch coverage after rebase ([pm-beads-mnb5](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-mnb5.toon))

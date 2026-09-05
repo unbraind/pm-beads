@@ -1,0 +1,31 @@
+id: pm-beads-3cun
+title: Pin the pm toolchain to 2026.9 and stop requiring a clock-stamped changelog control
+description: "pm-changelog 2026.9.2 stopped stamping the wall clock. An unflagged run now emits a bare version heading, so the changelog-date verifier that demanded a clock-derived control fails against a generator that fixed the clock dependence. Pin @unbrained/pm-cli 2026.9.5, pm-changelog 2026.9.2, and pm-ops ^2026.9.5, and make the control assert only that the unflagged heading differs from the flagged one. Also recover two durable merge receipts that 2026.9.5 health requires because history still names them."
+type: Chore
+status: closed
+priority: 2
+tags: []
+created_at: "2026-09-05T18:02:37.513Z"
+updated_at: "2026-09-05T18:03:18.724Z"
+closed_at: "2026-09-05T18:03:18.708Z"
+completed_at: "2026-09-05T18:03:18.708Z"
+claim_principal: pi-agent
+author: pi-agent
+resolution: "Pinned the current pm toolchain and made the changelog-date control version-tolerant, then recovered the two durable merge receipts 2026.9.5 health requires."
+expected_result: "release:check and pm health --strict-exit pass against @unbrained/pm-cli 2026.9.5, pm-changelog 2026.9.2, and pm-ops 2026.9.5."
+actual_result: "release:check is green. The date-gate suite fails 4/22 against the old clock-stamped control and passes 22/22 after the differ-from-flagged property. Fresh-clone pm health --strict-exit --require-merge-drivers exits 0."
+comments[1]{created_at,author,text}:
+  "2026-09-05T18:03:10.197Z",pi-agent,"pm-changelog 2026.9.2 no longer stamps the wall clock. Against the old verifier the unflagged control produced '## 2026.1.2-2' and the gate demanded '## 2026.1.2-2 - 2026-09-05'.\n\nThe control now asserts only that the unflagged heading differs from the flagged one. Revert-proof on test/verify-release-changelog-date.test.ts: 18 pass / 4 fail against the old clock-stamped control; 22 pass / 0 fail after the property change.\n\n2026.9.5 health also requires durable receipts for two history references that only existed clone-locally (4c0368f9 on pm-beads-1uz3 line 14, 8c598717 on pm-beads-y76h line 7). Recovered them as hash-only tracked receipts. Fresh clone: pm health --strict-exit --require-merge-drivers exits 0."
+files[7]{path,scope}:
+  package.json,project
+  package-lock.json,project
+  scripts/verify-release-changelog-date.ts,project
+  test/verify-release-changelog-date.test.ts,project
+  test/packaging.test.ts,project
+  .agents/pm/merge-receipts/4c0368f9-377c-43bd-86ca-9aa1d54dd108.json,project
+  .agents/pm/merge-receipts/8c598717-0821-4fae-aeef-abd0b25c9509.json,project
+tests[2]{command,path,scope,provenance{author,created_at,source_kind,source_ref},note}:
+  an unflagged bare version heading is a valid control because it differs from the flagged heading,test/verify-release-changelog-date.test.ts,project,pi-agent,"2026-09-05T18:03:02.464Z",local_mutation,chore/pin-pm-toolchain-2026.9,an unflagged bare version heading is a valid control because it differs from the flagged heading
+  "a control identical to the flagged run fails, because then it discriminates nothing",test/verify-release-changelog-date.test.ts,project,pi-agent,"2026-09-05T18:03:02.464Z",local_mutation,chore/pin-pm-toolchain-2026.9,"a control identical to the flagged run fails, because then it discriminates nothing"
+close_reason: "Toolchain pinned, date-gate control property fixed, missing durable receipts recovered."
+body: ""

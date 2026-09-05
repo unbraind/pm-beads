@@ -1,0 +1,14 @@
+id: pm-beads-vb7j
+title: Move the host CLI pin and its version-contract constant together so the bump can land
+description: "A packaging test asserts the @unbrained/pm-cli devDependency equals REQUIRED_DEVELOPMENT_VERSION, a constant declared in the test file, with the stated rationale that a gate verdict depends on which CLI version runs it. Dependabot edits package.json and never touches test files, so its bump breaks the equality and the pull request fails the coverage gate, which is why the open bump has been blocked. Moving both to 2026.8.30 adopts the release that fixes the npm 12 package install breakage. Verified under the newly pinned binary that pm health reports no history drift, which matters because the pinned binary is what validates tracked item history in CI."
+type: Issue
+status: closed
+priority: 2
+tags: []
+created_at: "2026-08-30T17:56:51.972Z"
+updated_at: "2026-08-30T17:56:52.462Z"
+closed_at: "2026-08-30T17:56:52.452Z"
+completed_at: "2026-08-30T17:56:52.452Z"
+author: claude
+close_reason: "Host pin and version-contract constant moved together to 2026.8.30, no history drift under the pinned binary, suite passes 401 of 401."
+body: ""

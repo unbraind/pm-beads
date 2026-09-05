@@ -33,7 +33,7 @@ const HOST_CLI = "@unbrained/pm-cli";
 /** Canonical-list behavior floor advertised to consumers. */
 const REQUIRED_MINIMUM_VERSION = "2026.8.20";
 /** Exact host version exercised by this checkout's gates. */
-const REQUIRED_DEVELOPMENT_VERSION = "2026.8.24";
+const REQUIRED_DEVELOPMENT_VERSION = "2026.9.5";
 
 /**
  * An exact version: digits and dots only, with no range operator, so npm

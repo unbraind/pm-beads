@@ -187,13 +187,18 @@ export interface HeadingResult {
  * Compare the flagged and unflagged headings for one probe version.
  *
  * The unflagged run is the control: it is what proves the flag is doing the
- * work rather than the heading happening to be right for another reason. A
- * control that failed to run leaves the comparison unmade, so its failure is a
+ * work rather than the heading happening to be right for another reason. The
+ * control must differ from the flagged heading. Requiring a clock-stamped
+ * form would couple the gate to one generator; an unflagged run that stamps
+ * the wall clock and one that emits a bare version heading both prove the
+ * flag, and a control identical to the flagged run still fails. A control
+ * that failed to run leaves the comparison unmade, so its failure is a
  * failure here -- it was previously suppressed with `|| true` and downgraded to
  * a note, letting the script exit zero having proved nothing.
  *
  * @param probe - Probe version, deliberately not today's date.
- * @param today - Today's date as `YYYY-MM-DD`.
+ * @param today - Today's date as `YYYY-MM-DD`. Callers still pass the calendar
+ *   day; the control no longer requires a clock-stamped heading.
  * @param generate - Runs the generator; `flagged` selects `--date-from-version`.
  * @returns Failures and notes for the behavioural half.
  */
@@ -204,7 +209,7 @@ export function auditHeadings(
 ): VerifierResult {
   const expected = `## ${probe} - ${probe.replace(/^(\d{4})\.(\d{1,2})\.(\d{1,2}).*$/, (_all, y: string, m: string, d: string) =>
     `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`)}`;
-  const todayHeading = `## ${probe} - ${today}`;
+  void today;
   const failures: string[] = [];
   const notes: string[] = [];
 
@@ -215,12 +220,12 @@ export function auditHeadings(
 
   const control = generate(false);
   if (!control.ok) failures.push(`without ${DATE_FLAG}, ${control.text}, so the comparison proves nothing`);
-  else if (control.text !== todayHeading) {
+  else if (control.text === flagged.text) {
     failures.push(
-      `without ${DATE_FLAG} expected the clock-derived '${todayHeading}', got '${control.text}'`
-      + " - the control is not measuring the clock",
+      `without ${DATE_FLAG} the heading was '${control.text}', identical to the flagged run`
+      + " - the control is not proving the flag does any work",
     );
-  } else notes.push(`ok - without the flag the heading is clock-derived: ${control.text} (this is the defect the flag removes)`);
+  } else notes.push(`ok - without the flag the heading differs: ${control.text} (this is the defect the flag removes)`);
 
   return { failures, notes };
 }

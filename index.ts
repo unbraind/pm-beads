@@ -336,7 +336,58 @@ export function mapPriority(raw: number | string | undefined): string | undefine
 
 // The marker we embed in the description to persist the native Beads id through
 // `pm create` (which exposes no generic custom-field setter for extensions).
-const BEAD_ID_MARKER = /\[bead_id:\s*([^\]]+)\]/;
+//
+// Both the separator `[ \t]{0,64}` and the capture tail `[^\]]{0,4096}` are
+// BOUNDED, and the capture starts with a single (non-quantified) `\S`. CodeQL
+// flags `js/polynomial-redos` for any regex with two unbounded quantifiers whose
+// character classes overlap; bounding both quantifiers makes the worst case
+// constant-bounded (O(64·4096) = linear) and is the documented CodeQL remedy.
+// The tail bound of 4096 is ~200x the longest real Beads id (the test suite's ids
+// are short slugs like `bd-42`), so no realistic id is rejected; the bound only
+// excludes degenerate externally-authored markers with >4097-char ids.
+// The earlier forms were all still flagged:
+//   * `\s*([^\]]+)` — O(n²): `\s*` and `[^\]]+` both match a space (3900 ms at n=64000).
+//   * `\s*([^\]\s]+` — runtime-linear, but CodeQL cannot prove `\s`/`[^\]\s]` disjoint.
+//   * `[ \t]*(\S[^\]]*)`  — runtime-linear, but the unbounded `[^\]]*` tail matches a
+//     space and CodeQL sees the unbounded separator/tail overlap.
+//   * `[ \t]{0,64}(\S[^\]]*)` — separator bounded but the tail was still unbounded; still flagged.
+// Bounding the tail too is what clears the static flag (measured 0.17 ms at n=64000).
+//
+// Accepted-language notes:
+//  * The capture MAY contain spaces (e.g. `[bead_id: multi word]` decodes to
+//    `"multi word"`), so a Beads id with internal whitespace round-trips
+//    correctly (Greptile P1 / cubic P1 on the prior narrowing). `[bead_id: abc ]`
+//    matches and decodes to `"abc"` via the existing `.trim()`. `encodeBeadId`
+//    only ever writes single-token slug ids, so round-trip data is unaffected.
+//  * A whitespace-only id (`[bead_id:   ]`) no longer matches (degenerate).
+//  * More than 64 leading spaces after the colon, or an id longer than 4097
+//    characters, no longer match — `encodeBeadId` writes one space and short slug
+//    ids, so this only affects degenerate externally-authored markers. Pinned in
+//    `test/smoke.test.ts`.
+// 3. The separator is `\s{0,64}`, not `[ \t]{0,64}`. The original `\s*` accepted a
+//    newline or a Unicode space, so a marker already written as
+//    `[bead_id:\nbd-42]` decodes today; narrowing to space-and-tab would have
+//    made those markers unreadable and lost the id they carry. Bounding it keeps
+//    the expression linear, and the capture's leading `\S` keeps the separator
+//    and the capture disjoint, which is what removed the overlap in the first
+//    place.
+const BEAD_ID_MARKER = /\[bead_id:\s{0,64}(\S[^\]]{0,4096})\]/;
+
+/**
+ * Whether an id survives a write through the marker and a read back out.
+ *
+ * The marker is the only record of a native id, so an id the reader rejects is
+ * an id that vanishes on the next export - and a later `--upsert` then creates
+ * a duplicate instead of matching. Checked by RUNNING the matcher rather than
+ * by comparing a length to a second copy of its bound, so this cannot drift
+ * away from the expression it protects.
+ *
+ * @param beadId - The native Beads id about to be persisted.
+ * @returns True when {@link decodeBeadId} would recover exactly this id.
+ */
+export function isEncodableBeadId(beadId: string): boolean {
+  return BEAD_ID_MARKER.exec(`[bead_id: ${beadId}]`)?.[1]?.trim() === beadId;
+}
 
 /**
  * Embed the native Beads id into an item description behind a parseable marker.
@@ -355,6 +406,20 @@ export function encodeBeadId(description: string, beadId: string | undefined): s
   if (BEAD_ID_MARKER.test(description)) return description;
   const trimmed = description.trim();
   const marker = `[bead_id: ${beadId}]`;
+  // Refuse to persist an identity this module cannot read back. The marker is
+  // the ONLY record of the native id, so writing one `decodeBeadId` rejects
+  // loses the id silently - and a later `--upsert` then fails to match the
+  // existing item and creates a duplicate instead. Failing loudly on a
+  // degenerate id is recoverable; silently forking an item's identity is not.
+  //
+  // Derived from the matcher rather than from a second copy of its bound, so
+  // the check cannot drift away from the regex it is protecting.
+  if (!isEncodableBeadId(beadId)) {
+    throw new CommandError(
+      `bead id cannot be persisted: it is ${beadId.length} characters and the id marker cannot read it back, so the identity would be lost on export`,
+      EXIT_CODE.USAGE,
+    );
+  }
   return trimmed ? `${trimmed}\n\n${marker}` : marker;
 }
 
@@ -1515,6 +1580,38 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
   const batchCount = Math.max(1, Math.ceil(records.length / batchSize));
   const multiBatch = batchCount > 1;
 
+  // Reject an unencodable id BEFORE the first write, not when the loop reaches
+  // it. Throwing mid-loop would leave a partial import: every record before the
+  // bad one already created or updated, with no record of where it stopped.
+  // This mirrors the structural fail-fast gate above, which exists for the same
+  // reason - a rejection that can only happen after some writes is not a gate.
+  if (opts.preserveIds) {
+    // Only records this import would actually WRITE. The write loop skips a
+    // record the filter excludes, so validating one would abort an import over
+    // an id that was never going to be persisted - a gate stricter than the
+    // operation it guards, which is its own kind of false refusal.
+    const unencodable = records
+      .map((item, index) => ({ line: index + 1, item, id: normalizeBeadKey(item.id) }))
+      .filter((row) => !hasFilter || beadPassesFilter(row.item, opts.typeOverride, opts.filter))
+      // A record the skip strategy matches to an existing item is not written
+      // either, so it must not be validated. The gate has to mirror what the
+      // loop writes exactly: every record it checks that the loop would leave
+      // alone is a refusal of an import that would have succeeded.
+      .filter((row) => !(opts.upsert && opts.mergeStrategy === "skip" && row.id !== undefined && existingIndex.has(row.id)))
+      .filter((row) => row.id !== undefined && !isEncodableBeadId(row.id));
+    if (unencodable.length > 0) {
+      const detail = unencodable
+        .slice(0, 5)
+        .map((row) => `  record ${row.line}: id is ${row.id!.length} characters`)
+        .join("\n");
+      const more = unencodable.length > 5 ? `\n  ... and ${unencodable.length - 5} more` : "";
+      throw new CommandError(
+        `refusing to import: ${unencodable.length} record(s) carry an id the bead-id marker cannot read back, so the identity would be lost on export:\n${detail}${more}`,
+        EXIT_CODE.USAGE,
+      );
+    }
+  }
+
   for (let batchIdx = 0; batchIdx < batchCount; batchIdx++) {
     const batchStart = batchIdx * batchSize;
     const batchEnd = Math.min(batchStart + batchSize, records.length);
@@ -1547,7 +1644,6 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
           : undefined;
       const beadId = opts.preserveIds ? normalizeBeadKey(item.id) : undefined;
       const baseDescription = (item.description as string) || title;
-      const description = encodeBeadId(baseDescription, beadId);
       const blockers = extractBlockerIds(item);
       const key = beadId;
       const existing = opts.upsert && key ? existingIndex.get(key) : undefined;
@@ -1582,6 +1678,13 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
         skipped++;
         continue;
       }
+
+      // Encoded here rather than above, so a record this loop is about to skip
+      // never encodes at all. `encodeBeadId` refuses an id the marker cannot
+      // read back, and refusing on behalf of a record that is not being written
+      // would abort an import that had nothing to lose - which is the same
+      // scope mismatch the pre-write gate was corrected for.
+      const description = encodeBeadId(baseDescription, beadId);
 
       try {
         let pmId: string;
@@ -2834,7 +2937,7 @@ const defineItemField = <TField extends SchemaFieldDefinition>(field: TField): T
 
 export default defineExtension({
   name: "pm-beads",
-  version: "2026.8.29",
+  version: "2026.9.3",
 
   activate(api: ExtensionApi) {
     // -----------------------------------------------------------------------

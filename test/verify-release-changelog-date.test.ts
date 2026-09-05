@@ -160,10 +160,16 @@ test("a control that fails is a failure, not a note", () => {
   assert.match(result.failures[0], /so the comparison proves nothing/);
 });
 
-test("a control that is not clock-derived fails, because then it discriminates nothing", () => {
+test("a control identical to the flagged run fails, because then it discriminates nothing", () => {
   const result = auditHeadings("2026.1.2", "2026-08-27", () => ({ ok: true, text: "## 2026.1.2 - 2026-01-02" }));
   assert.equal(result.failures.length, 1);
-  assert.match(result.failures[0], /the control is not measuring the clock/);
+  assert.match(result.failures[0], /identical to the flagged run/);
+});
+
+test("an unflagged bare version heading is a valid control because it differs from the flagged heading", () => {
+  const result = auditHeadings("2026.1.2", "2026-08-27", (flagged) =>
+    ({ ok: true, text: flagged ? "## 2026.1.2 - 2026-01-02" : "## 2026.1.2" }));
+  assert.deepEqual(result.failures, []);
 });
 
 test("a flagged run that fails, or that derives the wrong date, both fail", () => {
