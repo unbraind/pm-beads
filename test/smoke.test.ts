@@ -2101,28 +2101,30 @@ test("readPmItems asks pm for the canonical complete unbounded workspace", { ski
  *
  * The MINIMUM across rounds is reported, after a warm-up round. Scheduling
  * noise and garbage collection only ever add time, so the fastest round is the
- * closest estimate of the real cost - taking a single sample instead made this
- * assertion pass alone and fail when run beside its neighbours.
+ * closest estimate of the real cost. CPU time excludes runner descheduling;
+ * wall time reported 13.32x growth for a bounded marker under fleet load.
+ * Warming before calibration prevents JIT cost from selecting a tiny batch.
  *
  * @param call - The call to time.
  * @param input - The prepared input to pass it.
  * @param iterations - Fixed iteration count, or `undefined` to choose one.
- * @returns The fastest elapsed milliseconds and the iteration count used.
+ * @returns The fastest process CPU milliseconds and the iteration count used.
  */
 function measure<TInput>(call: (input: TInput) => void, input: TInput, iterations?: number): { ms: number; iterations: number } {
   let count = iterations ?? 1;
   const time = (): number => {
-    const started = process.hrtime.bigint();
+    const started = process.cpuUsage();
     for (let index = 0; index < count; index += 1) call(input);
-    return Number(process.hrtime.bigint() - started) / 1e6;
+    const consumed = process.cpuUsage(started);
+    return (consumed.user + consumed.system) / 1000;
   };
-  while (iterations === undefined && count < 4096 && time() < 5) count *= 2;
-  time(); // warm-up, discarded: the first pass pays JIT and page-fault costs.
+  time(); // Warm before calibration so JIT does not select a tiny batch.
+  while (iterations === undefined && count < 4096 && Math.min(time(), time(), time()) < 5) count *= 2;
   return { ms: Math.min(time(), time(), time()), iterations: count };
 }
 
 /**
- * Assert that a call's cost grows linearly, by measuring it at N and at 2N.
+ * Assert that a call's cost grows linearly, by measuring it at N and at 4N.
  *
  * An absolute deadline cannot tell a quadratic implementation from a loaded
  * runner, and a generous one cannot catch a partial regression either: a
@@ -2199,13 +2201,6 @@ test("every BEAD_ID_MARKER call site stays linear on adversarial whitespace (pol
   assertLinearGrowth("stripBeadIdMarker", adversarialMarker, (input) => void stripBeadIdMarker(input));
 });
 
-test("BEAD_ID_MARKER growth is linear, not quadratic", () => {
-  // Measured on the exact shape CodeQL names - a string starting `[bead_id:`
-  // followed by many spaces with no closing bracket, which forces the pre-fix
-  // regex to backtrack. Verified RED on revert to `/\[bead_id:\s*([^\]]+)\]/`,
-  // where it measured over a second at the larger size.
-  assertLinearGrowth("BEAD_ID_MARKER", adversarialMarker, (input) => void decodeBeadId({ description: input }));
-});
 
 test("BEAD_ID_MARKER accepts multi-word ids and bounds leading spaces (behaviour pin)", () => {
   // The capture `\S[^\]]*` allows spaces inside the id, restoring the

@@ -1,0 +1,21 @@
+id: pm-beads-j957
+title: Measure marker growth with CPU time under concurrent fleet load
+description: "The complete CLI 2026.9.7 gate falsely classifies the bounded marker operations as quadratic under concurrent fleet load: encodeBeadId reports 13.32x and BEAD_ID_MARKER 9.23x when comparing N and 4N using elapsed wall time. Measure process CPU consumption, warm up before batch calibration, and retain the same 8x ratio bound plus a measured rejection of the former vulnerable regex. Source runtime matching behavior must remain unchanged."
+type: Issue
+status: in_progress
+priority: 1
+tags[3]: concurrency,performance,testing
+created_at: "2026-09-07T23:11:02.797Z"
+updated_at: "2026-09-07T23:16:44.325Z"
+assignee: codex-pm-native
+claim_principal: codex-pm-native
+author: codex
+acceptance_criteria: "All marker call sites pass the unchanged 8x growth bound using CPU measurements under load; restoring the former quadratic marker fails the same regression test; the full release gate passes without timing floors, skipped checks or altered source matching semantics"
+comments[2]{created_at,author,text}:
+  "2026-09-07T23:14:15.885Z",codex-pm-native,"TDD evidence: the original full fleet gate failed unchanged runtime marker code at 13.32x and 9.23x elapsed-time ratios under concurrent load. Replacing wall timing with process CPU time, warming before calibration and calibrating with the minimum of three rounds passes the all-call-sites test without changing its 4N/8x ratio. A controlled temporary restoration of the former vulnerable regex failed that same test at 16.16x: N=70.857ms CPU, 4N=1145.301ms CPU, bound=566.856ms. The exact original index.ts was restored in finally; no production source changes are retained. Removed one redundant decode-only timing test because the all-call-sites test already measures decode alongside encode and strip. The full release check is running."
+  "2026-09-07T23:16:44.325Z",codex-pm-native,"Final stable-tree local release:check passed on CLI/SDK 2026.9.7 and pm-changelog 2026.9.6: 349/349 tests pass, zero failures/skips. The existing gate reports 100 percent lines, branches and functions with all 7 required sources present; this does not establish whole-package statement coverage. Typecheck, release workflow validation, docstrings, production audit, package dry-run and pm-changelog/release-attestation/date checks all pass. Exact-head external reviews remain pending."
+files[1]{path,scope}:
+  test/smoke.test.ts,project
+tests[1]{command,scope,provenance{author,created_at,source_kind,source_ref}}:
+  "npm run release:check",project,codex-pm-native,"2026-09-07T23:14:13.132Z",local_mutation,chore/certify-pm-cli-2026-9-7
+body: ""
