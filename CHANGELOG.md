@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Security
+
+- Consume the canonical attestation gate instead of carrying a copy of it ([pm-beads-mv6h](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-mv6h.toon))
+
 ## 2026.9.6 - 2026-09-06
 
 ### Other
