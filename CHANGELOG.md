@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Other
+
+- Certify pm CLI 2026.9.10 and pick up the canonical auditor fixes the lockfile was holding back ([pm-beads-e7xw](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-e7xw.toon))
+
 ## 2026.9.8 - 2026-09-08
 
 ### Security
