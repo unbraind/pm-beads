@@ -2937,7 +2937,7 @@ const defineItemField = <TField extends SchemaFieldDefinition>(field: TField): T
 
 export default defineExtension({
   name: "pm-beads",
-  version: "2026.9.9",
+  version: "2026.9.11",
 
   activate(api: ExtensionApi) {
     // -----------------------------------------------------------------------
