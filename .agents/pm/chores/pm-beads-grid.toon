@@ -2,12 +2,11 @@ id: pm-beads-grid
 title: Certify the CLI and SDK on PM 2026.9.7
 description: "Upgrade the development CLI and SDK to published 2026.9.7 and pm-changelog to published 2026.9.6. Re-run real package quality and acceptance gates against the exact installed dependencies, preserving the manifest compatibility floor unless runtime behavior requires a higher minimum. Companion tracking: pm-cli-companion item pm-cli-website-6yiv."
 type: Chore
-status: in_progress
+status: canceled
 priority: 2
 tags[3]: cli,compatibility,sdk
 created_at: "2026-09-07T20:33:29.848Z"
-updated_at: "2026-09-07T21:00:25.299Z"
-assignee: codex-pm-ecosystem
+updated_at: "2026-09-12T21:27:51.372Z"
 claim_principal: codex-pm-ecosystem
 author: codex-pm-ecosystem
 acceptance_criteria: Exact installed dependency versions are verified; package checks and real CLI acceptance pass without weakened gates; independent coverage and privacy limitations remain explicit
