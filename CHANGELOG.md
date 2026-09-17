@@ -24,28 +24,38 @@
 
 - Pin the pm toolchain to 2026.9 and stop requiring a clock-stamped changelog control ([pm-beads-3cun](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-3cun.toon))
 
-## 2026.9.1 - 2026-09-01
+## 2026.9.3 - 2026-09-03
 
 ### Security
 
 - Resolve polynomial-redos and incomplete-sanitization code-scanning alerts by measurement ([pm-beads-3pk9](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-3pk9.toon))
 
-## 2026.8.31 - 2026-08-31
+## 2026.9.1 - 2026-09-01
 
 ### Fixed
 
 - Move the host CLI pin and its version-contract constant together so the bump can land ([pm-beads-vb7j](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-vb7j.toon))
+
+## 2026.8.31 - 2026-08-31
+
+### Fixed
+
 - Pin pm-changelog 2026.8.30 before the next release ([pm-beads-h8cp](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-h8cp.toon))
 - Remove the unused changelog verifier test import ([pm-beads-3uet](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-3uet.toon))
 - Run the changelog date guard against same-day release suffixes ([pm-beads-7uxj](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-7uxj.toon))
 - Rebase the changelog date verifier onto the current release workflow ([pm-beads-vuzd](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-vuzd.toon))
 - CodeQL action updates split into mutually blocking pull requests ([pm-beads-1d0b](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-1d0b.toon))
 
-## 2026.8.28 - 2026-08-28
+## 2026.8.29 - 2026-08-29
 
 ### Fixed
 
 - Prevent a failed provenance publish from silently falling back to an unattested publish ([pm-beads-y1gg](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-y1gg.toon))
+
+## 2026.8.28 - 2026-08-28
+
+### Fixed
+
 - Release coverage gate is below 100 percent and omits executable tooling ([pm-beads-cjey](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-cjey.toon))
 - Canonicalize complete workspace reads and adopt the current pm host contract ([pm-beads-1uz3](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-1uz3.toon))
 - Keep beads export stdout as pure JSONL without host summary output ([pm-beads-y76h](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-y76h.toon))
@@ -289,16 +299,13 @@
 ### Other
 
 - Production-readiness audit 2026-05-29 ([pm-beads-e6t2](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-e6t2.toon))
+- Production-readiness audit 2026-05-28 ([pm-beads-xwv6](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-xwv6.toon))
 
 ## 2026.5.28 - 2026-05-28
 
 ### Added
 
 - Add publish retry + provenance fallback to release workflow ([pm-beads-rsp7](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-rsp7.toon))
-
-### Other
-
-- Production-readiness audit 2026-05-28 ([pm-beads-xwv6](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-xwv6.toon))
 
 ## 2026.5.27 - 2026-05-27
 
