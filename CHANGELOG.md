@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Other
+
+- Certify pm CLI 2026.9.17 ([pm-beads-e4cs](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-e4cs.toon))
+
 ## 2026.9.13 - 2026-09-13
 
 ### Other
