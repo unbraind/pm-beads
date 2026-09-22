@@ -48,7 +48,7 @@
     "pm-changelog": "2026.9.18",
     "pm-ops": "2026.9.18",
     "typescript": "^7.0.2",
-    "yaml": "2.9.0"
+    "yaml": "2.9.1"
   },
   "peerDependencies": {
     "@unbrained/pm-cli": ">=2026.8.20"
