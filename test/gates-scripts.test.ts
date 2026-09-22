@@ -19,11 +19,6 @@ import {
   main as coverageGateMain,
   runGate,
 } from "../scripts/coverage-gate.ts";
-import {
-  isExecutableFile,
-  pmOnPath,
-  runPrepare,
-} from "../scripts/prepare-merge-driver.ts";
 // The single shared implementation; the scripts re-export it for API compat.
 import { isMainInvocation, isMainInvocation as isPrepareMain } from "../scripts/main-invocation.ts";
 import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -424,131 +419,6 @@ test("isMainInvocation matches only the exact canonicalised script path", () => 
   assert.equal(isMainInvocation(["node", join(REPO_ROOT, "package.json")], gateUrl), false);
 });
 
-// --- prepare-merge-driver --------------------------------------------------
-
-function makeExecutable(path: string): void {
-  writeFileSync(path, "#!/bin/sh\nexit 0\n", "utf-8");
-  chmodSync(path, 0o755);
-}
-
-test("isExecutableFile accepts regular executables and rejects directories, missing paths and plain files", (t) => {
-  if (process.platform === "win32") t.skip("POSIX mode-bit semantics");
-  const dir = mkdtempSync(join(tmpdir(), "pmmerge-"));
-  try {
-    const exe = join(dir, "pm");
-    makeExecutable(exe);
-    assert.equal(isExecutableFile(exe), true);
-    assert.equal(isExecutableFile(dir), false, "a directory named pm is not a command");
-    assert.equal(isExecutableFile(join(dir, "absent")), false);
-    const plain = join(dir, "plain");
-    writeFileSync(plain, "", "utf-8");
-    assert.equal(isExecutableFile(plain), false, "non-executable files do not resolve like commands");
-    assert.equal(isExecutableFile(exe, "win32"), true, "Windows keys executability off PATHEXT instead");
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("pmOnPath resolves pm across POSIX and Windows PATH spellings", (t) => {
-  if (process.platform === "win32") t.skip("POSIX mode-bit semantics");
-  const dir = mkdtempSync(join(tmpdir(), "pmonpath-"));
-  try {
-    makeExecutable(join(dir, "pm"));
-    assert.equal(pmOnPath({ pathEnv: dir, platform: "linux" }), true);
-    assert.equal(pmOnPath({ pathEnv: "", platform: "linux" }), false);
-    // An empty POSIX entry means the current directory.
-    const savedCwd = process.cwd();
-    process.chdir(dir);
-    try {
-      assert.equal(pmOnPath({ pathEnv: ":", platform: "linux" }), true);
-    } finally {
-      process.chdir(savedCwd);
-    }
-    // Windows: quoted entries, PATHEXT suffixes, no mode bit required.
-    const winDir = mkdtempSync(join(tmpdir(), "pmonpath-win-"));
-    // Exact case matters: a Linux host resolves PATH candidates case-sensitively,
-    // so the fixture spells the file the way PATHEXT will probe it.
-    writeFileSync(join(winDir, "pm.CMD"), "@echo off\n", "utf-8");
-    assert.equal(
-      pmOnPath({ pathEnv: `"${winDir}"`, pathExt: ".CMD;.EXE", platform: "win32" }),
-      true,
-    );
-    assert.equal(pmOnPath({ pathEnv: winDir, pathExt: ".EXE", platform: "win32" }), false);
-    assert.equal(pmOnPath({ pathEnv: "", pathExt: undefined, platform: "win32" }), false);
-    rmSync(winDir, { recursive: true, force: true });
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("runPrepare skips silently without pm and wires drivers through the injected executor with it", () => {
-  const savedPath = process.env.PATH ?? "";
-  const emptyDir = mkdtempSync(join(tmpdir(), "pmmerge-none-"));
-  process.env.PATH = emptyDir; // no pm anywhere
-  try {
-    const skipped = runPrepare({ exec: () => assert.fail("must not execute without pm on PATH") });
-    assert.equal(skipped.exitCode, 0);
-    assert.equal(skipped.wired, false);
-  } finally {
-    process.env.PATH = savedPath;
-    rmSync(emptyDir, { recursive: true, force: true });
-  }
-  let executed: { command: string; args: readonly string[] } | undefined;
-  const wired = runPrepare({ exec: (command, args) => { executed = { command, args }; } });
-  assert.equal(wired.wired, true);
-  assert.deepEqual(executed, { command: "pm", args: ["merge", "install"] });
-});
-
-test("runPrepare's default executor shells out to a pm binary found on PATH", (t) => {
-  if (process.platform === "win32") t.skip("POSIX mode-bit semantics and ':'-separated PATH");
-  // A disposable git repo + a stub pm on PATH prove the default exec branch
-  // runs the real command without touching this repository's own git config.
-  const workDir = mkdtempSync(join(tmpdir(), "pmmerge-default-"));
-  execFileSync("git", ["init", "-q", join(workDir, "repo")]);
-  const bin = join(workDir, "bin");
-  mkdirSync(bin, { recursive: true });
-  writeFileSync(join(bin, "pm"), "#!/bin/sh\necho \"wired: $@\"\n", "utf-8");
-  chmodSync(join(bin, "pm"), 0o755);
-  const savedPath = process.env.PATH ?? "";
-  const savedCwd = process.cwd();
-  process.env.PATH = `${bin}:${savedPath}`;
-  process.chdir(join(workDir, "repo"));
-  try {
-    const result = runPrepare(); // default exec: execFileSync("pm", ["merge", "install"])
-    assert.equal(result.wired, true);
-  } finally {
-    process.chdir(savedCwd);
-    process.env.PATH = savedPath;
-    rmSync(workDir, { recursive: true, force: true });
-  }
-});
-
-test("pmOnPath falls back to the live environment when no explicit PATH is injected", () => {
-  const dir = mkdtempSync(join(tmpdir(), "pmonpath-env-"));
-  try {
-    makeExecutable(join(dir, "pm"));
-    const saved = process.env.PATH ?? "";
-    process.env.PATH = dir;
-    try {
-      assert.equal(pmOnPath(), true, "the default reads the live PATH");
-    } finally {
-      process.env.PATH = saved;
-    }
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("pmOnPath treats a missing PATH variable as no candidates", () => {
-  const saved = process.env.PATH;
-  delete process.env.PATH;
-  try {
-    assert.equal(pmOnPath(), false);
-  } finally {
-    process.env.PATH = saved;
-  }
-});
-
 test("prepare-merge-driver isMainInvocation mirrors the sibling gate contract", () => {
   const prepUrl = import.meta.resolve("../scripts/prepare-merge-driver.ts");
   assert.equal(isPrepareMain(["node"], prepUrl), false);
@@ -735,25 +605,37 @@ test("the docstring gate executable scans the real repository when run as main",
   assert.match(run.stdout, /docstring-gate: \d+ file\(s\), \d+ declaration\(s\) documented\./);
 });
 
-test("the merge-driver preparer executable wires drivers when run as main with pm present", () => {
+/**
+ * Runs the prepare launcher as the process entry point inside a scratch Git
+ * repository, with a stub `pm` first on PATH that exits with `pmExitCode`.
+ */
+function runLauncherWithStubPm(pmExitCode: number): ReturnType<typeof spawnFileSync> {
   const workDir = mkdtempSync(join(tmpdir(), "pmmerge-main-"));
   execFileSync("git", ["init", "-q", join(workDir, "repo")]);
   const bin = join(workDir, "bin");
   mkdirSync(bin, { recursive: true });
-  writeFileSync(join(bin, "pm"), "#!/bin/sh\nexit 0\n", "utf-8");
+  writeFileSync(join(bin, "pm"), `#!/bin/sh\nexit ${pmExitCode}\n`, "utf-8");
   chmodSync(join(bin, "pm"), 0o755);
   const savedPath = process.env.PATH ?? "";
   process.env.PATH = `${bin}:${savedPath}`;
   try {
-    const run = spawnFileSync(
+    return spawnFileSync(
       process.execPath,
       [join(REPO_ROOT, "scripts", "prepare-merge-driver.ts")],
       { cwd: join(workDir, "repo") },
     );
-    assert.equal(run.status, 0, run.stderr);
-    assert.match(run.stdout, /wired pm merge drivers/);
   } finally {
     process.env.PATH = savedPath;
     rmSync(workDir, { recursive: true, force: true });
   }
+}
+
+test("the prepare launcher exits 0 when run as main with a pm whose merge install succeeds", () => {
+  const run = runLauncherWithStubPm(0);
+  assert.equal(run.status, 0, String(run.stderr));
+});
+
+test("the prepare launcher surfaces a failing pm merge install as a non-zero exit", () => {
+  const run = runLauncherWithStubPm(3);
+  assert.notEqual(run.status, 0, "a present pm that fails to install the drivers must not be mistaken for absence");
 });

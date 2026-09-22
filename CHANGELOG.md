@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Other
+
+- Certify pm CLI 2026.9.21 and install merge drivers through the canonical pm-ops launcher ([pm-beads-hmg2](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-hmg2.toon))
+
 ## 2026.9.18 - 2026-09-18
 
 ### Other

@@ -43,17 +43,6 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Install clone-local pm merge drivers
-        shell: bash
-        run: |
-          set -euo pipefail
-          # .gitattributes declares pm's field-aware merge drivers, but the
-          # drivers themselves live in clone-local git config, which `git
-          # clone` never populates. Install them here so the health gate below
-          # is a real assertion about a correctly-provisioned clone instead of
-          # a guaranteed failure on `--require-merge-drivers`.
-          ./node_modules/.bin/pm merge install
-
       - name: Verify tracked pm project health
         shell: bash
         run: |
