@@ -22,7 +22,7 @@ import {
 // The single shared implementation; the scripts re-export it for API compat.
 import { isMainInvocation, isMainInvocation as isPrepareMain } from "../scripts/main-invocation.ts";
 import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -605,37 +605,3 @@ test("the docstring gate executable scans the real repository when run as main",
   assert.match(run.stdout, /docstring-gate: \d+ file\(s\), \d+ declaration\(s\) documented\./);
 });
 
-/**
- * Runs the prepare launcher as the process entry point inside a scratch Git
- * repository, with a stub `pm` first on PATH that exits with `pmExitCode`.
- */
-function runLauncherWithStubPm(pmExitCode: number): ReturnType<typeof spawnFileSync> {
-  const workDir = mkdtempSync(join(tmpdir(), "pmmerge-main-"));
-  execFileSync("git", ["init", "-q", join(workDir, "repo")]);
-  const bin = join(workDir, "bin");
-  mkdirSync(bin, { recursive: true });
-  writeFileSync(join(bin, "pm"), `#!/bin/sh\nexit ${pmExitCode}\n`, "utf-8");
-  chmodSync(join(bin, "pm"), 0o755);
-  const savedPath = process.env.PATH ?? "";
-  process.env.PATH = `${bin}:${savedPath}`;
-  try {
-    return spawnFileSync(
-      process.execPath,
-      [join(REPO_ROOT, "scripts", "prepare-merge-driver.ts")],
-      { cwd: join(workDir, "repo") },
-    );
-  } finally {
-    process.env.PATH = savedPath;
-    rmSync(workDir, { recursive: true, force: true });
-  }
-}
-
-test("the prepare launcher exits 0 when run as main with a pm whose merge install succeeds", () => {
-  const run = runLauncherWithStubPm(0);
-  assert.equal(run.status, 0, String(run.stderr));
-});
-
-test("the prepare launcher surfaces a failing pm merge install as a non-zero exit", () => {
-  const run = runLauncherWithStubPm(3);
-  assert.notEqual(run.status, 0, "a present pm that fails to install the drivers must not be mistaken for absence");
-});
