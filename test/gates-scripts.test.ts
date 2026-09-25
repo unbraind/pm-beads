@@ -622,7 +622,7 @@ function runLauncherWithStubPm(pmExitCode: number): ReturnType<typeof spawnFileS
     return spawnFileSync(
       process.execPath,
       [join(REPO_ROOT, "scripts", "prepare-merge-driver.ts")],
-      { cwd: join(workDir, "repo") },
+      { cwd: REPO_ROOT },
     );
   } finally {
     process.env.PATH = savedPath;

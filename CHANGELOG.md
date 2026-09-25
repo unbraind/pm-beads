@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- A publish that npm accepts late is reported as failed and the GitHub Release is skipped on bun mirror lag ([pm-beads-t2vu](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-t2vu.toon))
+
+### Other
+
+- Certify pm CLI 2026.9.23 and adopt the guarded pm-ops merge-driver launcher ([pm-beads-mp67](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-mp67.toon))
+
 ## 2026.9.22 - 2026-09-22
 
 ### Other
