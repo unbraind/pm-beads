@@ -32,8 +32,10 @@ const releaseWorkflow = readFileSync(
 const HOST_CLI = "@unbrained/pm-cli";
 /** Canonical-list behavior floor advertised to consumers. */
 const REQUIRED_MINIMUM_VERSION = "2026.8.20";
-/** Exact host version exercised by this checkout's gates. */
-const REQUIRED_DEVELOPMENT_VERSION = "2026.9.23";
+/** The actual SDK version exercised by this checkout's tests, independent of the manifest declaration. */
+const installedCliVersion = (JSON.parse(
+  readFileSync(new URL("../node_modules/@unbrained/pm-cli/package.json", import.meta.url), "utf8"),
+) as { readonly version: string }).version;
 
 /**
  * An exact version: digits and dots only, with no range operator, so npm
@@ -131,11 +133,9 @@ test("the host CLI is declared as a peer dependency and never as a runtime depen
  * floor would make that floor a claim no gate ever tested; a dev pin above it is
  * both normal and fine, and is what every routine CLI bump produces.
  *
- * The assertion is deliberately on the *shape* and the ordering rather than on
- * today's literal version. Hardcoding the number would turn every Dependabot
- * bump into a test failure needing a second, lockstep edit, without buying any
- * safety: what matters is that the pin is exact and not older than what this
- * package tells consumers it needs.
+ * The assertion also binds the manifest to the installed SDK used by this
+ * test run. Hardcoding today's literal version would turn every dependency
+ * bump into a second, lockstep edit without proving which SDK was exercised.
  */
 test("the host CLI dev dependency is pinned to an exact version at or above the declared peer floor", () => {
   const declared = manifest.devDependencies?.[HOST_CLI];
@@ -145,7 +145,7 @@ test("the host CLI dev dependency is pinned to an exact version at or above the 
     EXACT_VERSION,
     `${HOST_CLI} must be pinned exactly, not declared as the range "${declared}": the gate verdict depends on which CLI version runs it`,
   );
-  assert.equal(declared, REQUIRED_DEVELOPMENT_VERSION, "development must exercise the currently approved exact host");
+  assert.equal(declared, installedCliVersion, "the installed SDK exercised by this test must match the exact dev pin");
 
   // The dev pin must SATISFY the peer floor, not equal it. Equality would force
   // a lockstep edit of the consumer-facing floor on every routine Dependabot
@@ -198,8 +198,8 @@ test("the complete raw manifest satisfies the public SDK at minimum and developm
     { compatible: true, findings: [], pmVersion: REQUIRED_MINIMUM_VERSION },
   );
   assert.deepEqual(
-    checkExtensionManifestCompatibility(rawManifest, { pmVersion: REQUIRED_DEVELOPMENT_VERSION }),
-    { compatible: true, findings: [], pmVersion: REQUIRED_DEVELOPMENT_VERSION },
+    checkExtensionManifestCompatibility(rawManifest, { pmVersion: installedCliVersion }),
+    { compatible: true, findings: [], pmVersion: installedCliVersion },
   );
 });
 
