@@ -122,6 +122,28 @@ test("a dangling pm-ops install fails instead of being treated as absent", posix
   assert.deepEqual(registeredDrivers(directory), []);
 });
 
+test("an unreadable pm-ops lookup path fails instead of being treated as absent", posixOnly, () => {
+  // A FILE named node_modules in an ancestor directory makes lstat of
+  // `<ancestor>/node_modules/pm-ops` fail with ENOTDIR, which
+  // `throwIfNoEntry: false` does not suppress. Presence is then uncertain,
+  // so the launcher must fail closed with the original resolution error
+  // instead of treating the checkout as an omit-dev install and skipping.
+  const parent = join(scratch, "unreadable-parent");
+  mkdirSync(parent);
+  writeFileSync(join(parent, "node_modules"), "not a directory");
+  const directory = join(parent, "unreadable");
+  mkdirSync(join(directory, ".agents", "pm"), { recursive: true });
+  assert.equal(spawnSync("git", ["init", "-q"], { cwd: directory }).status, 0);
+  writeFileSync(join(directory, "package.json"), JSON.stringify({ name: "unreadable", type: "module" }));
+  copyFileSync(join(root, ".gitattributes"), join(directory, ".gitattributes"));
+  copyFileSync(join(root, ".agents", "pm", "settings.json"), join(directory, ".agents", "pm", "settings.json"));
+  const result = prepare(directory, hostPath);
+  assert.notEqual(result.status, 0);
+  assert.doesNotMatch(result.stderr, /skipping merge-driver install/);
+  assert.match(result.stderr, /MODULE_NOT_FOUND/);
+  assert.deepEqual(registeredDrivers(directory), []);
+});
+
 test("a failing pm merge install fails the install with the same status", posixOnly, () => {
   const result = prepare(checkout("failing-pm", "pinned"), stubPm("failing-pm", 7));
   assert.equal(result.status, 7, result.stderr);
