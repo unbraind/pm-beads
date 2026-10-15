@@ -1,6 +1,6 @@
 {
   "name": "pm-beads",
-  "version": "2026.10.12",
+  "version": "2026.10.15",
   "description": "Beads JSONL import/export extension for pm-cli",
   "repository": {
     "type": "git",
@@ -43,8 +43,8 @@
     "coverage": "npm run build && npm run build:test && node scripts/coverage-gate.ts ."
   },
   "devDependencies": {
-    "@types/node": "26.6.4",
-    "@unbrained/pm-cli": "2026.10.9",
+    "@types/node": "26.6.5",
+    "@unbrained/pm-cli": "2026.10.11",
     "pm-changelog": "2026.10.5",
     "pm-ops": "2026.10.6",
     "typescript": "7.0.2",
