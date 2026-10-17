@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Daily Release workflow is failing ([pm-beads-github-be8d2d927676-85](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-github-be8d2d927676-85.toon))
+
 ## 2026.10.5 - 2026-10-05
 
 ### Other
