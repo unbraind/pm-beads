@@ -2,11 +2,15 @@ id: pm-beads-bv5f
 title: "Adopt pm-github 2026.10.16: default-branch-safe gated sync and daily gated closeout PRs"
 description: "Repin the gated sync caller to pm-github 2026.10.16 (tag 67a5e3e: npm-project-dir input, caller default branch resolved through the API for schedule payloads) and add the reusable gated closeout caller, which opens one reviewed PR per day closing items delivered by merged pull requests."
 type: Chore
-status: in_progress
+status: closed
 priority: 2
 tags[3]: changed,ci,pm-github
 created_at: "2026-10-16T10:36:42.027Z"
-updated_at: "2026-10-16T10:36:42.027Z"
+updated_at: "2026-10-21T19:03:38.439Z"
+closed_at: "2026-10-21T19:03:34.647Z"
+completed_at: "2026-10-21T19:03:34.647Z"
 author: claude-orchestrator
 acceptance_criteria: pm-github-sync.yml pins 2026.10.16 at 67a5e3e; pm-github-closeout.yml calls the reusable closeout workflow at the same pin
+resolution: "Reverified main 104ee0d795b6 (unchanged since audit): [PR #147](https://github.com/unbraind/pm-beads/pull/147) (ea7a383) delivers both SHA-pinned reusable callers. Retained evidence: .github/workflows/pm-github-closeout.yml, .github/workflows/pm-github-sync.yml."
+close_reason: "Reverified main 104ee0d795b6 (unchanged since audit): [PR #147](https://github.com/unbraind/pm-beads/pull/147) (ea7a383) delivers both SHA-pinned reusable callers. Retained evidence: .github/workflows/pm-github-closeout.yml, .github/workflows/pm-github-sync.yml."
 body: ""

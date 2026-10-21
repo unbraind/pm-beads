@@ -2,12 +2,15 @@ id: pm-beads-vqk9
 title: Enable the gated GitHub issue sync
 description: Add a SHA-pinned scheduled caller for the audited gated issue import into this package tracker. Keep dependency versions and gate thresholds unchanged.
 type: Chore
-status: in_progress
+status: closed
 priority: 2
 tags[3]: changed,github-sync,maintenance
 created_at: "2026-10-14T11:18:53.388Z"
-updated_at: "2026-10-15T12:28:04.915Z"
+updated_at: "2026-10-21T19:04:23.163Z"
+closed_at: "2026-10-21T19:04:20.137Z"
+completed_at: "2026-10-21T19:04:20.137Z"
 author: codex-agent
+resolution: "Reverified main 104ee0d795b6 (unchanged since audit): [PR #140](https://github.com/unbraind/pm-beads/pull/140) (8919a25) delivers the scheduled gated import caller. Retained evidence: .github/workflows/pm-github-sync.yml."
 comments[3]{created_at,author,text}:
   "2026-10-14T11:18:57.804Z",codex-agent,"Plan: add the independently authored scheduled thin caller pinned to the audited workflow SHA and matching published extension version. Preserve dependencies, merge-driver scripts, and thresholds. Verify npm and Bun release gates and audits; leave the item open for orchestrator review. No TypeScript functions change, so a function revert regression test does not apply."
   "2026-10-14T11:19:06.966Z",codex-agent,"Before audit: all dependencies 0 vulnerabilities; production 0. No direct fast-glob or jscpd4 devDependency, so dependency manifests stay unchanged. Schedule: 17 2 * * * UTC. Skipped: actionlint is not installed and offline npm fallback is uncached."
@@ -19,4 +22,5 @@ tests[2]{command,scope,timeout_seconds,pm_context_mode,workspace_context_mode,pr
   "env -u PM_PATH -u PM_AUTHOR HOME=$(mktemp -d) GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 bun run release:check",project,2400,tracker,source,codex-agent,"2026-10-14T11:19:05.679Z",local_mutation,chore/gated-issue-sync-and-braces-free-gates
 docs[1]{path,scope,note}:
   CHANGELOG.md,project,Regenerated package changelog
+close_reason: "Reverified main 104ee0d795b6 (unchanged since audit): [PR #140](https://github.com/unbraind/pm-beads/pull/140) (8919a25) delivers the scheduled gated import caller. Retained evidence: .github/workflows/pm-github-sync.yml."
 body: ""
