@@ -23,7 +23,8 @@ proposal. Resolve deletion decisions separately in the tracker and source.
 A plan is bound to both its acknowledged external base and the complete local
 tracker revision. If either changes, generate a new plan and review it again.
 Never edit a plan file to bypass a refusal. Ordinary application failures use
-core transaction compensation and preserve history; new items can remain closed
+core transaction compensation using exact history versions and preserve history;
+ambiguous legacy version mappings refuse before writing. New items can remain closed
 as compensation evidence. After an interruption, re-read the tracker and generate
 a fresh plan. Resolve any compensation evidence before retrying conflicting data.
 

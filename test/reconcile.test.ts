@@ -380,3 +380,39 @@ test("missing compensation provenance never causes a blind restore", async t => 
   } }), refusal("recovery_required"));
   assert.equal((await client.get(id)).item.title, "External");
 });
+
+
+test("compensation uses exact core versions when multiple mutations share a timestamp", async t => {
+  const { pmRoot, client } = await fixture(t);
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2027-01-01T00:00:00Z") });
+  const id = await seed(client, "bd-a");
+  await seed(client, "bd-z");
+  const initial = await readLiveBeadsSnapshot(pmRoot);
+  await acknowledgeBeadsSnapshot(pmRoot, "team", initial, "reconcile-test");
+  const incoming = initial.map(({ id, fields }) => ({ id, fields: { ...fields } }));
+  incoming[0].fields.title = "External"; incoming[1].fields.type = "invalid-schema-type";
+  await assert.rejects(applyBeadsReconciliation(pmRoot, await planBeadsReconciliation(pmRoot, "team", incoming), "reconcile-test"));
+  assert.equal((await client.get(id)).item.title, "Initial");
+});
+
+test("ambiguous legacy checkpoints refuse before the first reversible write", async t => {
+  const { pmRoot, client } = await fixture(t);
+  const id = await seed(client);
+  await client.update(id, { title: "Current" });
+  await client.historyCompact(id, { before: "2", force: true });
+  const path = getHistoryPath(pmRoot, id);
+  const entries = (await readFile(path, "utf8")).trim().split("\n").map(line => JSON.parse(line) as Record<string, unknown>);
+  const first = entries[0];
+  assert.equal(first.op, "history_compact_baseline");
+  // Model a legacy checkpoint in the disposable tracker, without inventing a mapping.
+  delete first.record_hash; delete first.record_hash_version;
+  const context = first.context as { history_compaction: Record<string, unknown> };
+  delete context.history_compaction.version_offset;
+  await writeFile(path, entries.map(entry => JSON.stringify(entry)).join("\n") + "\n");
+  const live = await readLiveBeadsSnapshot(pmRoot);
+  await acknowledgeBeadsSnapshot(pmRoot, "team", live, "reconcile-test");
+  const incoming = [{ id: live[0].id, fields: { ...live[0].fields, title: "External" } }];
+  const plan = await planBeadsReconciliation(pmRoot, "team", incoming);
+  await assert.rejects(applyBeadsReconciliation(pmRoot, plan, "reconcile-test"), refusal("recovery_required"));
+  assert.equal((await client.get(id)).item.title, "Current");
+});

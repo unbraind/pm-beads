@@ -367,7 +367,8 @@ The SDK exports `parseBeadsSnapshot`, `acknowledgeBeadsSnapshot`,
 `BeadsReconcileRefusal.code` and `.remedy` to recover from `missing_base`,
 `base_exists`, `ack_mismatch`, `invalid_snapshot`, `invalid_plan`, `conflicts`,
 `stale_base`, `stale_tracker` or `recovery_required`. CLI refusals exit 2. Application checks the base
-and core history revisions again under the workspace transaction lock. Resolve
+and core history revisions again under the workspace transaction lock. Compensation
+uses exact core history versions; ambiguous legacy checkpoints refuse before writing. Resolve
 conflicts and regenerate stale plans; there is no force-overwrite flag.
 
 Reconciled fields are title, description, status, type, priority, tags, assignee,

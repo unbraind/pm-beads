@@ -288,7 +288,11 @@ export async function applyBeadsReconciliation(pmRoot: string, plan: BeadsReconc
       },
       async prepareCompensation() {
         const history = await readHistorySnapshot(getHistoryPath(pmRoot, id), id);
-        return history.entries.at(-1)?.ts;
+        const last = history.entries.at(-1);
+        if (!last) return undefined;
+        const snapshot = await client.get(id, { at: last.ts });
+        if (typeof snapshot.as_of_version !== "number") refuse("recovery_required", "This history has no exact version mapping. Recover its version mapping before applying a reversible reconciliation.");
+        return String(snapshot.as_of_version);
       },
       async apply() {
         const options: PmClientFullMutationOptions = { ...mutationOptions(rows.get(change.id)!, change.fields, ids), message: marker };
