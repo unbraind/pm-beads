@@ -1,12 +1,12 @@
 {
   "name": "pm-beads",
   "version": "2026.10.21",
-  "description": "Beads JSONL importer/exporter. Import work items from the Beads JSONL format into pm and export pm items back to Beads JSONL, preserving ids and dependency edges.",
+  "description": "Beads JSONL import/export and three-way snapshot reconciliation. Preserve ids and dependency edges, preview concurrent field conflicts and deletion proposals, and apply plans against an acknowledged source base.",
   "author": "@unbraind",
   "entry": "./dist/index.js",
   "priority": 50,
   "manifest_version": 1,
-  "pm_min_version": "2026.8.20",
+  "pm_min_version": "2026.10.15",
   "trusted": true,
   "sandbox_profile": "restricted",
   "permissions": {

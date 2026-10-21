@@ -324,6 +324,71 @@ Legacy aliases are also accepted: `type`, `tags`, `assignee`, `deadline`,
 {"id":"bd-003","title":"Write docs","issue_type":"task","status":"open","blocked_by":"bd-002"}
 ```
 
+## Three-way snapshot reconciliation
+
+Requires pm CLI/SDK 2026.10.15 or newer for certified corpus reads and durable
+transactions.
+
+`pm beads reconcile` compares a complete incoming Beads snapshot with its last
+acknowledged external snapshot and the live tracker. Unlike `import --upsert`, it
+reports concurrent field edits instead of choosing a winner. Local-only edits
+survive; matching edits converge. External omissions are deletion proposals and
+never delete items, including on application. Unresolved omissions stay in the
+base so future previews continue to show them.
+
+```sh
+pm beads reconcile baseline.jsonl --source team --acknowledge
+pm beads reconcile incoming.jsonl --source team --plan-out review.json --json
+pm beads reconcile --source team --apply-plan review.json --json
+```
+
+Acknowledge once, after the baseline matches live items (import it first when
+needed). Reuse the same source name for the same external tracker. The source
+owns a durable base under the tracker’s `beads/` directory; retain that directory
+with your tracker backups. Do not reset it to resolve a conflict.
+
+```ts
+import { readFile } from "node:fs/promises";
+import {
+  parseBeadsSnapshot, planBeadsReconciliation, applyBeadsReconciliation,
+} from "pm-beads";
+
+const incoming = parseBeadsSnapshot(await readFile("incoming.jsonl", "utf8"));
+const plan = await planBeadsReconciliation(".agents/pm", "team", incoming);
+// Review plan.conflicts, plan.changes and plan.deletions before applying.
+if (plan.conflicts.length === 0) {
+  await applyBeadsReconciliation(".agents/pm", plan, "snapshot-agent");
+}
+```
+
+The SDK exports `parseBeadsSnapshot`, `acknowledgeBeadsSnapshot`,
+`planBeadsReconciliation`, `applyBeadsReconciliation`, the pure
+`reconcileBeadsSnapshots` classifier and their TypeScript contracts. Use
+`BeadsReconcileRefusal.code` and `.remedy` to recover from `missing_base`,
+`base_exists`, `ack_mismatch`, `invalid_snapshot`, `invalid_plan`, `conflicts`,
+`stale_base`, `stale_tracker` or `recovery_required`. CLI refusals exit 2. Application checks the base
+and core history revisions again under the workspace transaction lock. Resolve
+conflicts and regenerate stale plans; there is no force-overwrite flag.
+
+Reconciled fields are title, description, status, type, priority, tags, assignee,
+parent, deadline, dependencies, sprint and release. Existing Beads aliases and
+core tag normalization apply. Snapshots require unique, stable ids; optional
+fields use empty/default values. Comments, notes, arbitrary provider fields and
+source timestamps are outside this field contract. Jira and ADO reconciliation
+remains in their own adapters.
+
+Default output uses the host’s compact TOON renderer; `--json` returns the same
+bounded report. Counts remain complete when rows are omitted. `--plan-out`
+retains full conflict values and the reviewed application payload. See the
+[worked example](examples/snapshot-reconciliation.md) for conflict, omission and
+recovery behavior.
+
+## Without git
+
+Import, export, validate, diff and snapshot reconciliation work in a plain pm
+tracker directory. Reconciliation uses SDK reads, history and transactions and
+invokes no git subprocess. None of these workflows needs a git repository.
+
 ## License
 
 MIT

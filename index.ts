@@ -27,6 +27,8 @@
 // id is persisted in the item description behind a parseable marker
 // (`[bead_id: <id>]`); the exporter reads it back and re-emits the native bead id.
 
+import { CommandError, EXIT_CODE, DIFF_FIELDS, type DiffField } from "./contracts.ts";
+export { CommandError, EXIT_CODE, DIFF_FIELDS, type DiffField } from "./contracts.ts";
 import type {
   CommandDefinition,
   CommandHandlerContext,
@@ -38,6 +40,8 @@ import type {
   Importer,
   SchemaFieldDefinition,
 } from "@unbrained/pm-cli/sdk/authoring";
+import { registerReconcileCommands } from "./reconcile.ts";
+export * from "./reconcile.ts";
 import { suppressHostOutput } from "@unbrained/pm-cli/sdk";
 // Top-level SDK runtime import. This fleet once believed extensions could not
 // resolve `@unbrained/pm-cli` at runtime and hid SDK access behind inline
@@ -64,40 +68,6 @@ import { spawnSync } from "node:child_process";
 // package's own public surface (imported by tests and downstream tooling), and
 // the mirror keeps that surface byte-stable (same three members, same values)
 // regardless of how the SDK's constant grows.
-/**
- * Semantic exit codes pm's command runtime propagates to the shell.
- *
- * Mirrored here (not re-exported) because `EXIT_CODE` is part of this package's
- * own public surface — imported by tests and downstream tooling — and the mirror
- * keeps that surface byte-stable regardless of how the SDK's constant grows.
- * {@link CommandError} carries one of these so a handled failure exits cleanly
- * once instead of re-invoking the handler.
- */
-export const EXIT_CODE = {
-  GENERIC_FAILURE: 1,
-  USAGE: 2,
-  NOT_FOUND: 3,
-} as const;
-
-/**
- * Error that carries a semantic process exit code.
- *
- * pm's command runtime treats a thrown error as a cleanly handled non-zero exit
- * only when it exposes a numeric `exitCode`; a plain `Error` instead falls
- * through to the "unhandled" path, which re-invokes the handler a second time
- * and exits with a generic code. Throwing this routes a failure to a clean,
- * single exit at the chosen code.
- */
-export class CommandError extends Error {
-  /** Numeric exit code the runtime propagates to the shell (one of {@link EXIT_CODE}). */
-  exitCode: number;
-  constructor(message: string, exitCode: number = EXIT_CODE.GENERIC_FAILURE) {
-    super(message);
-    this.name = "CommandError";
-    this.exitCode = exitCode;
-  }
-}
-
 /**
  * Extract a human-readable message from an unknown thrown value.
  *
@@ -138,7 +108,8 @@ export class IncompleteWorkspaceReadError extends CommandError {
 // A "dependency" or "blocker" edge in a Beads record. Beads variants spell these
 // a few different ways; we accept all of them on import and emit the canonical
 // `dependencies`/`blocked_by` form on export.
-interface BeadsItem {
+/** Accepted Beads JSONL aliases and provider metadata for typed snapshot callers. */
+export interface BeadsItem {
   id?: string;
   title?: string;
   name?: string;
@@ -186,7 +157,8 @@ interface PmDependency {
   kind?: string;
 }
 
-interface PmItem {
+/** Tracker fields consumed by Beads export and snapshot normalization. */
+export interface PmItem {
   id?: string;
   title?: string;
   status?: string;
@@ -2363,28 +2335,6 @@ function runExport(pmRoot: string, opts: { dryRun: boolean; preserveIds: boolean
 // ---------------------------------------------------------------------------
 
 /**
- * The set of bead fields the diff classifier compares, in display order.
- *
- * These are exactly the fields a `pm beads import` → `pm beads export` cycle
- * is meant to preserve, so a drift in any of them flags a round-trip
- * fidelity loss.
- */
-export const DIFF_FIELDS = [
-  "title",
-  "status",
-  "type",
-  "priority",
-  "tags",
-  "assignee",
-  "parent",
-  "deadline",
-  "dependencies",
-] as const;
-
-/** A Beads record field that the diff compares between two files. */
-export type DiffField = (typeof DIFF_FIELDS)[number];
-
-/**
  * One bead id whose compared fields differ between two files.
  */
 export interface ChangedBead {
@@ -2940,6 +2890,7 @@ export default defineExtension({
   version: "2026.10.21",
 
   activate(api: ExtensionApi) {
+    registerReconcileCommands(api);
     // -----------------------------------------------------------------------
     // schema — declare the bead_id provenance field
     // -----------------------------------------------------------------------
