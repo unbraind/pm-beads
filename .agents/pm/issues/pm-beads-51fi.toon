@@ -1,0 +1,17 @@
+id: pm-beads-51fi
+title: Make reconciliation updates conditional on inspected item versions
+description: "The workspace transaction lease serializes cooperating transactions, while ordinary PmClient and CLI item mutations use a different write boundary. An ordinary update between a reconciliation step inspection and mutation can be overwritten. This review round corrects the guarantee and requires pausing ordinary writers; implementing an atomic expected-version mutation needs a separate SDK capability/design."
+type: Issue
+status: open
+priority: 2
+tags: []
+created_at: "2026-10-22T20:34:44.084Z"
+updated_at: "2026-10-22T20:36:13.179Z"
+author: codex-agent
+acceptance_criteria: Use a supported atomic expected-version check or shared writer boundary; reproduce an ordinary write between inspect and update and prove it survives with a typed stale refusal; retain non-git operation and compensation safety.
+parent: pm-beads-i59r
+files[1]{path,scope}:
+  reconcile.ts,project
+docs[1]{path,scope}:
+  README.md,project
+body: ""

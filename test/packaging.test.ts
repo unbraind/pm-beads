@@ -31,7 +31,7 @@ const releaseWorkflow = readFileSync(
 /** The host CLI package whose placement in the manifest this suite governs. */
 const HOST_CLI = "@unbrained/pm-cli";
 /** Canonical-list behavior floor advertised to consumers. */
-const REQUIRED_MINIMUM_VERSION = "2026.8.20";
+const REQUIRED_MINIMUM_VERSION = "2026.10.15";
 /** The actual SDK version exercised by this checkout's tests, independent of the manifest declaration. */
 const installedCliVersion = (JSON.parse(
   readFileSync(new URL("../node_modules/@unbrained/pm-cli/package.json", import.meta.url), "utf8"),
@@ -172,8 +172,8 @@ test("the host CLI dev dependency is pinned to an exact version at or above the 
  * disagrees. This package shipped exactly that: a manifest still advertising
  * `2026.7.28` while the code refused on a completeness receipt that only exists
  * from `2026.8.15`, meaning a 2026.7.28 host would load an extension that
- * cannot work against it. The current 2026.8.20 floor additionally guarantees
- * the canonical complete-read contract. This test binds the declarations.
+ * cannot work against it. The 2026.10.15 floor guarantees certified complete
+ * reads and core transactions. This test binds the declarations.
  */
 test("the manifest host floor matches the package peer floor", () => {
   const extensionManifest = JSON.parse(

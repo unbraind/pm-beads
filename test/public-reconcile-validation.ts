@@ -1,0 +1,61 @@
+/** Validate the package on an isolated copy of its public main tracker. */
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { PmClient } from '@unbrained/pm-cli/sdk';
+import { readLiveBeadsSnapshot, acknowledgeBeadsSnapshot, planBeadsReconciliation, applyBeadsReconciliation, parseBeadsSnapshot, summarizeBeadsReconciliation, BeadsReconcileRefusal } from '../reconcile.ts';
+const repo=resolve(import.meta.dirname,'..');
+const sourceHead=execFileSync('git',['-C',repo,'rev-parse','origin/main'],{encoding:'utf8'}).trim();
+const sourceTree=execFileSync('git',['-C',repo,'rev-parse','origin/main:.agents/pm'],{encoding:'utf8'}).trim();
+const scratch=await mkdtemp(join(tmpdir(),'beads-public-proof-'));
+const pmRoot=join(scratch,'.agents','pm');
+const client=new PmClient({pmRoot,author:'reconcile-validation',noExtensions:true});
+const started=performance.now();
+try {
+  await client.init('proof');
+  const archive=execFileSync('git',['-C',repo,'archive','origin/main','.agents/pm'],{maxBuffer:64*1024*1024});
+  execFileSync('tar',['-x','-C',scratch],{input:archive});
+  const before=await readLiveBeadsSnapshot(pmRoot);
+  const records=before.map(({id,fields})=>({id,fields}));
+  const originalPath=process.env.PATH;
+  process.env.PATH=''; process.env.GIT_CEILING_DIRECTORIES=tmpdir();
+  await acknowledgeBeadsSnapshot(pmRoot,'public-fleet',records,'reconcile-validation');
+  const unchanged=await planBeadsReconciliation(pmRoot,'public-fleet',records);
+  assert.equal(unchanged.unchanged,before.length);
+  const incoming=structuredClone(records);
+  incoming[0].fields.title='Synthetic external conflict';
+  incoming[1].fields.description='Synthetic independent external edit';
+  const omitted=incoming.splice(2,1)[0];
+  incoming.push(...parseBeadsSnapshot(JSON.stringify({id:'synthetic-proof-new',title:'Synthetic new record',issue_type:'story',due_at:'2026-10-01T00:00:00Z'})));
+  await client.update(before[0].pmId,{title:'Synthetic local conflict'});
+  await client.update(before[3].pmId,{priority:before[3].fields.priority==='1'?2:1});
+  const conflicted=await planBeadsReconciliation(pmRoot,'public-fleet',incoming);
+  assert.equal(conflicted.conflicts.length,1);assert.equal(conflicted.deletions.length,1);
+  await assert.rejects(applyBeadsReconciliation(pmRoot,conflicted,'reconcile-validation'),(e:unknown)=>e instanceof BeadsReconcileRefusal&&e.code==='conflicts');
+  incoming[0].fields.title=records[0].fields.title;
+  const safe=await planBeadsReconciliation(pmRoot,'public-fleet',incoming);
+  assert.equal(safe.conflicts.length,0);
+  const result=await applyBeadsReconciliation(pmRoot,safe,'reconcile-validation');
+  const after=await readLiveBeadsSnapshot(pmRoot);
+  assert.equal(after.length,before.length+1);
+  assert(after.some(row=>row.id===omitted.id));
+  await assert.rejects(applyBeadsReconciliation(pmRoot,safe,'reconcile-validation'),(e:unknown)=>e instanceof BeadsReconcileRefusal&&e.code==='stale_base');
+  const rawIncoming=incoming.map(record=>record.id==='synthetic-proof-new'
+    ? parseBeadsSnapshot(JSON.stringify({id:record.id,title:'Synthetic new record',issue_type:'bug',due_at:'2026-11-01T00:00:00Z'}))[0] : record);
+  const rawPlan=await planBeadsReconciliation(pmRoot,'public-fleet',rawIncoming);
+  assert.equal(rawPlan.conflicts.length,0); assert.equal(rawPlan.changes.length,1);
+  await applyBeadsReconciliation(pmRoot,rawPlan,'reconcile-validation');
+  const rawStored=(await readLiveBeadsSnapshot(pmRoot)).find(record=>record.id==='synthetic-proof-new')!;
+  assert.equal(rawStored.fields.type,'issue'); assert.equal(rawStored.fields.deadline,'2026-11-01T00:00:00.000Z');
+  const next=await planBeadsReconciliation(pmRoot,'public-fleet',rawIncoming);
+  assert.equal(next.deletions.length,1);
+  await client.update(before[4].pmId,{title:'Synthetic later local edit'});
+  await assert.rejects(applyBeadsReconciliation(pmRoot,next,'reconcile-validation'),(e:unknown)=>e instanceof BeadsReconcileRefusal&&e.code==='stale_tracker');
+  process.env.PATH=originalPath;
+  assert.equal(execFileSync('git',['-C',repo,'rev-parse','origin/main:.agents/pm'],{encoding:'utf8'}).trim(),sourceTree);
+  const evidence={source:'unbraind/pm-beads',sourceHead,sourceTrackerTree:sourceTree,nonGit:true,gitAbsentFromPath:true,sourceUnchanged:true,baselineItems:before.length,baselineUnchanged:unchanged.unchanged,incomingItems:incoming.length,conflicts:conflicted.conflicts.length,safeChanges:safe.changes.length,localOnly:safe.localOnly,deletionProposals:safe.deletions.length,applied:result.applied,afterItems:after.length,remainingDeletionProposals:next.deletions.length,rawBeadsFollowupChanges:rawPlan.changes.length,rawTypeStored:rawStored.fields.type,rawDeadlineStored:rawStored.fields.deadline,refusals:['conflicts','stale_base','stale_tracker'],compactJsonBytes:Buffer.byteLength(JSON.stringify(summarizeBeadsReconciliation(conflicted))),fullPlanJsonBytes:Buffer.byteLength(JSON.stringify(conflicted)),elapsedSeconds:Number(((performance.now()-started)/1000).toFixed(2))};
+  console.log(JSON.stringify(evidence,null,2));
+
+} finally {await rm(scratch,{recursive:true,force:true});}

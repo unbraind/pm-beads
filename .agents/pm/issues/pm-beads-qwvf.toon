@@ -1,0 +1,17 @@
+id: pm-beads-qwvf
+title: Narrow reconciliation invalidation to the source and touched item revisions
+description: "Plans currently hash every live item and history version. An unrelated comment conservatively refuses apply with stale_tracker. This is safe but reduces same-tracker multi-agent concurrency. Keep the current conservative check until a reviewed revision scope can preserve creation, relationship, source-binding and replay safety."
+type: Issue
+status: open
+priority: 2
+tags: []
+created_at: "2026-10-22T20:34:47.667Z"
+updated_at: "2026-10-22T20:36:30.437Z"
+author: codex-agent
+acceptance_criteria: "Define which corpus and relationship changes must invalidate each plan; prove unrelated item comments do not block an independent plan while touched-item changes, identity ambiguity and source-binding changes still refuse; preserve crash replay and non-git operation."
+parent: pm-beads-i59r
+files[1]{path,scope}:
+  reconcile.ts,project
+docs[1]{path,scope}:
+  README.md,project
+body: ""
