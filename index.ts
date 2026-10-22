@@ -2840,12 +2840,14 @@ export function parseDiffOptions(
 // Resolve the import input file from the raw command args: the first positional
 // (non-flag) argument. Flags (e.g. `--dry-run`, `--type Task`) may trail the
 // path in the raw args array, so we skip flags and their values.
-export function resolveImportInputFile(args: unknown): string | undefined {
+// Other Beads commands can supply additional flags that consume a value.
+export function resolveImportInputFile(args: unknown, extraValueFlags: readonly string[] = []): string | undefined {
   if (!Array.isArray(args)) return undefined;
   const valueFlags = new Set([
     "--type", "--priority", "--tags",
     "--filter", "--filter-status", "--filter-type",
     "--merge-strategy", "--batch-size", "--file",
+    ...extraValueFlags,
   ]);
   for (let i = 0; i < args.length; i++) {
     const a = args[i];

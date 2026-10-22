@@ -6,14 +6,14 @@ import {
   PmClient, commitWorkspaceTransaction, getHistoryPath, readHistorySnapshot,
   writeFileAtomic, normalizeItemId, readSettings, parseTags,
   type CommitWorkspaceTransactionOptions,
-  type WorkspaceTransactionStep, type PmClientFullMutationOptions,
+  type WorkspaceTransactionStep, type PmClientFullMutationOptions, type Dependency,
 } from "@unbrained/pm-cli/sdk";
 import type { ExtensionApi, CommandHandlerContext } from "@unbrained/pm-cli/sdk/authoring";
 import { CommandError, DIFF_FIELDS } from "./contracts.ts";
 import {
   normalizeDiffField, extractBlockerIds, stripBeadIdMarker,
   pmItemToBead, decodeBeadId, encodeBeadId, isEncodableBeadId, validateBeadsText,
-  optionString, readBoolOption, type BeadsItem, type PmItem,
+  optionString, readBoolOption, resolveImportInputFile, type BeadsItem, type PmItem,
 } from "./index.ts";
 
 /** Fields reconciled independently; annotation collections and timestamps stay local. */
@@ -228,15 +228,19 @@ export async function planBeadsReconciliation(pmRoot: string, source: string, in
   return reconcileBeadsSnapshots(base, incoming, await readLiveBeadsSnapshot(pmRoot));
 }
 /** Translate canonical field deltas into public SDK mutation options. */
-function mutationOptions(row: SnapshotRecord, fields: ReconcileField[], ids: Map<string, string>): PmClientFullMutationOptions {
+function mutationOptions(row: SnapshotRecord, fields: ReconcileField[], ids: Map<string, string>, currentDependencies: readonly Dependency[]): PmClientFullMutationOptions {
   const options: PmClientFullMutationOptions = {};
   for (const field of fields) {
     const value = row.fields[field];
     if (field === "description") options.description = encodeBeadId(value, row.id);
     else if (field === "dependencies") {
-      const dependencies = JSON.parse(value) as string[];
-      if (dependencies.length) { options.replaceDeps = true; options.dep = dependencies.map(id => `id=${ids.get(id) ?? id},kind=blocked_by`); }
-      else options.clearDeps = true;
+      const incoming = new Set((JSON.parse(value) as string[]).map(id => ids.get(id) ?? id));
+      // Kind-scoped deltas retain local edge records and their original provenance.
+      const current = new Set(currentDependencies.filter(edge => edge.kind.toLowerCase() === "blocked_by").map(edge => edge.id));
+      const additions = [...incoming].filter(id => !current.has(id));
+      const removals = [...current].filter(id => !incoming.has(id));
+      if (additions.length) options.dep = additions.map(id => `id=${JSON.stringify(id)},kind=blocked_by`);
+      if (removals.length) options.depRemove = removals.map(id => `id=${JSON.stringify(id)},kind=blocked_by`);
     }
     else if (field === "tags") options.tags = value;
     else if (["assignee", "parent", "deadline", "sprint", "release"].includes(field) && value === "") {
@@ -308,7 +312,10 @@ export async function applyBeadsReconciliation(pmRoot: string, plan: BeadsReconc
         return String(snapshot.as_of_version);
       },
       async apply() {
-        const options: PmClientFullMutationOptions = { ...mutationOptions(rows.get(change.id)!, change.fields, ids), message: marker };
+        const fields: ReconcileField[] = change.fields;
+        const current = fields.includes("dependencies") ? await client.get(id) : undefined;
+        const dependencies = (current?.item.dependencies ?? []) as Dependency[];
+        const options: PmClientFullMutationOptions = { ...mutationOptions(rows.get(change.id)!, fields, ids, dependencies), message: marker };
         if (change.kind === "create") {
           // New identities always carry provenance even when the source has no description.
           options.description = encodeBeadId(rows.get(change.id)!.fields.description, change.id);
@@ -379,16 +386,22 @@ async function runReconcile(ctx: CommandHandlerContext) {
     if (!plan || plan.source !== source) refuse("invalid_plan", "Select the same source that owns the saved reconciliation plan.");
     return applyBeadsReconciliation(ctx.pm_root, plan, author);
   }
-  const file = ctx.args[0];
+  const file = resolveImportInputFile(ctx.args, ["--source", "--plan-out", "--apply-plan"]);
   if (!file) refuse("invalid_snapshot", "Pass a full Beads JSONL snapshot or --apply-plan with a reviewed plan.");
-  const records = parseBeadsSnapshot(await readFile(file, "utf8"));
+  let raw: string;
+  try { raw = await readFile(file, "utf8"); }
+  catch { return refuse("invalid_snapshot", "Read an accessible full Beads JSONL snapshot and retry."); }
+  const records = parseBeadsSnapshot(raw);
   if (readBoolOption(ctx.options, "acknowledge")) {
     const base = await acknowledgeBeadsSnapshot(ctx.pm_root, source, records, author);
     return { acknowledged: records.length, source, baseRevision: base.revision };
   }
   const plan = await planBeadsReconciliation(ctx.pm_root, source, records);
   const output = optionString(ctx.options, "plan-out", "planOut");
-  if (output) await writeFileAtomic(output, JSON.stringify(plan) + "\n");
+  if (output) {
+    try { await writeFileAtomic(output, JSON.stringify(plan) + "\n"); }
+    catch { return refuse("invalid_plan", "Save the reviewed plan to a writable file and retry."); }
+  }
   return summarizeBeadsReconciliation(plan);
 }
 /** Register the canonical command and rich-help alias with one typed handler. */

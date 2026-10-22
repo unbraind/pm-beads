@@ -383,6 +383,10 @@ fields use empty/default values. Comments, notes, arbitrary provider fields and
 source timestamps are outside this field contract. Jira and ADO reconciliation
 remains in their own adapters.
 
+Only `blocked_by` dependency edges belong to the Beads dependency field. Other
+relationship kinds and their recorded provenance stay local, including when an
+incoming snapshot clears every Beads blocker.
+
 For SDK callers, canonical `SnapshotRecord.fields.tags` and `.dependencies` must
 be JSON arrays containing only strings. `parseBeadsSnapshot` and
 `canonicalBeadsRecord` construct these representations; malformed canonical

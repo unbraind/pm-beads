@@ -29,9 +29,12 @@ test("compiled CLI acknowledges, previews TOON/JSON, applies and refuses stale p
   assert.equal(missing.status, 2, missing.stdout + missing.stderr);
   assert.match(missing.stdout + missing.stderr, /ack_mismatch/);
   await writeFile(file, '{"id":"bd-one","title":"Initial"}\n');
-  const acknowledged = invoke("--json", "beads", "reconcile", "--source", "team", file, "--acknowledge");
+  const acknowledged = invoke("--json", "beads", "reconcile", "--acknowledge", file, "--source", "team");
   assert.equal(acknowledged.status, 0, acknowledged.stderr);
   assert.equal(JSON.parse(acknowledged.stdout).acknowledged, 1);
+  const unreadable = invoke("--json", "beads", "reconcile", "--acknowledge", join(dir, "missing.jsonl"), "--source", "team");
+  assert.equal(unreadable.status, 2, unreadable.stdout + unreadable.stderr);
+  assert.match(unreadable.stdout + unreadable.stderr, /invalid_snapshot/);
   await writeFile(file, '{"id":"bd-one","title":"External"}\n');
   const preview = invoke("--json", "beads", "reconcile", "--source", "team", file, "--plan-out", output);
   assert.equal(preview.status, 0, preview.stderr);

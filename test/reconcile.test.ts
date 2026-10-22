@@ -5,7 +5,7 @@ import { mkdtemp, rm, writeFile, readFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
-import { PmClient, WorkspaceTransactionInterruptedError, getHistoryPath } from "@unbrained/pm-cli/sdk";
+import { PmClient, WorkspaceTransactionInterruptedError, getHistoryPath, locateItem, readLocatedItem, type Dependency } from "@unbrained/pm-cli/sdk";
 import {
   canonicalBeadsRecord, parseBeadsSnapshot, reconcileBeadsSnapshots, summarizeBeadsReconciliation,
   acknowledgeBeadsSnapshot, readBeadsAcknowledgement, readLiveBeadsSnapshot,
@@ -262,6 +262,60 @@ test("application clears fields and dependencies through the public SDK without 
     if (originalPath === undefined) delete process.env.PATH; else process.env.PATH = originalPath;
     if (originalCeiling === undefined) delete process.env.GIT_CEILING_DIRECTORIES; else process.env.GIT_CEILING_DIRECTORIES = originalCeiling;
   }
+});
+
+test("reconciliation preserves local dependency kinds and provenance when adding, replacing and clearing blockers", async t => {
+  const { pmRoot, client } = await fixture(t);
+  const holder = await seed(client), oldBlocker = await seed(client, "bd-old"), newBlocker = await seed(client, "bd-new");
+  await client.update(holder, { dep: [`id=${oldBlocker},kind=related`, `id=${newBlocker},kind=verifies`, `id=${oldBlocker},kind=blocked_by`] });
+  const located = await locateItem(pmRoot, holder);
+  assert.ok(located);
+  const original: Dependency[] = (await readLocatedItem(located)).document.metadata.dependencies!;
+  assert.ok(original.every(edge => edge.created_at && edge.author), "the fixture contains recorded edge provenance");
+  const preserved = original.filter(edge => edge.kind !== "blocked_by");
+  const retainedBlocker = original.find(edge => edge.kind === "blocked_by");
+  await acknowledgeBeadsSnapshot(pmRoot, "team", await readLiveBeadsSnapshot(pmRoot), "reconcile-test");
+  for (const blockers of [["bd-old", "bd-new"], ["bd-new"], []]) {
+    const incoming = (await readLiveBeadsSnapshot(pmRoot)).map(({ id, fields }) => ({ id, fields: { ...fields } }));
+    incoming.find(record => record.id === "bd-one")!.fields.dependencies = JSON.stringify([...blockers].sort());
+    const plan = await planBeadsReconciliation(pmRoot, "team", incoming);
+    assert.deepEqual(plan.conflicts, []);
+    await applyBeadsReconciliation(pmRoot, plan, "reconcile-test");
+    const actual: Dependency[] = (await readLocatedItem(located)).document.metadata.dependencies!;
+    assert.deepEqual(actual.filter(edge => edge.kind !== "blocked_by"), preserved, "local edges keep kind, timestamps, authors and provenance");
+    assert.deepEqual(actual.filter(edge => edge.kind === "blocked_by").map(edge => edge.id).sort(), blockers.map(id => id === "bd-old" ? oldBlocker : newBlocker).sort());
+    if (blockers.includes("bd-old")) assert.deepEqual(actual.find(edge => edge.kind === "blocked_by" && edge.id === oldBlocker), retainedBlocker);
+  }
+});
+
+test("reconciliation treats dependency identifiers as data instead of SDK flag fields", async t => {
+  const { pmRoot, client } = await fixture(t);
+  const holder = await seed(client);
+  const initial = await readLiveBeadsSnapshot(pmRoot);
+  const acknowledged = await acknowledgeBeadsSnapshot(pmRoot, "team", initial, "reconcile-test");
+  const history = await readFile(getHistoryPath(pmRoot, holder), "utf8");
+  const incoming = initial.map(({ id, fields }) => ({ id, fields: { ...fields, dependencies: '["missing,source_kind=external"]' } }));
+  const plan = await planBeadsReconciliation(pmRoot, "team", incoming);
+  await assert.rejects(applyBeadsReconciliation(pmRoot, plan, "reconcile-test"));
+  assert.deepEqual(await readLiveBeadsSnapshot(pmRoot), initial);
+  assert.equal(await readFile(getHistoryPath(pmRoot, holder), "utf8"), history);
+  assert.deepEqual(await readBeadsAcknowledgement(pmRoot, "team"), acknowledged);
+});
+
+test("reconcile CLI selects positional snapshots after flags and classifies input and output I/O failures", async t => {
+  const { dir, pmRoot, client } = await fixture(t);
+  await seed(client);
+  const ext = await harness(), file = join(dir, "snapshot.jsonl"), missing = join(dir, "missing.jsonl");
+  await writeFile(file, '{"id":"bd-one","title":"Initial"}\n');
+  const run = (options: Record<string, unknown>, args: string[]) => runCommand(ext, { command: "beads reconcile", options, args, pmRoot, global: { author: "reconcile-test" } });
+  await assert.rejects(run({ source: "team", acknowledge: true }, [missing]), refusal("invalid_snapshot"));
+  await assert.rejects(run({ source: "team", acknowledge: true }, [dir]), refusal("invalid_snapshot"));
+  assert.equal((await run({ source: "team", acknowledge: true }, ["--source", "team", "--acknowledge", file]) as { acknowledged: number }).acknowledged, 1);
+  const output = join(dir, "review.json");
+  const preview = await run({ source: "team", planOut: output }, ["--source=team", "--plan-out", output, file]) as { counts: { unchanged: number } };
+  assert.equal(preview.counts.unchanged, 1);
+  assert.equal(JSON.parse(await readFile(output, "utf8")).unchanged, 1);
+  await assert.rejects(run({ source: "team", planOut: dir }, [file]), refusal("invalid_plan"));
 });
 
 test("a late core validation failure compensates earlier changes and does not acknowledge", async t => {
