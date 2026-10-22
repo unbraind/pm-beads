@@ -393,8 +393,11 @@ be JSON arrays containing only strings. `parseBeadsSnapshot` and
 collections refuse with `invalid_snapshot` before tracker mutation.
 
 Default output uses the host’s compact TOON renderer; `--json` returns the same
-bounded report. Counts remain complete when rows are omitted. `--plan-out`
-retains full conflict values and the reviewed application payload. See the
+bounded report. Counts remain complete when rows are omitted. The full plan saved
+by `--plan-out` contains external field values and a copy of every live tracker
+record in `plan.live`, including local descriptions of items with no proposed
+changes. Store it with the same access controls and retention policy as both the
+snapshots and the tracker. See the
 [worked example](examples/snapshot-reconciliation.md) for conflict, omission and
 recovery behavior.
 

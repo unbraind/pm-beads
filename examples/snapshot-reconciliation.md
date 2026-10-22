@@ -35,6 +35,8 @@ ambiguous legacy version mappings refuse before writing. New items can remain cl
 as compensation evidence. After an interruption, re-read the tracker and generate
 a fresh plan. Resolve any compensation evidence before retrying conflicting data.
 
-The full plan contains external field values. Store it with the same access
-controls and retention policy as the snapshots. The default TOON/JSON report
+The full plan saved by `--plan-out` contains external field values and a copy of
+every live tracker record in `plan.live`, including local descriptions of items
+with no proposed changes. Store it with the same access controls and retention
+policy as both the snapshots and the tracker. The default TOON/JSON report
 returns counts, at most 20 compact rows, revisions, and the omitted-row count.

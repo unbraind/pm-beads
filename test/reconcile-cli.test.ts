@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { PmClient } from "@unbrained/pm-cli/sdk";
+import type { BeadsReconcilePlan } from "../reconcile.ts";
 
 const root = resolve(import.meta.dirname, "..");
 
@@ -32,6 +33,8 @@ test("compiled CLI acknowledges, previews TOON/JSON, applies and refuses stale p
   const acknowledged = invoke("--json", "beads", "reconcile", "--acknowledge", file, "--source", "team");
   assert.equal(acknowledged.status, 0, acknowledged.stderr);
   assert.equal(JSON.parse(acknowledged.stdout).acknowledged, 1);
+  const localDescription = "Synthetic private planning note";
+  await client.create({ title: "Local only", description: localDescription });
   const unreadable = invoke("--json", "beads", "reconcile", "--acknowledge", join(dir, "missing.jsonl"), "--source", "team");
   assert.equal(unreadable.status, 2, unreadable.stdout + unreadable.stderr);
   assert.match(unreadable.stdout + unreadable.stderr, /invalid_snapshot/);
@@ -39,7 +42,20 @@ test("compiled CLI acknowledges, previews TOON/JSON, applies and refuses stale p
   const preview = invoke("--json", "beads", "reconcile", "--source", "team", file, "--plan-out", output);
   assert.equal(preview.status, 0, preview.stderr);
   assert.equal(JSON.parse(preview.stdout).counts.changes, 1);
-  assert.equal(JSON.parse(await readFile(output, "utf8")).conflicts.length, 0);
+  const savedPlan = JSON.parse(await readFile(output, "utf8")) as BeadsReconcilePlan;
+  assert.equal(savedPlan.conflicts.length, 0);
+  const localOnly = savedPlan.live.find(record => record.fields.description === localDescription);
+  assert.ok(localOnly, "saved plans embed descriptions even for local-only records");
+  assert.ok(!savedPlan.changes.some(change => change.id === localOnly.id));
+  assert.ok(!preview.stdout.includes(localDescription), "compact reports omit full local values");
+  for (const document of ["README.md", "examples/snapshot-reconciliation.md"]) {
+    const guidance = (await readFile(join(root, document), "utf8")).replace(/\s+/g, " ");
+    assert.match(guidance, /full plan saved by `--plan-out` contains external field values and a copy of every live tracker record in `plan.live`, including local descriptions of items with no proposed changes\./, `${document}: disclose the demonstrated saved local data`);
+    assert.match(guidance, /same access controls and retention policy as both the snapshots and the tracker\./, `${document}: preserve tracker protections for saved plans`);
+  }
+  const help = invoke("beads-reconcile", "--help");
+  assert.equal(help.status, 0, help.stdout + help.stderr);
+  assert.match(help.stdout.replace(/\s+/g, " "), /every live tracker record, including local descriptions; use tracker access controls and retention/);
   const toon = invoke("beads-reconcile", file, "--source", "team");
   assert.equal(toon.status, 0, toon.stderr);
   assert.match(toon.stdout, /baseRevision:/);

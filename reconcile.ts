@@ -412,7 +412,7 @@ export function registerReconcileCommands(api: ExtensionApi): void {
     flags: [
       { long: "--source", value_type: "string", value_name: "name", description: "Stable external tracker identity." },
       { long: "--acknowledge", value_type: "boolean", description: "Initialize a matching baseline once; after import, acknowledge a live export." },
-      { long: "--plan-out", value_type: "string", value_name: "file", description: "Save the full reviewable plan including conflict values." },
+      { long: "--plan-out", value_type: "string", value_name: "file", description: "Save conflict values and every live tracker record, including local descriptions; use tracker access controls and retention." },
       { long: "--apply-plan", value_type: "string", value_name: "file", description: "Apply a reviewed plan, refusing stale bases, tracker drift and conflicts." },
     ],
     examples: ["pm beads reconcile acknowledged.jsonl --source team --acknowledge", "pm beads reconcile incoming.jsonl --source team --plan-out review.json", "pm beads reconcile --source team --apply-plan review.json --json"],
