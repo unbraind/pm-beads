@@ -24,6 +24,10 @@ test("compiled CLI acknowledges, previews TOON/JSON, applies and refuses stale p
   const invoke = (...args: string[]) => spawnSync(process.execPath, [join(root, "node_modules", "@unbrained", "pm-cli", "dist", "cli.js"), "--path", pmRoot, "--author", "cli-test", ...args], {
     cwd: dir, encoding: "utf8", env: { ...process.env, PATH: "", GIT_CEILING_DIRECTORIES: tmpdir() },
   });
+  await writeFile(file, '{"id":"bd-missing","title":"Missing"}\n');
+  const missing = invoke("--json", "beads", "reconcile", "--source", "team", file, "--acknowledge");
+  assert.equal(missing.status, 2, missing.stdout + missing.stderr);
+  assert.match(missing.stdout + missing.stderr, /ack_mismatch/);
   await writeFile(file, '{"id":"bd-one","title":"Initial"}\n');
   const acknowledged = invoke("--json", "beads", "reconcile", "--source", "team", file, "--acknowledge");
   assert.equal(acknowledged.status, 0, acknowledged.stderr);

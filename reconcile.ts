@@ -200,7 +200,10 @@ export async function acknowledgeBeadsSnapshot(pmRoot: string, source: string, r
     async inspect() {
       if (await readBeadsAcknowledgement(pmRoot, source)) refuse("base_exists", "Use reconcile against the existing base; choose another source only for a different tracker.");
       const live = new Map((await readLiveBeadsSnapshot(pmRoot)).map(row => [row.id, row.fields]));
-      if (records.some(row => digest(row.fields) !== digest(live.get(row.id)))) refuse("ack_mismatch", "Import or resolve the snapshot first, then acknowledge a matching live baseline.");
+      if (records.some(row => {
+        const current = live.get(row.id);
+        return !current || RECONCILE_FIELDS.some(field => row.fields[field] !== current[field]);
+      })) refuse("ack_mismatch", "Import or resolve the snapshot first, then acknowledge a matching live baseline.");
       return { state: "pending" };
     },
     async apply() { acknowledged = await saveBase(pmRoot, source, null, records); return acknowledged.revision; },

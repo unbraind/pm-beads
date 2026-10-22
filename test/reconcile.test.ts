@@ -137,6 +137,29 @@ test("real tracker refuses bootstrap mismatch and corrupt bases without resettin
   await assert.rejects(readBeadsAcknowledgement(pmRoot, "team"), { code: "EISDIR" });
 });
 
+test("acknowledgement refuses missing identities without persisting a base", async t => {
+  const { pmRoot, client } = await fixture(t);
+  await assert.rejects(acknowledgeBeadsSnapshot(pmRoot, "team", [row("bd-missing")], "reconcile-test"), refusal("ack_mismatch"));
+  assert.equal(await readBeadsAcknowledgement(pmRoot, "team"), null);
+  assert.deepEqual(await readLiveBeadsSnapshot(pmRoot), []);
+  await seed(client);
+  await assert.rejects(acknowledgeBeadsSnapshot(pmRoot, "team", [row(), row("bd-missing")], "reconcile-test"), refusal("ack_mismatch"));
+  assert.equal(await readBeadsAcknowledgement(pmRoot, "team"), null);
+  assert.equal((await readLiveBeadsSnapshot(pmRoot)).length, 1);
+});
+
+test("acknowledgement accepts matching SDK fields regardless of key insertion order", async t => {
+  const { pmRoot, client } = await fixture(t);
+  await seed(client);
+  const expected = row();
+  const reordered = { id: expected.id, fields: Object.fromEntries(Object.entries(expected.fields).reverse()) as SnapshotRecord["fields"] };
+  assert.notEqual(JSON.stringify(reordered.fields), JSON.stringify(expected.fields));
+  const acknowledged = await acknowledgeBeadsSnapshot(pmRoot, "team", [reordered], "reconcile-test");
+  assert.deepEqual(acknowledged.records, [expected]);
+  assert.deepEqual(await readBeadsAcknowledgement(pmRoot, "team"), acknowledged);
+  assert.equal((await planBeadsReconciliation(pmRoot, "team", [expected])).unchanged, 1);
+});
+
 test("real tracker creates new identities and applies field options and relationships", async t => {
   const { pmRoot, client } = await fixture(t);
   await seed(client);
