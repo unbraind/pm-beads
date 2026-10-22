@@ -29,6 +29,10 @@ later full snapshots; omitted optional fields still mean empty/default values.
 
 A plan is bound to both its acknowledged external base and the complete local
 tracker revision. If either changes, generate a new plan and review it again.
+Even an unrelated item's comment invalidates the saved tracker revision. Pause
+ordinary writers during apply: the workspace transaction lock does not serialize
+ordinary `pm update` or `PmClient` mutations, and an edit between an item's history
+inspection and its mutation can be overwritten.
 Never edit a plan file to bypass a refusal. Ordinary application failures use
 core transaction compensation using exact history versions and preserve history;
 ambiguous legacy version mappings refuse before writing. New items can remain closed

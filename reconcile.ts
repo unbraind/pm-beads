@@ -1,10 +1,10 @@
 /** Three-way Beads reconciliation with durable, source-scoped acknowledgements. */
 import { createHash, randomUUID } from "node:crypto";
-import { readFile, mkdir, rm } from "node:fs/promises";
+import { readFile, mkdir, rm, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import {
   PmClient, commitWorkspaceTransaction, getHistoryPath, readHistorySnapshot,
-  writeFileAtomic, normalizeItemId, readSettings, parseTags,
+  writeFileAtomic, normalizeItemId, readSettings, parseTags, resolveTypeSynonym,
   type CommitWorkspaceTransactionOptions,
   type WorkspaceTransactionStep, type PmClientFullMutationOptions, type Dependency,
 } from "@unbrained/pm-cli/sdk";
@@ -27,6 +27,8 @@ export interface SnapshotRecord { id: string; fields: SnapshotFields }
 /** Persisted external base; revision changes on every successful acknowledgement. */
 export interface BeadsAcknowledgement {
   schema: 1; source: string; revision: string; previous: string | null; records: SnapshotRecord[];
+  /** Durable external-to-core identities owned by this source; absent in legacy bases. */
+  bindings?: Record<string, string>;
 }
 /** A live record bound to its pm identity and core history version. */
 export interface LiveSnapshotRecord extends SnapshotRecord { pmId: string; version: string; updatedAt: string }
@@ -73,6 +75,12 @@ function refuse(code: BeadsReconcileRefusalCode, remedy: string): never {
 function historyMarker(message: string | undefined): string {
   return (message ?? "").split(" | ", 1)[0];
 }
+/** Compare Beads aliases and persisted legacy values using the host's canonical type and date forms. */
+function normalizeSnapshotFields(fields: SnapshotFields): SnapshotFields {
+  const raw = fields.deadline;
+  if (raw && !Number.isFinite(Date.parse(raw))) refuse("invalid_snapshot", "Use an ISO date or timestamp for every nonempty deadline.");
+  return { ...fields, type: (resolveTypeSynonym(fields.type) ?? fields.type).toLowerCase(), deadline: raw ? new Date(raw).toISOString() : "" };
+}
 /** Normalize one record with the existing Beads alias and mapping rules. */
 export function canonicalBeadsRecord(bead: BeadsItem): SnapshotRecord {
   const id = bead.id;
@@ -85,7 +93,7 @@ export function canonicalBeadsRecord(bead: BeadsItem): SnapshotRecord {
     else if (field === "tags") fields[field] = JSON.stringify(parseTags(JSON.stringify(bead.labels ?? bead.tags ?? [])));
     else fields[field] = normalizeDiffField(bead, field);
   }
-  return { id, fields };
+  return { id, fields: normalizeSnapshotFields(fields) };
 }
 /** Validate a complete JSONL snapshot before any acknowledgement or mutation. */
 export function parseBeadsSnapshot(text: string): SnapshotRecord[] {
@@ -120,8 +128,9 @@ function assertRecords(records: SnapshotRecord[]): void {
 /** Build a deterministic three-way plan without writing tracker data. */
 export function reconcileBeadsSnapshots(base: BeadsAcknowledgement, incoming: SnapshotRecord[], live: LiveSnapshotRecord[]): BeadsReconcilePlan {
   assertRecords(base.records); assertRecords(incoming); assertRecords(live);
-  incoming = structuredClone(incoming).sort((a, b) => a.id.localeCompare(b.id, "en"));
-  live = [...live].sort((a, b) => a.id.localeCompare(b.id, "en"));
+  base = { ...base, records: base.records.map(row => ({ ...row, fields: normalizeSnapshotFields(row.fields) })) };
+  incoming = structuredClone(incoming).map(row => ({ ...row, fields: normalizeSnapshotFields(row.fields) })).sort((a, b) => a.id.localeCompare(b.id, "en"));
+  live = live.map(row => ({ ...row, fields: normalizeSnapshotFields(row.fields) })).sort((a, b) => a.id.localeCompare(b.id, "en"));
   const old = new Map(base.records.map(row => [row.id, row]));
   const next = new Map(incoming.map(row => [row.id, row]));
   const local = new Map(live.map(row => [row.id, row]));
@@ -162,6 +171,13 @@ function statePath(pmRoot: string, source: string): string {
   if (!source.trim()) refuse("invalid_snapshot", "Choose a nonempty source name and reuse it for the same external tracker.");
   return join(pmRoot, "beads", `${digest(source)}.json`);
 }
+/** Validate persisted or caller-selected source identity bindings before resolving aliases. */
+function assertBindings(value: unknown): asserts value is Readonly<Record<string, string>> {
+  if (!value || typeof value !== "object" || Array.isArray(value) ||
+      Object.entries(value).some(([id, pmId]) => !isEncodableBeadId(id) || typeof pmId !== "string" || !pmId.trim())) {
+    refuse("invalid_snapshot", "Supply a bindings object mapping stable external ids to nonempty core item ids.");
+  }
+}
 /** Read and verify the acknowledged base, refusing corrupt state instead of resetting it. */
 export async function readBeadsAcknowledgement(pmRoot: string, source: string): Promise<BeadsAcknowledgement | null> {
   let raw: string;
@@ -171,61 +187,135 @@ export async function readBeadsAcknowledgement(pmRoot: string, source: string): 
   try { state = JSON.parse(raw) as BeadsAcknowledgement; }
   catch { return refuse("invalid_snapshot", "Restore a valid acknowledged base; do not silently reset source history."); }
   if (!state || state.schema !== 1 || state.source !== source ||
-      state.revision !== digest({ source, previous: state.previous, records: state.records })) {
+      state.revision !== digest({ source, previous: state.previous, records: state.records, ...(state.bindings ? { bindings: state.bindings } : {}) })) {
     refuse("invalid_snapshot", "Restore a valid acknowledged base; its revision or source does not match.");
   }
   assertRecords(state.records);
+  if (state.bindings !== undefined) assertBindings(state.bindings);
   return state;
 }
-/** Read the certified corpus and bind every identity to the core history version. */
-export async function readLiveBeadsSnapshot(pmRoot: string): Promise<LiveSnapshotRecord[]> {
+/** Resolve source-owned aliases without letting copied or foreign markers select an item. */
+async function sourceIdentities(pmRoot: string, source: string, records: readonly SnapshotRecord[], bindings: Readonly<Record<string, string>>, items: readonly PmItem[]): Promise<Map<string, string>> {
+  assertBindings(bindings);
+  const selected = new Map<string, string>();
+  const claimed = new Set<string>();
+  let files: string[];
+  try { files = await readdir(join(pmRoot, "beads")); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") refuse("invalid_snapshot", "Restore a readable source acknowledgement directory before reconciling."); files = []; }
+  for (const file of files.filter(file => /^[a-f0-9]{64}\.json$/.test(file))) {
+    let stored: BeadsAcknowledgement;
+    try { stored = JSON.parse(await readFile(join(pmRoot, "beads", file), "utf8")) as BeadsAcknowledgement; }
+    catch { return refuse("invalid_snapshot", "Repair unreadable or invalid source acknowledgement files before reconciling."); }
+    if (!stored || typeof stored.source !== "string") refuse("invalid_snapshot", "Repair source acknowledgement files with missing source identities.");
+    if (stored.source === source) continue;
+    const other = await readBeadsAcknowledgement(pmRoot, stored.source);
+    if (!other) refuse("invalid_snapshot", "Restore a matching source acknowledgement file before reconciling.");
+    const owned = other.bindings ? Object.values(other.bindings)
+      : items.filter(item => other.records.some(record => (decodeBeadId(item) ?? item.id) === record.id)).map(item => item.id!);
+    for (const pmId of owned) claimed.add(pmId);
+  }
+  for (const [externalId, pmId] of Object.entries(bindings)) {
+    if (selected.has(pmId) || claimed.has(pmId)) refuse("invalid_snapshot", "Use unique core item ids not already bound to another source.");
+    selected.set(pmId, externalId);
+  }
+  for (const record of records) {
+    if (Object.hasOwn(bindings, record.id)) continue;
+    const matches = items.filter(item => !claimed.has(item.id!) && !selected.has(item.id!) && (decodeBeadId(item) ?? item.id) === record.id);
+    if (matches.length > 1) refuse("invalid_snapshot", `Ambiguous Beads id ${JSON.stringify(record.id)} matches core ids ${matches.map(item => JSON.stringify(item.id)).join(", ")}. Acknowledge with an explicit bindings map in the SDK.`);
+    if (matches.length === 1) selected.set(matches[0].id!, record.id);
+  }
+  const occupied = new Set([...records.map(record => record.id), ...Object.keys(bindings), ...selected.values()]);
+  const translated = new Map<string, string>();
+  for (const item of items) {
+    const bound = selected.get(item.id!);
+    let id = bound ?? item.id!;
+    if (bound === undefined) while (occupied.has(id)) id = `local:${id}`;
+    occupied.add(id);
+    translated.set(item.id!, id);
+  }
+  return translated;
+}
+/** Read the certified corpus and bind source aliases to core identities and history versions. */
+export async function readLiveBeadsSnapshot(pmRoot: string, source?: string, records: readonly SnapshotRecord[] = [], bindings: Readonly<Record<string, string>> = {}): Promise<LiveSnapshotRecord[]> {
   const client = new PmClient({ pmRoot });
   const { items } = await client.listAllComplete();
-  const translated = new Map(items.map(item => [item.id, decodeBeadId(item as PmItem) ?? item.id]));
+  const translated = source === undefined
+    ? new Map(items.map(item => [item.id, decodeBeadId(item as PmItem) ?? item.id]))
+    : await sourceIdentities(pmRoot, source, records, bindings, items as PmItem[]);
   const live: LiveSnapshotRecord[] = [];
   for (const item of items) {
     const history = await readHistorySnapshot(getHistoryPath(pmRoot, item.id), item.id);
     const version = history.entries.at(-1)?.after_hash;
     if (typeof version !== "string") refuse("invalid_snapshot", "Repair missing core history versions before reconciling this tracker.");
-    live.push({ ...canonicalBeadsRecord(pmItemToBead(item as PmItem, translated, true)), pmId: item.id, version, updatedAt: String(item.updated_at) });
+    const bead = pmItemToBead(item as PmItem, translated, true);
+    bead.id = translated.get(item.id)!;
+    live.push({ ...canonicalBeadsRecord(bead), pmId: item.id, version, updatedAt: String(item.updated_at) });
   }
   live.sort((a, b) => a.id.localeCompare(b.id, "en"));
   assertRecords(live);
   return live;
 }
 /** Persist a source base atomically; omitted records stay pending until separately resolved. */
-async function saveBase(pmRoot: string, source: string, previous: string | null, records: SnapshotRecord[]): Promise<BeadsAcknowledgement> {
-  const state: BeadsAcknowledgement = { schema: 1, source, previous, records, revision: digest({ source, previous, records }) };
+async function saveBase(pmRoot: string, source: string, previous: string | null, records: SnapshotRecord[], bindings: Record<string, string>): Promise<BeadsAcknowledgement> {
+  const state: BeadsAcknowledgement = { schema: 1, source, previous, records, bindings, revision: digest({ source, previous, records, bindings }) };
   await mkdir(join(pmRoot, "beads"), { recursive: true });
   await writeFileAtomic(statePath(pmRoot, source), JSON.stringify(state) + "\n");
   return state;
 }
-/** Bootstrap only from a snapshot that agrees with the live tracker; never reset an existing base. */
-export async function acknowledgeBeadsSnapshot(pmRoot: string, source: string, records: SnapshotRecord[], author: string, options: BeadsApplyOptions = {}): Promise<BeadsAcknowledgement> {
+/** Acknowledge matching live data or add explicit bindings to an unchanged legacy base; never reset it. */
+export async function acknowledgeBeadsSnapshot(pmRoot: string, source: string, records: SnapshotRecord[], author: string, options: BeadsAcknowledgeOptions = {}): Promise<BeadsAcknowledgement> {
   assertRecords(records);
-  if (await readBeadsAcknowledgement(pmRoot, source)) refuse("base_exists", "Use reconcile against the existing base; choose another source only for a different tracker.");
+  records = records.map(row => ({ ...row, fields: normalizeSnapshotFields(row.fields) }));
+  const existing = await readBeadsAcknowledgement(pmRoot, source);
+  const migrating = existing !== null && existing.bindings === undefined && options.bindings !== undefined;
+  if (existing && !migrating) refuse("base_exists", "Use reconcile against the existing base; choose another source only for a different tracker.");
+  if (migrating) {
+    const previous = new Map(existing.records.map(row => [row.id, normalizeSnapshotFields(row.fields)]));
+    if (records.length !== previous.size || records.some(row => {
+      const before = previous.get(row.id);
+      return !before || RECONCILE_FIELDS.some(field => row.fields[field] !== before[field]);
+    })) refuse("ack_mismatch", "Preserve every acknowledged field value when adding legacy source bindings; do not reset the baseline.");
+  }
   let acknowledged: BeadsAcknowledgement | undefined;
-  await commitWorkspaceTransaction({ pmRoot, author, transactionId: `beads-ack-${randomUUID()}`, onTransition: options.onTransition, steps: [{
+  let bindings: Record<string, string> = {};
+  try {
+    await commitWorkspaceTransaction({ pmRoot, author, transactionId: `beads-ack-${randomUUID()}`, onTransition: options.onTransition, steps: [{
     id: "acknowledge",
     async inspect() {
-      if (await readBeadsAcknowledgement(pmRoot, source)) refuse("base_exists", "Use reconcile against the existing base; choose another source only for a different tracker.");
-      const live = new Map((await readLiveBeadsSnapshot(pmRoot)).map(row => [row.id, row.fields]));
+      const currentBase = await readBeadsAcknowledgement(pmRoot, source);
+      if (migrating) {
+        if (currentBase?.revision !== existing.revision) refuse("stale_base", "The legacy source advanced; re-read its baseline before adding bindings.");
+      } else if (currentBase) refuse("base_exists", "Use reconcile against the existing base; choose another source only for a different tracker.");
+      const snapshot = await readLiveBeadsSnapshot(pmRoot, source, records, options.bindings);
+      const live = new Map(snapshot.map(row => [row.id, row.fields]));
+      bindings = Object.fromEntries(snapshot.filter(row => records.some(record => record.id === row.id)).map(row => [row.id, row.pmId]));
       if (records.some(row => {
         const current = live.get(row.id);
-        return !current || RECONCILE_FIELDS.some(field => row.fields[field] !== current[field]);
+        return !current || (!migrating && RECONCILE_FIELDS.some(field => row.fields[field] !== current[field]));
       })) refuse("ack_mismatch", "Import or resolve every record, then export the tracker and acknowledge that matching live baseline.");
       return { state: "pending" };
     },
-    async apply() { acknowledged = await saveBase(pmRoot, source, null, records); return acknowledged.revision; },
-    async compensate() { await rm(statePath(pmRoot, source), { force: true }); },
+    async apply() { acknowledged = await saveBase(pmRoot, source, existing?.revision ?? null, records, bindings); return acknowledged.revision; },
+    async compensate() {
+      if (existing) {
+        const expected = digest({ source, previous: existing.revision, records, bindings });
+        if ((await readBeadsAcknowledgement(pmRoot, source))?.revision !== expected) refuse("stale_base", "A later source acknowledgement exists; preserve it and replan binding recovery.");
+        await writeFileAtomic(statePath(pmRoot, source), JSON.stringify(existing) + "\n");
+      }
+      else await rm(statePath(pmRoot, source), { force: true });
+    },
   }] });
+  } catch (error) {
+    if (error instanceof AggregateError) throw new BeadsReconcileRefusal("recovery_required", "Binding migration could not compensate safely. Preserve later source revisions and inspect the transaction journal before retrying.", error);
+    throw error;
+  }
   return acknowledged!;
 }
 /** Read a source base and produce a plan against a certified live snapshot. */
 export async function planBeadsReconciliation(pmRoot: string, source: string, incoming: SnapshotRecord[]): Promise<BeadsReconcilePlan> {
   const base = await readBeadsAcknowledgement(pmRoot, source);
   if (!base) refuse("missing_base", "Acknowledge a matching baseline with beads reconcile --acknowledge before previewing changes.");
-  return reconcileBeadsSnapshots(base, incoming, await readLiveBeadsSnapshot(pmRoot));
+  return reconcileBeadsSnapshots(base, incoming, await readLiveBeadsSnapshot(pmRoot, source, [...base.records, ...incoming], base.bindings));
 }
 /** Translate canonical field deltas into public SDK mutation options. */
 function mutationOptions(row: SnapshotRecord, fields: ReconcileField[], ids: Map<string, string>, currentDependencies: readonly Dependency[]): PmClientFullMutationOptions {
@@ -251,9 +341,11 @@ function mutationOptions(row: SnapshotRecord, fields: ReconcileField[], ids: Map
   if (options.status === "closed") options.closeReason = `Closed in acknowledged Beads source (${row.id})`;
   return options;
 }
+/** Explicit identity selection for first acknowledgements and legacy binding migration. */
+export interface BeadsAcknowledgeOptions extends BeadsApplyOptions { bindings?: Readonly<Record<string, string>> }
 /** Transaction observations for diagnostics and deterministic interruption checks. */
 export interface BeadsApplyOptions { onTransition?: CommitWorkspaceTransactionOptions["onTransition"] }
-/** Apply a reviewed plan through core transactions, refusing drift before writes. Never delete omissions. */
+/** Apply a reviewed plan with workspace transactions and per-item history checks. Never delete omissions. */
 export async function applyBeadsReconciliation(pmRoot: string, plan: BeadsReconcilePlan, author: string, options: BeadsApplyOptions = {}): Promise<{ applied: number; baseRevision: string; deletionProposals: number }> {
   if (plan.digest !== digest({ ...plan, digest: "" })) refuse("invalid_plan", "Generate a fresh plan; do not edit plan files.");
   if (plan.conflicts.length) refuse("conflicts", "Resolve reported field conflicts in the source or tracker and preview again.");
@@ -261,7 +353,7 @@ export async function applyBeadsReconciliation(pmRoot: string, plan: BeadsReconc
   if (!base || base.revision !== plan.baseRevision) refuse("stale_base", "The acknowledged base advanced; preview again against the current base.");
   const live = plan.live;
   assertRecords(live);
-  const currentLive = await readLiveBeadsSnapshot(pmRoot);
+  const currentLive = await readLiveBeadsSnapshot(pmRoot, plan.source, [...base.records, ...plan.incoming], base.bindings);
   const transactionId = `beads-reconcile-${plan.digest}`;
   // A crashed attempt may already own some forward writes. Only exact latest
   // journal markers permit replay; unrelated edits still invalidate the plan.
@@ -279,7 +371,7 @@ export async function applyBeadsReconciliation(pmRoot: string, plan: BeadsReconc
   const fresh = reconcileBeadsSnapshots(base, plan.incoming, live);
   if (fresh.digest !== plan.digest) refuse("invalid_plan", "Generate a fresh plan from the original incoming snapshot.");
   const settings = await readSettings(pmRoot);
-  const ids = new Map(live.map(row => [row.id, row.pmId]));
+  const ids = new Map([...Object.entries(base.bindings ?? {}), ...live.map(row => [row.id, row.pmId] as const)]);
   for (const change of plan.changes) if (change.kind === "create") ids.set(change.id, normalizeItemId(`beads-${digest([plan.source, change.id]).slice(0, 24)}`, settings.id_prefix));
   const rows = new Map(plan.incoming.map(row => [row.id, row]));
   const client = new PmClient({ pmRoot, author });
@@ -329,18 +421,19 @@ export async function applyBeadsReconciliation(pmRoot: string, plan: BeadsReconc
         if (!history.entries.some(entry => historyMarker(entry.message) === marker)) refuse("invalid_snapshot", "Transaction history is missing; restore valid history and inspect recovery before retrying.");
         if (!history.entries.at(-1)?.message?.startsWith(`${transactionId}:`)) refuse("stale_tracker", "A later writer changed a transaction item; preserve that edit and replan recovery.");
         if ((original || change.phase === "links") && typeof target === "string") await client.restore(id, target, { message: `${marker}:compensated` });
-        else await client.close(id, "Compensated interrupted Beads reconciliation", { message: `${marker}:compensated` });
+        else await client.close(id, "Compensated interrupted Beads reconciliation", { message: `${marker}:compensated`, force: true });
       },
     };
   });
   const retained = base.records.filter(row => !rows.has(row.id));
-  const records = [...plan.incoming, ...retained].sort((a, b) => a.id.localeCompare(b.id, "en"));
-  const expected = digest({ source: plan.source, previous: base.revision, records });
+  const records = [...plan.incoming, ...retained].map(row => ({ ...row, fields: normalizeSnapshotFields(row.fields) })).sort((a, b) => a.id.localeCompare(b.id, "en"));
+  const bindings = Object.fromEntries(records.filter(row => ids.has(row.id)).map(row => [row.id, ids.get(row.id)!]));
+  const expected = digest({ source: plan.source, previous: base.revision, records, bindings });
   steps.push({ id: "acknowledge", async inspect() {
     const current = await readBeadsAcknowledgement(pmRoot, plan.source);
     if (current?.revision !== base.revision) refuse("stale_base", "The acknowledged source advanced; preview again.");
     return { state: "pending" };
-  }, async apply() { await saveBase(pmRoot, plan.source, base.revision, records); return expected; },
+  }, async apply() { await saveBase(pmRoot, plan.source, base.revision, records, bindings); return expected; },
   async compensate() {
     if ((await readBeadsAcknowledgement(pmRoot, plan.source))?.revision !== expected) refuse("stale_base", "A later source acknowledgement exists; preserve it and replan recovery.");
     await writeFileAtomic(statePath(pmRoot, plan.source), JSON.stringify(base) + "\n");
@@ -352,7 +445,7 @@ export async function applyBeadsReconciliation(pmRoot: string, plan: BeadsReconc
       if (context.transition === "prepared") {
         const current = await readBeadsAcknowledgement(pmRoot, plan.source);
         if (current?.revision !== base.revision) refuse("stale_base", "The base advanced while waiting for the writer lock; preview again.");
-        if (digest(await readLiveBeadsSnapshot(pmRoot)) !== plan.trackerRevision) refuse("stale_tracker", "The tracker changed while waiting for the writer lock; preview again.");
+        if (digest(await readLiveBeadsSnapshot(pmRoot, plan.source, [...base.records, ...plan.incoming], base.bindings)) !== plan.trackerRevision) refuse("stale_tracker", "The tracker changed while waiting for the writer lock; preview again.");
       }
     },
   });

@@ -1,7 +1,7 @@
 /** Real compiled-extension acceptance with no git executable available. */
 import assert from "node:assert/strict";
 import test from "node:test";
-import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
@@ -111,5 +111,72 @@ test("documented import-export-acknowledge workflows accept title-only records w
     const records = (await client.listAllComplete()).items;
     assert.equal(records.length, 1);
     assert.match(String(records[0].description), /^Original/);
+  }
+});
+
+/** Install the real compiled extension and pinned CLI in a non-git tracker. */
+async function rawCliFixture(t: test.TestContext) {
+  const dir = await mkdtemp(join(tmpdir(), "beads-raw-cli-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const pmRoot = join(dir, "tracker"), extension = join(pmRoot, "extensions", "pm-beads"), bin = join(dir, "bin");
+  const client = new PmClient({ pmRoot, author: "raw-cli-test", noExtensions: true });
+  await client.init("raw");
+  await mkdir(extension, { recursive: true }); await mkdir(bin);
+  for (const entry of ["dist", "manifest.json", "package.json"]) await cp(join(root, entry), join(extension, entry), { recursive: true });
+  await symlink(join(root, "node_modules"), join(extension, "node_modules"), "junction");
+  await symlink(process.execPath, join(bin, "node"));
+  await symlink(join(root, "node_modules", "@unbrained", "pm-cli", "dist", "cli.js"), join(bin, "pm"));
+  /** Invoke the pinned CLI, allowing its importer to invoke the same pinned CLI. */
+  const invoke = (...args: string[]) => {
+    const result = spawnSync(process.execPath, [join(bin, "pm"), "--path", pmRoot, "--author", "raw-cli-test", "--json", ...args], {
+      cwd: dir, encoding: "utf8", env: { ...process.env, PATH: bin, GIT_CEILING_DIRECTORIES: tmpdir() },
+    });
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    return result.stdout;
+  };
+  return { dir, pmRoot, client, invoke };
+}
+
+test("RAW Beads bug and story types converge after import-export-acknowledge with missing descriptions", async t => {
+  const { dir, client, invoke } = await rawCliFixture(t);
+  const file = join(dir, "raw.jsonl"), exported = join(dir, "exported.jsonl"), planFile = join(dir, "plan.json");
+  await writeFile(file, '{"id":"bd-raw","title":"Raw bug","issue_type":"bug","due_at":"2026-10-01T00:00:00Z"}\n');
+  invoke("beads", "import", file);
+  invoke("beads", "export", "--output", exported);
+  const baseline = JSON.parse((await readFile(exported, "utf8")).trim());
+  assert.equal(baseline.description, "Raw bug");
+  invoke("beads", "reconcile", exported, "--source", "raw", "--acknowledge");
+  for (const issueType of ["story", "bug"]) {
+    await writeFile(file, JSON.stringify({ id: "bd-raw", title: "Raw bug", issue_type: issueType, due_at: "2026-10-01T00:00:00Z" }) + "\n");
+    const preview = JSON.parse(invoke("beads", "reconcile", file, "--source", "raw", "--plan-out", planFile));
+    assert.equal(preview.counts.conflicts, 0);
+    invoke("beads", "reconcile", "--source", "raw", "--apply-plan", planFile);
+    const stored = (await client.listAllComplete()).items[0];
+    assert.equal(String(stored.type).toLowerCase(), issueType === "bug" ? "issue" : "feature");
+    const repeated = JSON.parse(invoke("beads", "reconcile", file, "--source", "raw"));
+    assert.equal(repeated.counts.unchanged, 1);
+    assert.equal(repeated.counts.conflicts, 0);
+  }
+});
+
+test("RAW Beads plain UTC deadline changes converge across consecutive saved bases", async t => {
+  const { dir, pmRoot, client, invoke } = await rawCliFixture(t);
+  const file = join(dir, "raw.jsonl"), exported = join(dir, "exported.jsonl"), planFile = join(dir, "plan.json");
+  await writeFile(file, '{"id":"bd-due","title":"Raw story","issue_type":"story","due_at":"2026-10-01T00:00:00Z"}\n');
+  invoke("beads", "import", file);
+  invoke("beads", "export", "--output", exported);
+  invoke("beads", "reconcile", exported, "--source", "raw", "--acknowledge");
+  for (const dueAt of ["2026-11-01T00:00:00Z", "2026-12-01T00:00:00Z"]) {
+    await writeFile(file, JSON.stringify({ id: "bd-due", title: "Raw story", issue_type: "story", due_at: dueAt }) + "\n");
+    const preview = JSON.parse(invoke("beads", "reconcile", file, "--source", "raw", "--plan-out", planFile));
+    assert.equal(preview.counts.conflicts, 0);
+    invoke("beads", "reconcile", "--source", "raw", "--apply-plan", planFile);
+    assert.equal((await client.listAllComplete()).items[0].deadline, new Date(dueAt).toISOString());
+    const baseFiles = await readdir(join(pmRoot, "beads"));
+    const base = JSON.parse(await readFile(join(pmRoot, "beads", baseFiles[0]), "utf8"));
+    assert.equal(base.records[0].fields.deadline, new Date(dueAt).toISOString());
+    const repeated = JSON.parse(invoke("beads", "reconcile", file, "--source", "raw"));
+    assert.equal(repeated.counts.unchanged, 1);
+    assert.equal(repeated.counts.conflicts, 0);
   }
 });

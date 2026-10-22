@@ -397,7 +397,7 @@ async function advanceBase(pmRoot: string) {
   const current = (await readBeadsAcknowledgement(pmRoot, "team"))!;
   const path = join(pmRoot, "beads", `${createHash("sha256").update(JSON.stringify("team")).digest("hex")}.json`);
   const previous = current.revision;
-  const revision = createHash("sha256").update(JSON.stringify({ source: "team", previous, records: current.records })).digest("hex");
+  const revision = createHash("sha256").update(JSON.stringify({ source: "team", previous, records: current.records, ...(current.bindings ? { bindings: current.bindings } : {}) })).digest("hex");
   await writeFile(path, JSON.stringify({ ...current, previous, revision }));
   return revision;
 }
@@ -534,4 +534,231 @@ test("ambiguous legacy checkpoints refuse before the first reversible write", as
   const plan = await planBeadsReconciliation(pmRoot, "team", incoming);
   await assert.rejects(applyBeadsReconciliation(pmRoot, plan, "reconcile-test"), refusal("recovery_required"));
   assert.equal((await client.get(id)).item.title, "Current");
+});
+
+test("RAW Beads terminal creates compensate every new identity after a late failure", async t => {
+  for (const status of ["done", "canceled"]) {
+    const { pmRoot, client } = await fixture(t);
+    const acknowledged = await acknowledgeBeadsSnapshot(pmRoot, "terminal", [], "reconcile-test");
+    const incoming = parseBeadsSnapshot([
+      { id: "bd-a", title: "Earlier bug", issue_type: "bug", due_at: "2026-10-01T00:00:00Z" },
+      { id: "bd-z", title: "Terminal story", issue_type: "story", status, due_at: "2026-10-01T00:00:00Z" },
+    ].map(record => JSON.stringify(record)).join("\n"));
+    const plan = await planBeadsReconciliation(pmRoot, "terminal", incoming);
+    let compensated = false;
+    await assert.rejects(applyBeadsReconciliation(pmRoot, plan, "reconcile-test", { onTransition({ transition, stepId }) {
+      if (transition === "compensated") compensated = true;
+      if (transition === "step_applied" && stepId === "acknowledge") throw new Error("terminal regression late failure");
+    } }), error => error instanceof Error && !(error instanceof BeadsReconcileRefusal) && error.message === "terminal regression late failure");
+    assert.ok(compensated, "the workspace journal reaches compensated instead of compensating");
+    const items = (await client.listAllComplete()).items;
+    assert.equal(items.length, 2);
+    assert.ok(items.every(item => item.status === "closed"), "earlier open creates are also compensated");
+    assert.deepEqual(await readBeadsAcknowledgement(pmRoot, "terminal"), acknowledged);
+  }
+});
+
+test("RAW Beads ids bind per source and copied markers cannot redirect subsequent updates", async t => {
+  const { pmRoot, client } = await fixture(t);
+  const raw = (title: string) => parseBeadsSnapshot(JSON.stringify({ id: "bd-shared", title, issue_type: "bug", due_at: "2026-10-01T00:00:00Z" }));
+  await acknowledgeBeadsSnapshot(pmRoot, "alpha", [], "reconcile-test");
+  await applyBeadsReconciliation(pmRoot, await planBeadsReconciliation(pmRoot, "alpha", raw("Alpha")), "reconcile-test");
+  const alpha = (await readBeadsAcknowledgement(pmRoot, "alpha"))!.bindings!["bd-shared"];
+  await acknowledgeBeadsSnapshot(pmRoot, "beta", [], "reconcile-test");
+  await applyBeadsReconciliation(pmRoot, await planBeadsReconciliation(pmRoot, "beta", raw("Beta")), "reconcile-test");
+  const beta = (await readBeadsAcknowledgement(pmRoot, "beta"))!.bindings!["bd-shared"];
+  assert.notEqual(alpha, beta);
+  const copy = await client.create({ title: "Local copy", type: "Issue", description: encodeBeadId("Copied marker", "bd-shared") });
+  await applyBeadsReconciliation(pmRoot, await planBeadsReconciliation(pmRoot, "alpha", raw("Alpha changed")), "reconcile-test");
+  await applyBeadsReconciliation(pmRoot, await planBeadsReconciliation(pmRoot, "beta", raw("Beta changed")), "reconcile-test");
+  assert.equal((await client.get(alpha)).item.title, "Alpha changed");
+  assert.equal((await client.get(beta)).item.title, "Beta changed");
+  assert.equal((await client.get(copy.item.id)).item.title, "Local copy");
+  assert.equal((await planBeadsReconciliation(pmRoot, "alpha", raw("Alpha changed"))).unchanged, 1);
+  assert.equal((await planBeadsReconciliation(pmRoot, "beta", raw("Beta changed"))).unchanged, 1);
+});
+
+test("ambiguous RAW Beads acknowledgement names candidate ids and accepts an explicit source binding", async t => {
+  const { pmRoot, client } = await fixture(t);
+  const ids: string[] = [];
+  for (let i = 0; i < 2; i++) ids.push((await client.create({ title: "Imported bug", type: "bug", deadline: "2026-10-01T00:00:00Z", description: encodeBeadId("Imported bug", "bd-copied") })).item.id);
+  const raw = parseBeadsSnapshot('{"id":"bd-copied","title":"Imported bug","description":"Imported bug","issue_type":"bug","due_at":"2026-10-01T00:00:00Z"}');
+  await assert.rejects(acknowledgeBeadsSnapshot(pmRoot, "selected", raw, "reconcile-test"), error => {
+    assert.ok(error instanceof BeadsReconcileRefusal && error.code === "invalid_snapshot");
+    for (const id of ["bd-copied", ...ids]) assert.ok(error.remedy.includes(id));
+    return true;
+  });
+  const acknowledged = await acknowledgeBeadsSnapshot(pmRoot, "selected", raw, "reconcile-test", { bindings: { "bd-copied": ids[1] } });
+  assert.deepEqual(acknowledged.bindings, { "bd-copied": ids[1] });
+  const incoming = parseBeadsSnapshot('{"id":"bd-copied","title":"Selected story","description":"Imported bug","issue_type":"story","due_at":"2026-11-01T00:00:00Z"}');
+  await applyBeadsReconciliation(pmRoot, await planBeadsReconciliation(pmRoot, "selected", incoming), "reconcile-test");
+  assert.equal((await client.get(ids[0])).item.title, "Imported bug");
+  assert.equal((await client.get(ids[1])).item.title, "Selected story");
+});
+
+test("source bindings reject malformed and cross-source ownership without mutating the tracker", async t => {
+  const { pmRoot, client } = await fixture(t);
+  const id = await seed(client);
+  const raw = parseBeadsSnapshot('{"id":"bd-one","title":"Initial"}');
+  for (const bindings of [null, [], 1, { "": id }, { "bd-one": 1 }, { "bd-one": " " }]) {
+    await assert.rejects(acknowledgeBeadsSnapshot(pmRoot, "bad", raw, "reconcile-test", { bindings: bindings as unknown as Record<string, string> }), refusal("invalid_snapshot"));
+  }
+  await assert.rejects(acknowledgeBeadsSnapshot(pmRoot, "bad", raw, "reconcile-test", { bindings: { "bd-one": id, "another": id } }), refusal("invalid_snapshot"));
+  await acknowledgeBeadsSnapshot(pmRoot, "owner", raw, "reconcile-test");
+  await assert.rejects(acknowledgeBeadsSnapshot(pmRoot, "other", raw, "reconcile-test", { bindings: { "bd-one": id } }), refusal("invalid_snapshot"));
+  assert.equal((await client.listAllComplete()).items.length, 1);
+});
+
+test("bound external ids cannot capture a local core id when the bound item disappears", async t => {
+  const { pmRoot, client } = await fixture(t);
+  const localId = await seed(client, "local-bead");
+  const raw = parseBeadsSnapshot(JSON.stringify({ id: localId, title: "External story", issue_type: "story", due_at: "2026-10-01T00:00:00Z" }));
+  const missingId = "sample-missing";
+  const projected = await readLiveBeadsSnapshot(pmRoot, "missing", raw, { [localId]: missingId });
+  assert.ok(!projected.some(record => record.id === localId));
+  assert.equal(projected.find(record => record.pmId === localId)!.id, `local:${localId}`);
+  assert.equal((await client.get(localId)).item.title, "Initial");
+  const records = [...raw, ...parseBeadsSnapshot('{"id":"local-bead","title":"Initial"}')];
+  const bindings = { [localId]: missingId, "local-bead": localId };
+  const saved = { schema: 1, source: "missing", previous: null, records, bindings };
+  const revision = createHash("sha256").update(JSON.stringify({ source: saved.source, previous: saved.previous, records, bindings })).digest("hex");
+  await mkdir(join(pmRoot, "beads"), { recursive: true });
+  const path = join(pmRoot, "beads", createHash("sha256").update(JSON.stringify("missing")).digest("hex") + ".json");
+  await writeFile(path, JSON.stringify({ ...saved, revision }));
+  const incoming = parseBeadsSnapshot('{"id":"local-bead","title":"Changed local bead"}');
+  await applyBeadsReconciliation(pmRoot, await planBeadsReconciliation(pmRoot, "missing", incoming), "reconcile-test");
+  assert.equal((await readBeadsAcknowledgement(pmRoot, "missing"))!.bindings![localId], missingId, "missing bindings survive unrelated changes without rebinding to a local id");
+  assert.equal((await client.get(localId)).item.title, "Changed local bead");
+});
+
+test("raw deadlines reject invalid values and normalize date-only input", () => {
+  assert.throws(() => parseBeadsSnapshot('{"id":"bd-date","title":"Date","due_at":"invalid"}'), refusal("invalid_snapshot"));
+  assert.equal(canonicalBeadsRecord({ id: "bd-date", title: "Date", due_date: "2026-10-01" }).fields.deadline, "2026-10-01T00:00:00.000Z");
+});
+
+test("source identity reads refuse corrupt metadata and preserve legacy ownership", async t => {
+  const { pmRoot, client } = await fixture(t);
+  await seed(client);
+  const raw = parseBeadsSnapshot('{"id":"bd-one","title":"Initial"}');
+  await client.create({ title: "Unbound native item" });
+  const acknowledged = await acknowledgeBeadsSnapshot(pmRoot, "legacy", raw, "reconcile-test");
+  const legacyFile = join(pmRoot, "beads", createHash("sha256").update(JSON.stringify("legacy")).digest("hex") + ".json");
+  const legacy = { schema: 1, source: "legacy", previous: acknowledged.previous, records: acknowledged.records };
+  const revision = createHash("sha256").update(JSON.stringify({ source: legacy.source, previous: legacy.previous, records: legacy.records })).digest("hex");
+  await writeFile(legacyFile, JSON.stringify({ ...legacy, revision }));
+  await writeFile(join(pmRoot, "beads", "ignored.txt"), "unrelated text");
+  await assert.rejects(acknowledgeBeadsSnapshot(pmRoot, "new-source", raw, "reconcile-test"), refusal("ack_mismatch"));
+  await writeFile(join(pmRoot, "beads", "review.json"), JSON.stringify({ live: [], source: "review payload" }));
+  assert.equal((await readLiveBeadsSnapshot(pmRoot, "legacy", raw)).length, 2, "saved review plans are not source acknowledgements");
+  const extra = join(pmRoot, "beads", "f".repeat(64) + ".json");
+  for (const content of ["not-json", "null", "{}", '{"source":"ghost"}']) {
+    await writeFile(extra, content);
+    await assert.rejects(readLiveBeadsSnapshot(pmRoot, "new-source", raw), refusal("invalid_snapshot"));
+  }
+  await rm(extra);
+  const invalid = { ...legacy, bindings: [] };
+  const invalidRevision = createHash("sha256").update(JSON.stringify({ source: invalid.source, previous: invalid.previous, records: invalid.records, bindings: invalid.bindings })).digest("hex");
+  await writeFile(legacyFile, JSON.stringify({ ...invalid, revision: invalidRevision }));
+  await assert.rejects(readBeadsAcknowledgement(pmRoot, "legacy"), refusal("invalid_snapshot"));
+  const isolated = await fixture(t);
+  await writeFile(join(isolated.pmRoot, "beads"), "not a directory");
+  await assert.rejects(readLiveBeadsSnapshot(isolated.pmRoot, "bad-directory", []), refusal("invalid_snapshot"));
+});
+
+test("legacy raw type and deadline bases converge without reset and retain exact rollback bytes", async t => {
+  const { pmRoot, client } = await fixture(t);
+  const id = (await client.create({ title: "Legacy", type: "bug", deadline: "2026-10-01T00:00:00Z", description: encodeBeadId("", "bd-legacy") })).item.id;
+  await acknowledgeBeadsSnapshot(pmRoot, "legacy", parseBeadsSnapshot('{"id":"bd-legacy","title":"Legacy","issue_type":"bug","due_at":"2026-10-01T00:00:00Z"}'), "reconcile-test");
+  const path = join(pmRoot, "beads", createHash("sha256").update(JSON.stringify("legacy")).digest("hex") + ".json");
+  const old = (await readBeadsAcknowledgement(pmRoot, "legacy"))!;
+  old.records[0].fields.type = "bug"; old.records[0].fields.deadline = "2026-10-01T00:00:00Z";
+  delete old.bindings;
+  old.revision = createHash("sha256").update(JSON.stringify({ source: old.source, previous: old.previous, records: old.records, bindings: old.bindings })).digest("hex");
+  const original = JSON.stringify(old) + "\n";
+  await writeFile(path, original);
+  const incoming = parseBeadsSnapshot('{"id":"bd-legacy","title":"Legacy","issue_type":"story","due_at":"2026-11-01T00:00:00Z"}');
+  const plan = await planBeadsReconciliation(pmRoot, "legacy", incoming);
+  assert.equal(plan.conflicts.length, 0);
+  await assert.rejects(applyBeadsReconciliation(pmRoot, plan, "reconcile-test", { onTransition({ transition, stepId }) {
+    if (transition === "step_applied" && stepId === "acknowledge") throw new Error("legacy rollback");
+  } }), /legacy rollback/);
+  assert.equal(await readFile(path, "utf8"), original);
+  await applyBeadsReconciliation(pmRoot, await planBeadsReconciliation(pmRoot, "legacy", incoming), "reconcile-test");
+  assert.equal(String((await client.get(id)).item.type).toLowerCase(), "feature");
+  assert.equal((await readBeadsAcknowledgement(pmRoot, "legacy"))!.records[0].fields.deadline, "2026-11-01T00:00:00.000Z");
+  assert.equal((await planBeadsReconciliation(pmRoot, "legacy", incoming)).unchanged, 1);
+});
+
+test("legacy source bindings migrate explicitly without resetting the base or local edits", async t => {
+  const { pmRoot, client } = await fixture(t);
+  const raw = parseBeadsSnapshot('{"id":"bd-legacy","title":"Baseline","issue_type":"bug","due_at":"2026-10-01T00:00:00Z"}');
+  const id = (await client.create({ title: "Baseline", type: "bug", deadline: "2026-10-01T00:00:00Z", description: encodeBeadId("", "bd-legacy") })).item.id;
+  const initial = await acknowledgeBeadsSnapshot(pmRoot, "team", raw, "reconcile-test");
+  const records = structuredClone(initial.records);
+  records[0].fields.type = "bug"; records[0].fields.deadline = "2026-10-01T00:00:00Z";
+  const data = { source: "team", previous: initial.previous, records };
+  const revision = createHash("sha256").update(JSON.stringify(data)).digest("hex");
+  const path = join(pmRoot, "beads", createHash("sha256").update(JSON.stringify("team")).digest("hex") + ".json");
+  const original = JSON.stringify({ schema: 1, ...data, revision }) + "\n";
+  await writeFile(path, original);
+  const copy = (await client.create({ title: "Baseline", type: "story", description: encodeBeadId("", "bd-legacy") })).item.id;
+  await client.update(id, { title: "Local edit" });
+  await assert.rejects(planBeadsReconciliation(pmRoot, "team", raw), refusal("invalid_snapshot"));
+  const bindings = { "bd-legacy": id };
+  await assert.rejects(acknowledgeBeadsSnapshot(pmRoot, "team", records, "reconcile-test"), refusal("base_exists"));
+  for (const invalid of [[], [row("other", "Baseline")], parseBeadsSnapshot('{"id":"bd-legacy","title":"Reset attempt","issue_type":"bug","due_at":"2026-10-01T00:00:00Z"}')]) {
+    await assert.rejects(acknowledgeBeadsSnapshot(pmRoot, "team", invalid, "reconcile-test", { bindings }), refusal("ack_mismatch"));
+  }
+  await assert.rejects(acknowledgeBeadsSnapshot(pmRoot, "team", records, "reconcile-test", { bindings: { "bd-legacy": "sample-missing" } }), refusal("ack_mismatch"));
+  await assert.rejects(acknowledgeBeadsSnapshot(pmRoot, "team", records, "reconcile-test", { bindings, onTransition({ transition }) {
+    if (transition === "step_applied") throw new Error("binding migration late failure");
+  } }), /binding migration late failure/);
+  assert.equal(await readFile(path, "utf8"), original);
+  await assert.rejects(acknowledgeBeadsSnapshot(pmRoot, "team", records, "reconcile-test", { bindings, async onTransition({ transition }) {
+    if (transition === "prepared") await advanceBase(pmRoot);
+  } }), refusal("stale_base"));
+  const preserved = await readFile(path, "utf8");
+  try {
+    await assert.rejects(acknowledgeBeadsSnapshot(pmRoot, "team", records, "reconcile-test", { bindings, async onTransition({ transition }) {
+      if (transition === "prepared") await rm(path);
+    } }), refusal("stale_base"));
+  } finally { await writeFile(path, preserved); }
+  const prior = (await readBeadsAcknowledgement(pmRoot, "team"))!;
+  const bound = await acknowledgeBeadsSnapshot(pmRoot, "team", prior.records, "reconcile-test", { bindings });
+  assert.equal(bound.previous, prior.revision);
+  assert.deepEqual(bound.bindings, bindings);
+  assert.equal(bound.records[0].fields.title, "Baseline");
+  assert.equal(bound.records[0].fields.type, "issue");
+  assert.equal(bound.records[0].fields.deadline, "2026-10-01T00:00:00.000Z");
+  assert.equal((await client.get(id)).item.title, "Local edit");
+  assert.equal((await client.get(copy)).item.title, "Baseline");
+  await assert.rejects(acknowledgeBeadsSnapshot(pmRoot, "team", raw, "reconcile-test", { bindings }), refusal("base_exists"));
+  assert.equal((await planBeadsReconciliation(pmRoot, "team", raw)).localOnly, 1);
+});
+
+test("legacy source bindings compensation preserves a later source revision", async t => {
+  for (const mode of ["advance", "remove"]) {
+    const { pmRoot, client } = await fixture(t);
+    const id = await seed(client);
+    const raw = parseBeadsSnapshot('{"id":"bd-one","title":"Initial","issue_type":"task"}');
+    const initial = await acknowledgeBeadsSnapshot(pmRoot, "team", raw, "reconcile-test");
+    const data = { source: "team", previous: initial.previous, records: initial.records };
+    const revision = createHash("sha256").update(JSON.stringify(data)).digest("hex");
+    const path = join(pmRoot, "beads", createHash("sha256").update(JSON.stringify("team")).digest("hex") + ".json");
+    await writeFile(path, JSON.stringify({ schema: 1, ...data, revision }) + "\n");
+    let later = "";
+    await assert.rejects(acknowledgeBeadsSnapshot(pmRoot, "team", raw, "reconcile-test", { bindings: { "bd-one": id }, async onTransition({ transition }) {
+      if (transition === "step_applied") {
+        if (mode === "advance") later = await advanceBase(pmRoot);
+        else await rm(path);
+        throw new Error("later source writer");
+      }
+    } }), refusal("recovery_required"));
+    const remaining = await readBeadsAcknowledgement(pmRoot, "team");
+    if (mode === "advance") {
+      assert.equal(remaining!.revision, later);
+      assert.deepEqual(remaining!.bindings, { "bd-one": id });
+    } else assert.equal(remaining, null);
+    assert.equal((await client.get(id)).item.title, "Initial");
+  }
 });

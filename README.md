@@ -331,8 +331,9 @@ transactions.
 
 `pm beads reconcile` compares a complete incoming Beads snapshot with its last
 acknowledged external snapshot and the live tracker. Unlike `import --upsert`, it
-reports concurrent field edits instead of choosing a winner. Local-only edits
-survive; matching edits converge. External omissions are deletion proposals and
+reports concurrent field edits instead of choosing a winner. The comparison
+preserves local-only edits observed in the snapshot; matching edits converge.
+External omissions are deletion proposals and
 never delete items, including on application. Unresolved omissions stay in the
 base so future previews continue to show them.
 
@@ -351,6 +352,21 @@ that already matches every supported live field can be acknowledged directly.
 Reuse the same source name for the same external tracker. The source
 owns a durable base under the tracker’s `beads/` directory; retain that directory
 with your tracker backups. Do not reset it to resolve a conflict.
+
+Acknowledgements persist a source-specific `bindings` map from external ids to
+core item ids. Different sources may use the same external id. Later previews
+follow the stored binding even if another local item copies its Beads marker.
+For an ambiguous first acknowledgement, the refusal names the external id and
+candidate core ids. SDK callers can select the intended item with
+`acknowledgeBeadsSnapshot(pmRoot, source, records, author, { bindings: { "bd-1": "demo-a1b2" } })`.
+An item already bound to another source cannot be selected again. The initial
+baseline must still match all supported fields of the selected item. To add
+bindings to a legacy base that has none, pass that base's existing `records` to
+this SDK call with an explicit `bindings` map. This migration requires the
+same acknowledged values after type/deadline normalization and leaves local edits
+untouched; it refuses changed baseline values
+or a concurrently advanced base. Once bindings exist, acknowledgement still
+refuses to replace the base.
 
 ```ts
 import { readFile } from "node:fs/promises";
@@ -372,7 +388,13 @@ The SDK exports `parseBeadsSnapshot`, `acknowledgeBeadsSnapshot`,
 `BeadsReconcileRefusal.code` and `.remedy` to recover from `missing_base`,
 `base_exists`, `ack_mismatch`, `invalid_snapshot`, `invalid_plan`, `conflicts`,
 `stale_base`, `stale_tracker` or `recovery_required`. CLI refusals exit 2. Application checks the base
-and core history revisions again under the workspace transaction lock. Compensation
+and core history revisions again under the workspace transaction lock. This lock
+serializes workspace transactions, but ordinary `pm update` and `PmClient`
+mutations do not participate in it. Per-item history checks detect edits before
+inspection; they are not an atomic compare-and-swap with the following mutation.
+Pause ordinary writers during apply: an edit between inspection and mutation can
+be overwritten. Any item-history change anywhere in the tracker, including an
+unrelated comment, conservatively invalidates a saved plan. Compensation
 uses exact core history versions; ambiguous legacy checkpoints refuse before writing. Resolve
 conflicts and regenerate stale plans; there is no force-overwrite flag.
 
@@ -382,6 +404,12 @@ core tag normalization apply. Snapshots require unique, stable ids; optional
 fields use empty/default values. Comments, notes, arbitrary provider fields and
 source timestamps are outside this field contract. Jira and ADO reconciliation
 remains in their own adapters.
+
+Beads type synonyms use the host's built-in mapping (`bug` to `issue`, `story`
+to `feature`). Deadlines are compared and saved as canonical ISO timestamps;
+`2026-10-01T00:00:00Z` and `2026-10-01T00:00:00.000Z` represent the same value.
+Legacy base values are normalized for comparison without resetting their revision;
+the next successful apply persists canonical values.
 
 Only `blocked_by` dependency edges belong to the Beads dependency field. Other
 relationship kinds and their recorded provenance stay local, including when an
