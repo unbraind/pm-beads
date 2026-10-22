@@ -337,13 +337,18 @@ never delete items, including on application. Unresolved omissions stay in the
 base so future previews continue to show them.
 
 ```sh
-pm beads reconcile baseline.jsonl --source team --acknowledge
+pm beads import baseline.jsonl
+pm beads export --output acknowledged.jsonl
+pm beads reconcile acknowledged.jsonl --source team --acknowledge
 pm beads reconcile incoming.jsonl --source team --plan-out review.json --json
 pm beads reconcile --source team --apply-plan review.json --json
 ```
 
-Acknowledge once, after the baseline matches live items (import it first when
-needed). Reuse the same source name for the same external tracker. The source
+Acknowledge once, after the baseline matches live items. When bootstrapping with
+an import, export the live tracker and acknowledge that export: import fills a
+missing or empty description with the title and normalizes defaults. A snapshot
+that already matches every supported live field can be acknowledged directly.
+Reuse the same source name for the same external tracker. The source
 owns a durable base under the tracker’s `beads/` directory; retain that directory
 with your tracker backups. Do not reset it to resolve a conflict.
 
@@ -377,6 +382,11 @@ core tag normalization apply. Snapshots require unique, stable ids; optional
 fields use empty/default values. Comments, notes, arbitrary provider fields and
 source timestamps are outside this field contract. Jira and ADO reconciliation
 remains in their own adapters.
+
+For SDK callers, canonical `SnapshotRecord.fields.tags` and `.dependencies` must
+be JSON arrays containing only strings. `parseBeadsSnapshot` and
+`canonicalBeadsRecord` construct these representations; malformed canonical
+collections refuse with `invalid_snapshot` before tracker mutation.
 
 Default output uses the host’s compact TOON renderer; `--json` returns the same
 bounded report. Counts remain complete when rows are omitted. `--plan-out`

@@ -80,6 +80,48 @@ test("canonical snapshots preserve boundaries, aliases, prose, sets and empty da
   assert.throws(() => reconcileBeadsSnapshots(base(), [malformed], []), refusal("invalid_snapshot"));
 });
 
+test("canonical SDK collection fields reject invalid JSON and non-string arrays at every classifier input", () => {
+  for (const field of ["tags", "dependencies"] as const) {
+    for (const value of ["not-json", "a,b", "null", "{}", '"text"', "1", "[1]", "[null]", '["valid",{}]', '[["nested"]]']) {
+      const invalid = row(); invalid.fields[field] = value;
+      assert.throws(() => reconcileBeadsSnapshots(base(), [invalid], []), refusal("invalid_snapshot"), `${field}: incoming ${value}`);
+      assert.throws(() => reconcileBeadsSnapshots(base(invalid), [], []), refusal("invalid_snapshot"), `${field}: base ${value}`);
+      assert.throws(() => reconcileBeadsSnapshots(base(), [], local(invalid)), refusal("invalid_snapshot"), `${field}: live ${value}`);
+    }
+  }
+});
+
+test("invalid canonical collections refuse acknowledgement and application before tracker writes", async t => {
+  const { pmRoot, client } = await fixture(t);
+  await seed(client, "bd-a"); await seed(client, "bd-z");
+  const initial = await readLiveBeadsSnapshot(pmRoot);
+  const acknowledged = await acknowledgeBeadsSnapshot(pmRoot, "team", initial, "reconcile-test");
+  const histories = await Promise.all(initial.map(record => readFile(getHistoryPath(pmRoot, record.pmId), "utf8")));
+  for (const field of ["tags", "dependencies"] as const) {
+    for (const value of ["not-json", '["valid",1]']) {
+      const incoming = initial.map(({ id, fields }) => ({ id, fields: { ...fields } }));
+      incoming[0].fields.title = "External";
+      incoming[1].fields[field] = field === "tags" ? '["tag"]' : '["bd-a"]';
+      const plan = await planBeadsReconciliation(pmRoot, "team", incoming);
+      incoming[1].fields[field] = value;
+      plan.incoming[1].fields[field] = value;
+      await assert.rejects(applyBeadsReconciliation(pmRoot, rehash(plan), "reconcile-test"), refusal("invalid_snapshot"));
+      await assert.rejects(acknowledgeBeadsSnapshot(pmRoot, "invalid", incoming, "reconcile-test"), refusal("invalid_snapshot"));
+      assert.equal(await readBeadsAcknowledgement(pmRoot, "invalid"), null);
+      await assert.rejects(planBeadsReconciliation(pmRoot, "team", incoming), refusal("invalid_snapshot"));
+      assert.deepEqual(await readLiveBeadsSnapshot(pmRoot), initial);
+      assert.deepEqual(await Promise.all(initial.map(record => readFile(getHistoryPath(pmRoot, record.pmId), "utf8"))), histories);
+      assert.deepEqual(await readBeadsAcknowledgement(pmRoot, "team"), acknowledged);
+    }
+  }
+  const corrupt = { ...structuredClone(acknowledged), source: "corrupt" };
+  corrupt.records[1].fields.dependencies = '["valid",1]';
+  corrupt.revision = createHash("sha256").update(JSON.stringify({ source: corrupt.source, previous: corrupt.previous, records: corrupt.records })).digest("hex");
+  const stateName = createHash("sha256").update(JSON.stringify(corrupt.source)).digest("hex");
+  await writeFile(join(pmRoot, "beads", `${stateName}.json`), JSON.stringify(corrupt));
+  await assert.rejects(readBeadsAcknowledgement(pmRoot, "corrupt"), refusal("invalid_snapshot"));
+});
+
 test("agent summary bounds rows and reports omissions with exact totals", () => {
   const records = Array.from({ length: 30 }, (_, i) => row(`bd-${i}`));
   const plan = reconcileBeadsSnapshots(base(), records, []);

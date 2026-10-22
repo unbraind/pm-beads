@@ -47,3 +47,50 @@ test("compiled CLI acknowledges, previews TOON/JSON, applies and refuses stale p
   assert.equal(stale.status, 2);
   assert.match(stale.stdout + stale.stderr, /stale_base/);
 });
+
+test("documented import-export-acknowledge workflows accept title-only records without git", async t => {
+  const example = await readFile(join(root, "examples/snapshot-reconciliation.md"), "utf8");
+  const baseline = example.match(/If `baseline\.jsonl` contains `([^`]+)`/)?.[1];
+  assert.ok(baseline, "the worked example supplies a concrete baseline record");
+  for (const document of ["README.md", "examples/snapshot-reconciliation.md"]) {
+    const text = await readFile(join(root, document), "utf8");
+    const section = document === "README.md" ? text.split("## Three-way snapshot reconciliation\n")[1] : text;
+    const block = section.match(/```sh\n([\s\S]*?)```/)?.[1];
+    assert.ok(block, `${document}: reconciliation shell example exists`);
+    const commands = block.split("\n").filter(line => line.startsWith("pm beads "));
+    const dir = await mkdtemp(join(tmpdir(), "beads-doc-workflow-"));
+    t.after(() => rm(dir, { recursive: true, force: true }));
+    const pmRoot = join(dir, "tracker"), extension = join(pmRoot, "extensions", "pm-beads"), bin = join(dir, "bin");
+    const client = new PmClient({ pmRoot, author: "cli-test", noExtensions: true });
+    await client.init("demo");
+    await mkdir(extension, { recursive: true }); await mkdir(bin);
+    for (const entry of ["dist", "manifest.json", "package.json"]) await cp(join(root, entry), join(extension, entry), { recursive: true });
+    await symlink(join(root, "node_modules"), join(extension, "node_modules"), "junction");
+    await symlink(process.execPath, join(bin, "node"));
+    await symlink(join(root, "node_modules", "@unbrained", "pm-cli", "dist", "cli.js"), join(bin, "pm"));
+    /** Run the documented commands with only the real pinned node and pm available. */
+    const invoke = (...args: string[]) => spawnSync(process.execPath, [join(bin, "pm"), "--path", pmRoot, "--author", "cli-test", "--json", ...args], {
+      cwd: dir, encoding: "utf8", env: { ...process.env, PATH: bin, GIT_CEILING_DIRECTORIES: tmpdir() },
+    });
+    await writeFile(join(dir, "baseline.jsonl"), baseline + "\n");
+    // A standalone acknowledgement example assumes a prior import.
+    if (!commands.some(line => line.startsWith("pm beads import "))) {
+      const imported = invoke("beads", "import", "baseline.jsonl");
+      assert.equal(imported.status, 0, imported.stdout + imported.stderr);
+    }
+    let acknowledged = false;
+    for (const command of commands) {
+      const result = invoke(...command.split(/\s+/).slice(1));
+      assert.equal(result.status, 0, `${document}: ${command}\n${result.stdout}${result.stderr}`);
+      if (command.includes("--acknowledge")) {
+        assert.equal(JSON.parse(result.stdout).acknowledged, 1);
+        acknowledged = true;
+        break;
+      }
+    }
+    assert.ok(acknowledged, `${document}: workflow acknowledges its imported baseline`);
+    const records = (await client.listAllComplete()).items;
+    assert.equal(records.length, 1);
+    assert.match(String(records[0].description), /^Original/);
+  }
+});

@@ -7,7 +7,9 @@ field as its empty/default value; use a different workflow for sparse patches.
 ```sh
 pm init --prefix demo
 pm beads import baseline.jsonl
-pm beads reconcile baseline.jsonl --source team --acknowledge --json
+# Capture the live descriptions and normalized defaults created by import.
+pm beads export --output acknowledged.jsonl
+pm beads reconcile acknowledged.jsonl --source team --acknowledge --json
 pm beads reconcile incoming.jsonl --source team --plan-out review.json --json
 # Inspect review.json, including all base/local/incoming conflict values.
 pm beads reconcile --source team --apply-plan review.json --json
@@ -19,6 +21,11 @@ conflict with those three values. Application refuses the entire conflicted plan
 Changing priority locally and title externally merges both edits. An incoming
 omission produces a deletion proposal; applying the plan keeps the item and the
 proposal. Resolve deletion decisions separately in the tracker and source.
+
+Import uses the title as the description when that field is missing or empty.
+The exported `acknowledged.jsonl` includes the stored description, so the initial
+acknowledgement matches the tracker. Keep this normalized baseline when preparing
+later full snapshots; omitted optional fields still mean empty/default values.
 
 A plan is bound to both its acknowledged external base and the complete local
 tracker revision. If either changes, generate a new plan and review it again.

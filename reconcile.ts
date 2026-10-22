@@ -95,14 +95,24 @@ export function parseBeadsSnapshot(text: string): SnapshotRecord[] {
   assertRecords(records);
   return records.sort((a, b) => a.id.localeCompare(b.id, "en"));
 }
+/** Check the JSON representation of a canonical tag or dependency collection. */
+function isJsonStringArray(value: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed) && parsed.every((item: unknown) => typeof item === "string");
+  } catch {
+    return false;
+  }
+}
 /** Reject malformed or duplicate canonical records, including forged persisted bases. */
 function assertRecords(records: SnapshotRecord[]): void {
   if (!Array.isArray(records)) refuse("invalid_snapshot", "Supply a canonical full snapshot array.");
   const ids = new Set<string>();
   for (const row of records) {
     if (!row || typeof row.id !== "string" || !isEncodableBeadId(row.id) || ids.has(row.id) ||
-        !row.fields || RECONCILE_FIELDS.some(field => typeof row.fields[field] !== "string")) {
-      refuse("invalid_snapshot", "Repair duplicate identities or malformed canonical fields; then preview again.");
+        !row.fields || RECONCILE_FIELDS.some(field => typeof row.fields[field] !== "string") ||
+        !isJsonStringArray(row.fields.tags) || !isJsonStringArray(row.fields.dependencies)) {
+      refuse("invalid_snapshot", "Repair duplicate identities or malformed canonical fields, including JSON string arrays for tags and dependencies; then preview again.");
     }
     ids.add(row.id);
   }
@@ -203,7 +213,7 @@ export async function acknowledgeBeadsSnapshot(pmRoot: string, source: string, r
       if (records.some(row => {
         const current = live.get(row.id);
         return !current || RECONCILE_FIELDS.some(field => row.fields[field] !== current[field]);
-      })) refuse("ack_mismatch", "Import or resolve the snapshot first, then acknowledge a matching live baseline.");
+      })) refuse("ack_mismatch", "Import or resolve every record, then export the tracker and acknowledge that matching live baseline.");
       return { state: "pending" };
     },
     async apply() { acknowledged = await saveBase(pmRoot, source, null, records); return acknowledged.revision; },
@@ -388,11 +398,11 @@ export function registerReconcileCommands(api: ExtensionApi): void {
     arguments: [{ name: "file", required: false, description: "Full incoming Beads JSONL snapshot." }],
     flags: [
       { long: "--source", value_type: "string", value_name: "name", description: "Stable external tracker identity." },
-      { long: "--acknowledge", value_type: "boolean", description: "Initialize a matching acknowledged baseline once." },
+      { long: "--acknowledge", value_type: "boolean", description: "Initialize a matching baseline once; after import, acknowledge a live export." },
       { long: "--plan-out", value_type: "string", value_name: "file", description: "Save the full reviewable plan including conflict values." },
       { long: "--apply-plan", value_type: "string", value_name: "file", description: "Apply a reviewed plan, refusing stale bases, tracker drift and conflicts." },
     ],
-    examples: ["pm beads reconcile base.jsonl --source team --acknowledge", "pm beads reconcile incoming.jsonl --source team --plan-out review.json", "pm beads reconcile --source team --apply-plan review.json --json"],
+    examples: ["pm beads reconcile acknowledged.jsonl --source team --acknowledge", "pm beads reconcile incoming.jsonl --source team --plan-out review.json", "pm beads reconcile --source team --apply-plan review.json --json"],
     run: runReconcile,
   });
 }
