@@ -2,16 +2,18 @@ id: pm-beads-g150
 title: "The release job authenticated with a stored npm token that expired, so publishing stopped while every other gate stayed green"
 description: "The Publish npm package step read NODE_AUTH_TOKEN from the repository secret NPM_TOKEN. That credential began being rejected on 2026-08-17 UTC. Every daily release run since then reached the publish step and failed with npm code E404 on PUT to the registry, which is how npm reports a rejected write credential rather than a missing package. Rotating the secret on 2026-08-22 UTC did not help, and the copy of the credential on the maintainer host answers 401 to npm whoami, so the token is dead rather than mis-stored. Because the version bump and the release commit both land before the publish step, main advanced to 2026.8.24 with no matching tag and no published artifact. The npm registry last published pm-beads@2026.8.16; main is ahead at 2026.8.24."
 type: Issue
-status: in_progress
+status: closed
 priority: 0
 tags[3]: npm,release,supply-chain
 created_at: "2026-08-26T19:15:44.277Z"
-updated_at: "2026-08-26T23:06:12.251Z"
+updated_at: "2026-10-21T19:00:00.494Z"
 deadline: "2026-09-02T19:15:44.277Z"
-assignee: claude
+closed_at: "2026-10-21T18:59:55.519Z"
+completed_at: "2026-10-21T18:59:55.519Z"
 author: claude
 estimated_minutes: 120
 acceptance_criteria: No release workflow references NODE_AUTH_TOKEN NPM_TOKEN or secrets.NPM outside a comment; the publish job carries id-token write; npm is raised to at least 11.5.1 before the publish step because the npm bundled with node 22 cannot exchange an OIDC token; a test fails closed if a stored token is reintroduced or the npm upgrade is removed
+resolution: "Reverified main 104ee0d795b6 (unchanged since audit): [PR #83](https://github.com/unbraind/pm-beads/pull/83) (a2e7646) replaced stored-token publishing with OIDC; npm metadata now contains current releases. Retained evidence: .github/workflows/release.yml, test/release-workflow.test.ts."
 comments[1]{created_at,author,text}:
   "2026-08-26T19:15:44.277Z",claude,"Verified the guards are not vacuous: reintroducing NODE_AUTH_TOKEN fails the OIDC test (exit 1),and deleting the npm upgrade step fails the npm-version test (exit 1). Both return to green when reverted."
 notes[1]{created_at,author,text}:
@@ -24,4 +26,5 @@ tests[1]{command,scope,provenance{author,created_at,source_kind,source_ref}}:
   PM_PATH=.agents/pm PM_GLOBAL_PATH=.agents/pm node --test test/release-workflow.test.ts,project,codex,"2026-08-26T19:15:44.888Z",local_mutation,ci/publish-by-oidc-trusted-publishing
 docs[1]{path,scope,note}:
   "https://docs.npmjs.com/trusted-publishers",project,npm trusted publishing setup
+close_reason: "Reverified main 104ee0d795b6 (unchanged since audit): [PR #83](https://github.com/unbraind/pm-beads/pull/83) (a2e7646) replaced stored-token publishing with OIDC; npm metadata now contains current releases. Retained evidence: .github/workflows/release.yml, test/release-workflow.test.ts."
 body: "Trusted publishing replaces the stored credential. The registry mints a short-lived credential from the workflow OIDC identity, so there is no secret left to expire. Requires a one-time configuration on npmjs.com binding this package to unbraind/pm-beads and the release.yml workflow."

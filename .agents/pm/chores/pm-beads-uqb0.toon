@@ -2,12 +2,15 @@ id: pm-beads-uqb0
 title: Enable GitHub CodeQL code scanning
 description: "Add .github/workflows/codeql.yml (javascript-typescript, build-mode none, weekly staggered schedule). GET /code-scanning/alerts returned 404 no-analysis-found for this repo, so the Security tab could not distinguish clean from never-ran. Advisory check only, not added to branch protection."
 type: Chore
-status: in_progress
+status: closed
 priority: 2
 tags: []
 created_at: "2026-08-22T16:53:30.665Z"
-updated_at: "2026-08-22T17:59:44.890Z"
+updated_at: "2026-10-21T19:05:03.657Z"
+closed_at: "2026-10-21T19:04:57.975Z"
+completed_at: "2026-10-21T19:04:57.975Z"
 author: "harness:ox-alpha"
+resolution: "Reverified main 104ee0d795b6 (unchanged since audit): [PR #76](https://github.com/unbraind/pm-beads/pull/76) (694e1b2) adds .github/workflows/codeql.yml; current main has CodeQL runs. Retained evidence: .github/workflows/codeql.yml."
 notes[1]{created_at,author,text}:
   "2026-08-22T16:53:54.975Z","harness:ox-alpha","Verified 2026-08-22: gh api repos/unbraind/pm-beads/code-scanning/alerts -> 404 'no analysis found'. CodeQL is free for this public repo. Workflow pins github/codeql-action v4 (fleet major-tag convention), permissions limited to security-events:write/actions:read/contents:read."
 files[1]{path,scope,note}:
@@ -21,4 +24,5 @@ tests[2]:
     scope: project
     assert_stdout_regex[1]: "^[1-9][0-9]*$"
     note: "At least one CodeQL analysis must exist. Deliberately queries /analyses, not /alerts: an empty /alerts array is ambiguous between analysed-and-clean and never-analysed, and that ambiguity is the exact defect this change removes. /analyses answers did-a-scan-run directly, so a clean repo passes and an unscanned one fails closed with HTTP 404."
+close_reason: "Reverified main 104ee0d795b6 (unchanged since audit): [PR #76](https://github.com/unbraind/pm-beads/pull/76) (694e1b2) adds .github/workflows/codeql.yml; current main has CodeQL runs. Retained evidence: .github/workflows/codeql.yml."
 body: ""

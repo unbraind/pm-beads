@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Enable the gated GitHub issue sync ([pm-beads-vqk9](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-vqk9.toon))
+- Adopt pm-github 2026.10.16: default-branch-safe gated sync and daily gated closeout PRs ([pm-beads-bv5f](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-bv5f.toon))
+
+### Fixed
+
+- A release run bumped and committed a new version every night while publishing was impossible, because the only externally-failable step runs last ([pm-beads-wav0](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-wav0.toon))
+- The changelog gate stamps an untagged version with the current date, so its verdict flips every midnight with no commit ([pm-beads-znub](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-znub.toon))
+- Measure marker growth with CPU time under concurrent fleet load ([pm-beads-j957](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-j957.toon))
+- The release job authenticated with a stored npm token that expired, so publishing stopped while every other gate stayed green ([pm-beads-g150](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-g150.toon))
+
+### Other
+
+- Enable GitHub CodeQL code scanning ([pm-beads-uqb0](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-uqb0.toon))
+- Certify pm-beads on PM CLI/SDK 2026.10.4 and consolidate pending dependency updates ([pm-beads-8h18](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-8h18.toon))
+
 ## 2026.10.21 - 2026-10-21
 
 ### Fixed
