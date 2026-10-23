@@ -61,12 +61,18 @@ function bounded(text: string, limit = BEADS_SIDECAR_LIMITS.bytes): void {
 function privateKey(key: string): boolean {
   return /(?:__proto__|^prototype$|^constructor$|password|secret|token|authorization|cookie|credential|private.?key|email)/i.test(key);
 }
+/** Detect obvious private text with linear scans, including repeated incomplete PEM headers. */
+function privateText(value: string): boolean {
+  const lower = value.toLowerCase();
+  return (lower.includes("-----begin ") && lower.includes("private key-----")) ||
+    /(?:Bearer\s+\S+|gh[pousr]_[A-Za-z0-9]+|[/](?:home|Users)[/])/i.test(value) ||
+    value.split("@").slice(1).some(part => /^[\w.-]+\.[a-z]{2,}/i.test(part));
+}
 /** Validate the opaque JSON tree before retaining it; this baseline is intentionally conservative. */
 function safeValue(value: unknown, depth = 0): asserts value is BeadsExtensionValue {
   if (depth > BEADS_SIDECAR_LIMITS.depth) refuse("size_limit", "Reduce extension nesting to at most 16 levels.");
-  if (typeof value === "number" && !Number.isFinite(value)) refuse("invalid_input", "Use finite JSON numbers in extensions to avoid coercion during serialization.");
-  if (typeof value === "string" && (/(?:-----BEGIN .*PRIVATE KEY-----|Bearer\s+\S+|gh[pousr]_[A-Za-z0-9]+|[/](?:home|Users)[/])/i.test(value) ||
-      value.split("@").slice(1).some(part => /^[\w.-]+\.[a-z]{2,}/i.test(part)))) {
+  if (typeof value === "number" && (!Number.isFinite(value) || (Number.isInteger(value) && !Number.isSafeInteger(value)))) refuse("invalid_input", "Use finite numbers and safe integers in extensions; encode larger integers as strings in the source tool.");
+  if (typeof value === "string" && privateText(value)) {
     refuse("privacy_limit", "Remove credentials, private identity data and local home paths from opted-in extensions before capture or restore.");
   }
   if (value !== null && typeof value === "object") {
@@ -141,6 +147,10 @@ export function parseBeadsExtensionSidecar(text: string): BeadsExtensionSidecar 
   let parsed: unknown;
   try { parsed = JSON.parse(text); }
   catch { return refuse("invalid_sidecar", "Use a valid JSON sidecar produced by beads sidecar --capture."); }
+  return validateSidecar(parsed);
+}
+/** Validate JSON and typed SDK envelopes before serialization can coerce non-finite values. */
+function validateSidecar(parsed: unknown): BeadsExtensionSidecar {
   if (!object(parsed) || parsed.schema !== "pm-beads/extensions") refuse("invalid_sidecar", "Use a pm-beads/extensions envelope produced by capture.");
   if (parsed.version !== 1) refuse("unsupported_version", "Use a compatible pm-beads version; never rewrite an unknown sidecar version.");
   if (Object.keys(parsed).sort().join(",") !== "digest,fields,loss,records,schema,version" || !Array.isArray(parsed.fields) || !Array.isArray(parsed.records) || !object(parsed.loss) || typeof parsed.digest !== "string") refuse("invalid_sidecar", "Restore a complete sidecar envelope from capture.");
@@ -157,17 +167,19 @@ export function parseBeadsExtensionSidecar(text: string): BeadsExtensionSidecar 
       loss.records !== rebuilt.loss.records || loss.preservedFields !== rebuilt.loss.preservedFields ||
       loss.extensionFields !== Number(loss.preservedFields) + Number(loss.droppedFields)) refuse("invalid_sidecar", "Recapture a sidecar with consistent nonnegative loss counts.");
   const sidecar = parsed as unknown as BeadsExtensionSidecar;
+  bounded(JSON.stringify(sidecar));
   if (sidecar.digest !== digest(sidecar)) refuse("invalid_sidecar", "Restore the original sidecar or recapture it; its integrity digest does not match.");
   return sidecar;
 }
 /** Restore extensions by exact id after ordinary export; refuse omissions and conflicting overlays. */
 export function restoreBeadsExtensions(text: string, envelope: BeadsExtensionSidecar): { text: string; loss: BeadsExtensionLossReport } {
-  const sidecar = parseBeadsExtensionSidecar(JSON.stringify(envelope));
+  const sidecar = validateSidecar(envelope);
   const records = parseRecords(text);
   const extensions = new Map(sidecar.records.map(row => [row.id, row.fields]));
   if (records.length !== extensions.size || records.some(row => !extensions.has(row.id))) refuse("identity_mismatch", "Export the same complete record set with preserved ids; use a separate sidecar for each filtered snapshot.");
   for (const row of records) {
     for (const [key, value] of Object.entries(extensions.get(row.id)!)) {
+      if (Object.hasOwn(row, key)) safeValue(row[key]);
       if (Object.hasOwn(row, key) && canonical(row[key]) !== canonical(value)) refuse("field_conflict", "Resolve the conflicting extension values explicitly and recapture; restore never overwrites differing values.");
       row[key] = value;
     }

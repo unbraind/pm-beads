@@ -62,7 +62,9 @@ no tracker binding, so choose the matching snapshot yourself.
 
 All input files and generated artifacts are bounded to 8 MiB, with at most
 10,000 records, 128 selected fields, 16 KiB of extensions per record, 128 entries
-per nested object/array, and 16 nesting levels. Only finite JSON numbers survive.
+per nested object/array, and 16 nesting levels. Numbers must be finite and integer
+values must be safe JavaScript integers; represent larger integers as strings
+in the source tool to prevent precision loss.
 Sensitive key names, obvious credentials, email addresses, private home paths,
 and prototype-related keys refuse recursively before any output write. These
 conservative checks are a baseline, not a general personal-data detector. Review

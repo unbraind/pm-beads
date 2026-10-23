@@ -4,7 +4,7 @@ import test from 'node:test';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { captureBeadsExtensions, restoreBeadsExtensions, parseBeadsExtensionSidecar, BeadsSidecarRefusal, BEADS_NATIVE_FIELDS, BEADS_SIDECAR_LIMITS } from '../index.ts';
+import { captureBeadsExtensions, restoreBeadsExtensions, parseBeadsExtensionSidecar, BeadsSidecarRefusal, BEADS_NATIVE_FIELDS, BEADS_SIDECAR_LIMITS, type BeadsExtensionValue } from '../index.ts';
 import { harness, runCommand } from './helpers.ts';
 
 /** Serialize one stable record with caller-controlled opaque fields. */
@@ -23,7 +23,7 @@ function refusal(code: string): (error: unknown) => boolean {
 }
 
 test('opaque nested objects, arrays, nulls, booleans and numbers round-trip without flattening', () => {
-  const vendor = { nested: { list: [null, true, 2, { value: 'opaque' }] }, empty: {}, items: [] };
+  const vendor = { nested: { list: [null, true, 2, 0.5, { value: 'opaque' }] }, empty: {}, items: [] };
   const before = snapshot({ vendor, unselected: { message: 'not retained' } });
   const sidecar = captureBeadsExtensions(before, ['vendor', 'vendor']);
   assert.deepEqual(sidecar.fields, ['vendor']);
@@ -64,6 +64,7 @@ test('limits and conservative privacy checks apply before capture and again at r
     assert.throws(() => captureBeadsExtensions(snapshot({ vendor }), ['vendor']), refusal('privacy_limit'));
   }
   const unchecked = snapshot({ vendor: { apiToken: 'secret fixture' } });
+  assert.equal(captureBeadsExtensions(snapshot({ vendor: '-----begin '.repeat(800) }), ['vendor']).loss.preservedFields, 1);
   assert.equal(captureBeadsExtensions(unchecked, []).loss.droppedFields, 1, 'unselected values never enter the envelope');
   let nested: unknown = 0;
   for (let i = 0; i < 18; i++) nested = { nested };
@@ -73,6 +74,7 @@ test('limits and conservative privacy checks apply before capture and again at r
   assert.throws(() => captureBeadsExtensions(' '.repeat(BEADS_SIDECAR_LIMITS.bytes + 1), []), refusal('size_limit'));
   assert.throws(() => captureBeadsExtensions(Array.from({ length: 10001 }, (_, i) => snapshot({ id: `bd-${i}` })).join('\n'), []), refusal('size_limit'));
   assert.throws(() => captureBeadsExtensions('{"id":"bd-one","title":"One","vendor":1e400}', ['vendor']), refusal('invalid_input'));
+  assert.throws(() => captureBeadsExtensions('{"id":"bd-one","title":"One","vendor":9007199254740993}', ['vendor']), refusal('invalid_input'));
 });
 
 test('untrusted sidecars refuse invalid versions, shapes, integrity, privacy and misleading loss counts', () => {
@@ -84,6 +86,13 @@ test('untrusted sidecars refuse invalid versions, shapes, integrity, privacy and
   }
   assert.throws(() => parseBeadsExtensionSidecar(JSON.stringify({ ...good, fields: ['title'] })), refusal('native_conflict'));
   assert.throws(() => restoreBeadsExtensions(snapshot(), { ...good, records: [{ id: 'bd-one', fields: { vendor: { password: 'synthetic' } } }] }), refusal('privacy_limit'));
+  const cyclic: Record<string, BeadsExtensionValue> = {};
+  cyclic.self = cyclic;
+  assert.throws(() => restoreBeadsExtensions(snapshot(), { ...good, records: [{ id: 'bd-one', fields: { vendor: cyclic } }] }), refusal('size_limit'));
+  for (const vendor of [Infinity, NaN, 1e20]) assert.throws(() => restoreBeadsExtensions(snapshot(), { ...good, records: [{ id: 'bd-one', fields: { vendor } }] }), refusal('invalid_input'));
+  let deep: unknown = true;
+  for (let i = 0; i < 100; i++) deep = { nested: deep };
+  assert.throws(() => restoreBeadsExtensions(snapshot({ vendor: deep }), good), refusal('size_limit'));
   const oversized = Array.from({ length: 515 }, (_, i) => snapshot({ id: `bd-${i}`, vendor: 'x'.repeat(16000) })).join('\n');
   const sidecar = captureBeadsExtensions(oversized, ['vendor']);
   const exported = Array.from({ length: 515 }, (_, i) => snapshot({ id: `bd-${i}`, description: 'y'.repeat(500) })).join('\n');
