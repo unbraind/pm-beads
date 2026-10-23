@@ -1,8 +1,8 @@
 /** Opt-in, portable Beads extension sidecars; native import/export remains the mapping authority. */
 import { createHash } from "node:crypto";
-import { open } from "node:fs/promises";
+import { open, realpath } from "node:fs/promises";
 import { constants } from "node:fs";
-import { resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import { writeFileAtomic } from "@unbrained/pm-cli/sdk";
 import type { CommandHandlerContext, ExtensionApi } from "@unbrained/pm-cli/sdk/authoring";
 import { CommandError } from "./contracts.ts";
@@ -59,7 +59,9 @@ function bounded(text: string, limit = BEADS_SIDECAR_LIMITS.bytes): void {
 }
 /** Reject prototype-sensitive keys, obvious credentials and private identity data recursively. */
 function privateKey(key: string): boolean {
-  return /(?:__proto__|^prototype$|^constructor$|password|secret|token|authorization|cookie|credential|private.?key|email)/i.test(key);
+  const normalized = key.toLowerCase().replace(/[_-]/g, "");
+  return /(?:__proto__|^prototype$|^constructor$)/i.test(key) ||
+    /(?:apikey|password|secret|token|authorization|cookie|credential|private.?key|email)/.test(normalized);
 }
 /** Detect obvious private text with linear scans, including repeated incomplete PEM headers. */
 function privateText(value: string): boolean {
@@ -210,6 +212,22 @@ async function input(file: string): Promise<string> {
     return refuse("io_error", "Choose an accessible UTF-8 input file and retry.");
   }
 }
+/** Resolve the output's existing parent and refuse aliases of either input before any write. */
+async function distinctOutput(destination: string, sources: string[]): Promise<string> {
+  try {
+    const output = resolve(await realpath(dirname(destination)), basename(destination));
+    const target = await realpath(output).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== "ENOENT") throw error;
+      return output;
+    });
+    const inputs = await Promise.all(sources.map(source => realpath(source)));
+    if (inputs.includes(output) || inputs.includes(target)) refuse("invalid_input", "Choose an output different from both input files; capture and restore preserve their sources.");
+    return output;
+  } catch (error) {
+    if (error instanceof BeadsSidecarRefusal) throw error;
+    return refuse("io_error", "Choose accessible input files and an output with an accessible existing parent directory.");
+  }
+}
 /** Emit only a compact receipt; sidecar values and JSONL always go to explicitly selected files. */
 async function runSidecar(ctx: CommandHandlerContext) {
   const capture = optionString(ctx.options, "capture");
@@ -218,8 +236,7 @@ async function runSidecar(ctx: CommandHandlerContext) {
   const output = optionString(ctx.options, "output");
   const fields = optionString(ctx.options, "fields");
   if (!file || Boolean(capture) === Boolean(restore) || (capture && (!fields || output)) || (restore && (!output || fields))) refuse("invalid_input", "Use beads sidecar <input> --capture <sidecar> --fields <names>, or --restore <sidecar> --output <jsonl>.");
-  const destination = (capture ?? output)!;
-  if ([file, restore].some(source => source && resolve(source) === resolve(destination))) refuse("invalid_input", "Choose an output different from both input files; capture and restore preserve their sources.");
+  const destination = await distinctOutput((capture ?? output)!, restore ? [file, restore] : [file]);
   const raw = await input(file);
   const sidecar = capture ? captureBeadsExtensions(raw, fields!.split(",").map(field => field.trim())) : parseBeadsExtensionSidecar(await input(restore!));
   const restored = capture ? undefined : restoreBeadsExtensions(raw, sidecar);

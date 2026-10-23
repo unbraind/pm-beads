@@ -1,7 +1,7 @@
 /** Behavioral sidecar checks use real JSON snapshots and the real extension host. */
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { captureBeadsExtensions, restoreBeadsExtensions, parseBeadsExtensionSidecar, BeadsSidecarRefusal, BEADS_NATIVE_FIELDS, BEADS_SIDECAR_LIMITS, type BeadsExtensionValue } from '../index.ts';
@@ -75,6 +75,71 @@ test('limits and conservative privacy checks apply before capture and again at r
   assert.throws(() => captureBeadsExtensions(Array.from({ length: 10001 }, (_, i) => snapshot({ id: `bd-${i}` })).join('\n'), []), refusal('size_limit'));
   assert.throws(() => captureBeadsExtensions('{"id":"bd-one","title":"One","vendor":1e400}', ['vendor']), refusal('invalid_input'));
   assert.throws(() => captureBeadsExtensions('{"id":"bd-one","title":"One","vendor":9007199254740993}', ['vendor']), refusal('invalid_input'));
+});
+
+test('credential key normalization refuses selectors and nested capture, parse and restore values', () => {
+  const keys = ['api_key', 'apiKey', 'API-KEY', 'accessToken', 'ACCESS_TOKEN', 'client_secret', 'CLIENT-SECRET',
+    'password', 'pass_word', 'private_key', 'PRIVATE-KEY', 'refresh-token', 'auth-orization', 'sessionCookie', 'creden_tial', 'e_mail'];
+  const good = captureBeadsExtensions(snapshot({ vendor: { retained: true } }), ['vendor']);
+  for (const key of keys) {
+    assert.throws(() => captureBeadsExtensions(snapshot({ [key]: 'synthetic' }), [key]), refusal('privacy_limit'), key);
+    let vendor: BeadsExtensionValue = { [key]: 'synthetic' };
+    for (let depth = 0; depth < 16; depth++) {
+      assert.throws(() => captureBeadsExtensions(snapshot({ vendor }), ['vendor']), refusal('privacy_limit'), `${key} at depth ${depth}`);
+      vendor = { nested: vendor };
+    }
+    vendor = { nested: [{ [key]: 'synthetic' }] };
+    const unsafe = { ...good, records: [{ id: 'bd-one', fields: { vendor } }] };
+    assert.throws(() => parseBeadsExtensionSidecar(JSON.stringify(unsafe)), refusal('privacy_limit'), key);
+    assert.throws(() => restoreBeadsExtensions(snapshot(), unsafe), refusal('privacy_limit'), key);
+    assert.throws(() => restoreBeadsExtensions(snapshot({ vendor }), good), refusal('privacy_limit'), key);
+  }
+  const vendor = { public_key: 'synthetic public metadata', api_version: 1, layout: [{ enabled: true }] };
+  assert.deepEqual(JSON.parse(restoreBeadsExtensions(snapshot(), captureBeadsExtensions(snapshot({ vendor }), ['vendor'])).text).vendor, vendor);
+});
+
+test('capture and restore refuse real-path input aliases before writing and preserve both sources', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'beads-sidecar-alias-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const ext = await harness();
+  const file = join(dir, 'incoming.jsonl'), sidecar = join(dir, 'extensions.json'), alias = join(dir, 'alias');
+  const raw = snapshot({ vendor: { retained: true } });
+  const envelope = JSON.stringify(captureBeadsExtensions(raw, ['vendor']));
+  await writeFile(file, raw);
+  await writeFile(sidecar, envelope);
+  await symlink('.', alias, 'dir');
+  const linkedInput = join(dir, 'linked-input'), linkedSidecar = join(dir, 'linked-sidecar');
+  await symlink(file, linkedInput);
+  await symlink(sidecar, linkedSidecar);
+  for (const source of [file, join(alias, 'incoming.jsonl'), linkedInput]) {
+    for (const destination of [file, join(alias, 'incoming.jsonl'), linkedInput]) {
+      await assert.rejects(runCommand(ext, { command: 'beads sidecar', args: [source], options: { capture: destination, fields: 'vendor' } }), refusal('invalid_input'));
+      await assert.rejects(runCommand(ext, { command: 'beads sidecar', args: [source], options: { restore: sidecar, output: destination } }), refusal('invalid_input'));
+      assert.equal(await readFile(file, 'utf8'), raw);
+      assert.equal(await readFile(sidecar, 'utf8'), envelope);
+    }
+    for (const destination of [sidecar, join(alias, 'extensions.json'), linkedSidecar]) {
+      await assert.rejects(runCommand(ext, { command: 'beads sidecar', args: [source], options: { restore: join(alias, 'extensions.json'), output: destination } }), refusal('invalid_input'));
+      assert.equal(await readFile(file, 'utf8'), raw);
+      assert.equal(await readFile(sidecar, 'utf8'), envelope);
+    }
+  }
+  // Collision detection precedes even parsing invalid input.
+  await writeFile(file, 'invalid snapshot');
+  await assert.rejects(runCommand(ext, { command: 'beads sidecar', args: [file], options: { capture: join(alias, 'incoming.jsonl'), fields: 'vendor' } }), refusal('invalid_input'));
+  assert.equal(await readFile(file, 'utf8'), 'invalid snapshot');
+  await writeFile(file, raw);
+  const loop = join(dir, 'loop');
+  await symlink('loop', loop);
+  for (const destination of [loop, join(dir, 'missing', 'output.json')]) {
+    await assert.rejects(runCommand(ext, { command: 'beads sidecar', args: [file], options: { capture: destination, fields: 'vendor' } }), refusal('io_error'));
+  }
+  await mkdir(join(dir, 'outputs'));
+  await symlink('outputs', join(dir, 'output-alias'), 'dir');
+  await runCommand(ext, { command: 'beads sidecar', args: [linkedInput], options: { capture: join(dir, 'output-alias', 'new.json'), fields: 'vendor' } });
+  assert.deepEqual(parseBeadsExtensionSidecar(await readFile(join(dir, 'outputs', 'new.json'), 'utf8')).records[0].fields.vendor, { retained: true });
+  assert.equal(await readFile(file, 'utf8'), raw);
+  assert.equal(await readFile(sidecar, 'utf8'), envelope);
 });
 
 test('untrusted sidecars refuse invalid versions, shapes, integrity, privacy and misleading loss counts', () => {

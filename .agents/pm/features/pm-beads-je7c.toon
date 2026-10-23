@@ -4,12 +4,12 @@ description: "Acceptance: unknown nested fields survive import/export; conflicti
 type: Feature
 status: in_progress
 priority: 2
-tags: []
+tags[1]: "gh:unbraind/pm-beads#163"
 created_at: "2026-10-23T19:31:11.967Z"
-updated_at: "2026-10-23T19:50:57.504Z"
+updated_at: "2026-10-23T20:09:23.230Z"
 author: codex-agent
 acceptance_criteria: Unknown nested fields survive import/export; Conflicting native mappings refuse; Size and privacy limits apply before mutation
-comments[7]{created_at,author,text}:
+comments[13]{created_at,author,text}:
   "2026-10-23T19:31:43.910Z",codex-agent,"Overlap check against the current CLI and sibling packages: core extension custom fields provide schema-owned values; beads diff compares mapped fields, and snapshot reconciliation manages mapped fields and acknowledged bases. pm-csv owns tabular column mapping. None preserves explicitly selected opaque Beads extension objects. Design: portable schema-1 sidecar capture before ordinary import, restore after ordinary export, keyed by exact external ids. Reuse native import/export and SDK atomic file writing and host rendering; never duplicate tracker mutation, settings, locking or mappings. Reject native field selection and overlay collisions. Report every unselected extension occurrence as loss; enforce bounded JSON and privacy policy before any output write. Sidecars stay separate from tracker items and must travel with the JSONL snapshot."
   "2026-10-23T19:41:00.552Z",codex-agent,"Behavioral revert proof: disabling the restore overlay alone makes the nested-object round-trip regression fail (exit 1); disabling the native-selector guard alone makes the native-name refusal regression fail (exit 1). Restored both implementations afterward. Real compiled CLI native import/export preserved both synthetic nested extension fixtures and one dependency with no git executable available. Public-data validation archived origin/main d9b4152 into a non-git scratch tracker made read-only; all 97 public items read completely, 97 native exports, 97 synthetic nested extension fields restored, 97 deliberately unselected fields reported dropped. Source and copied tracker unchanged. Native JSONL 62639 bytes; sidecar 12087 bytes; restored JSONL 71166 bytes; compact JSON receipt 260 bytes. Native conflict, differing overlay, privacy and size refusals verified. These extension values are synthetic fixtures layered on public records, not claimed as naturally occurring source extensions."
   "2026-10-23T19:42:27.606Z",codex-agent,"All three linked checks pass via pm test --run --progress: targeted compiled-host/SDK/flag/docstring suite 15/15 (zero skipped); typecheck plus docstring lint pass; read-only public tracker validation passes. Targeted sidecar coverage is 100% lines, branches and functions. No separate lint script is defined; the repository docstring gate is the local lint check. Full npm and Bun release checks are delegated to the unchanged CI matrix as requested because host CPU is saturated. The installed host is current 2026.10.23; tracker writes use the package-pinned SDK/CLI 2026.10.20 without changing its pin."
@@ -17,16 +17,63 @@ comments[7]{created_at,author,text}:
   "2026-10-23T19:46:28.320Z",codex-agent,"The initial CodeQL review identified polynomial backtracking in incomplete PEM-header screening. Replaced the header regex with linear substring checks and retained the other bounded checks; added a repeated-incomplete-header fixture. SDK restore now validates typed envelopes before JSON serialization, so Infinity/NaN/unsafe integers cannot be silently coerced. Regression suite and exact-head CI are rerun after these final changes."
   "2026-10-23T19:47:23.849Z",codex-agent,"After final numeric validation and linear privacy screening, linked checks pass again: 15 targeted tests, typecheck, docstring lint, and read-only public-data validation. Sidecar source coverage remains 100% lines/branches/functions. The initial CI revision passed both npm matrix release gates; the final pushed revision must pass npm and Bun plus CodeQL before handoff. Sidecar scope is explicitly opted-in unknown top-level fields with recursively retained JSON values; nested extras inside native mapped fields remain outside this contract."
   "2026-10-23T19:50:57.503Z",codex-agent,"Verified CI on implementation commit 0bd9ab1: https://github.com/unbraind/pm-beads/actions/runs/40014208688 passed all four full release gates (npm and Bun on Node 22 and 26), each 405/405 tests with zero failures/skips and 100% measured lines/branches/functions across 10 source files. Clean CI tracker health and Bun install passed. CodeQL run https://github.com/unbraind/pm-beads/actions/runs/40014208689 passed; the initial polynomial-regex alert is fixed. PR https://github.com/unbraind/pm-beads/pull/163 is ready for review, not draft. The claim remains released and the item remains in progress for orchestrator verification. No merge or release performed. This final evidence-only tracker change will be checked again on its pushed head."
+  "2026-10-23T20:00:40.378Z",codex-agent,"Review round: remote branch is current and contains main. GraphQL returned one resolved CodeQL thread, zero unresolved threads, complete thread/comment pagination, and no CodeRabbit review body or outside-diff findings. Both independent blocking findings are valid: lexical output comparison permits directory aliases, and credential key screening misses API-key spellings. Plan: canonical output/input identities before writing; normalized recursive credential screening; regressions with individual behavioral revert proofs; complete npm and Bun release gates at unchanged thresholds. No thread replies or resolutions."
+  "2026-10-23T20:01:27.861Z",codex-agent,"SDK helper review: pinned sdk/mutation-guard exposes scanMutationSecrets for credential-shaped string leaves only; history-redact applies caller-supplied value matchers. Neither classifies credential key names. Keep the bounded recursive sidecar screen and normalize names by lowercasing and removing underscores/hyphens, retaining prototype-key checks. Output preflight resolves the existing parent plus basename and any existing destination symlink, compares against real input paths, and writes through the canonical parent. Cover both capture and restore inputs plus refusal preservation and non-git compiled CLI behavior."
+  "2026-10-23T20:03:18.869Z",codex-agent,"Behavioral revert proofs: restoring only runSidecar from the pre-fix head, then running node --test --test-name-pattern=\"capture and restore refuse real-path\" test/sidecar.test.ts fails 0/1, exit 1, Missing expected rejection at the directory-alias capture case. Restoring only privateKey then running node --test --test-name-pattern=\"credential key normalization\" test/sidecar.test.ts fails 0/1, exit 1, Missing expected exception: api_key. Each function restored afterward; combined two-regression run passes 2/2. Full sidecar SDK/compiled non-git CLI suite passes 8/8. Targeted sidecar coverage: 100% lines, branches and functions. Self-review applied both defect classes across selectors, recursive capture, sidecar parse, SDK restore, existing overlay validation, capture destinations and both restore inputs. Regression fixtures include file symlinks, directory symlinks, missing output parents and symlink loops; source bytes remain unchanged on refusals."
+  "2026-10-23T20:05:51.579Z",codex-agent,"All four initial linked checks passed: 17/17 targeted tests, typecheck/docstrings, read-only 97-record public validation and 2/2 new regressions. First isolated npm gate passed 407/407 tests, zero skips, but coverage failed at reconcile.ts:473 because the agent-exported PM_AUTHOR prevents the existing default-author branch from executing. Sidecar coverage is 100% in that run. Rerun release gates with PM_AUTHOR absent in the test environment, matching CI; keep codex-agent for tracker writes and keep every coverage threshold unchanged. No timeout occurred."
+  "2026-10-23T20:07:46.270Z",codex-agent,"The isolated full npm release gate now passes with PM_AUTHOR absent from the test environment: 407/407 tests, zero failures/cancellations/skips, 100% measured lines/branches/functions across all 10 configured source files at unchanged thresholds. Fresh HOME and disabled global/system Git config reproduced CI identity. Typecheck, workflow contract, build, docstrings, production audit (zero vulnerabilities), pack dry-run, changelog check, publish attestation and changelog-date checks all passed. Full Bun gate is running next. The source dist build is refreshed but dist is ignored and not tracked by this repository."
+  "2026-10-23T20:09:22.539Z",codex-agent,"Final review-round acceptance: full npm and Bun release gates both pass locally, each 407/407 tests with zero failures/cancellations/skips and 100% measured lines/branches/functions across all 10 configured source files. Exact linked gate commands: env -u PM_AUTHOR npm run release:check; env -u PM_AUTHOR bun run release:check. Both ran with fresh HOME and disabled global/system Git config. Initial npm coverage-only miss from inherited PM_AUTHOR passed after matching CI environment; no timeouts occurred and thresholds were unchanged. Typecheck, docstrings, production audit (zero vulnerabilities), build/packing, workflow/attestation/date contracts and changelog checks pass. Four earlier linked checks passed through pm test --run --progress (17 targeted tests, typecheck/docstrings, read-only 97-record measurement, two regression cases). Both individual revert proofs are recorded above. Whole-diff review and added-line privacy/append-only-history checks pass. No new pm CLI/SDK bug discovered; inherited installer-fence follow-up and local global-extension version skew remain outside scope. Claim released for orchestrator verification; item stays in progress. No thread reply/resolution, merge or release."
 files[5]{path,scope}:
   index.ts,project
   sidecar.ts,project
   test/public-sidecar-validation.ts,project
   test/sidecar-cli.test.ts,project
   test/sidecar.test.ts,project
-tests[3]{command,scope,provenance{author,created_at,source_kind,source_ref}}:
-  "npm run build && npm run build:test && node --test test/sidecar.test.ts test/sidecar-cli.test.ts test/flag-declarations.test.ts test/docstring-gate.test.ts",project,codex-agent,"2026-10-23T19:40:56.218Z",local_mutation,feat/unknown-field-sidecars
-  npm run typecheck && npm run docstring,project,codex-agent,"2026-10-23T19:40:57.755Z",local_mutation,feat/unknown-field-sidecars
-  node test/public-sidecar-validation.ts,project,codex-agent,"2026-10-23T19:40:59.054Z",local_mutation,feat/unknown-field-sidecars
+tests[6]:
+  - command: "npm run build && npm run build:test && node --test test/sidecar.test.ts test/sidecar-cli.test.ts test/flag-declarations.test.ts test/docstring-gate.test.ts"
+    scope: project
+    provenance:
+      author: codex-agent
+      created_at: "2026-10-23T19:40:56.218Z"
+      source_kind: local_mutation
+      source_ref: feat/unknown-field-sidecars
+  - command: npm run typecheck && npm run docstring
+    scope: project
+    provenance:
+      author: codex-agent
+      created_at: "2026-10-23T19:40:57.755Z"
+      source_kind: local_mutation
+      source_ref: feat/unknown-field-sidecars
+  - command: node test/public-sidecar-validation.ts
+    scope: project
+    provenance:
+      author: codex-agent
+      created_at: "2026-10-23T19:40:59.054Z"
+      source_kind: local_mutation
+      source_ref: feat/unknown-field-sidecars
+  - command: node --test --test-name-pattern='credential key normalization|capture and restore refuse real-path' test/sidecar.test.ts
+    scope: project
+    provenance:
+      author: codex-agent
+      created_at: "2026-10-23T20:03:03.738Z"
+      source_kind: local_mutation
+      source_ref: feat/unknown-field-sidecars
+  - command: "env -u PM_AUTHOR npm run release:check"
+    scope: project
+    timeout_seconds: 2400
+    provenance:
+      author: codex-agent
+      created_at: "2026-10-23T20:06:23.827Z"
+      source_kind: local_mutation
+      source_ref: feat/unknown-field-sidecars
+  - command: "env -u PM_AUTHOR bun run release:check"
+    scope: project
+    timeout_seconds: 2400
+    provenance:
+      author: codex-agent
+      created_at: "2026-10-23T20:06:25.460Z"
+      source_kind: local_mutation
+      source_ref: feat/unknown-field-sidecars
 docs[2]{path,scope}:
   examples/unknown-field-sidecars.md,project
   README.md,project

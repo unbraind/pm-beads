@@ -46,10 +46,23 @@ test('capture → native import/export → restore preserves unknown nested fiel
   assert.equal(rows.find(row => row.id === 'bd-beta')?.dependencies?.length, 1);
   const before = (await client.listAllComplete()).items;
   const saved = await readFile(sidecar, 'utf8');
+  const savedInput = await readFile(file, 'utf8');
+  await symlink('.', join(dir, 'alias'), 'dir');
+  for (const args of [
+    ['--capture', join(dir, 'alias', 'incoming.jsonl'), '--fields', 'vendor'],
+    ['--restore', sidecar, '--output', join(dir, 'alias', 'incoming.jsonl')],
+    ['--restore', sidecar, '--output', join(dir, 'alias', 'extensions.json')],
+  ]) {
+    const collision = invoke('--json', 'beads', 'sidecar', file, ...args);
+    assert.equal(collision.status, 2, collision.stdout + collision.stderr);
+    assert.match(collision.stdout + collision.stderr, /invalid_input/);
+    assert.equal(await readFile(file, 'utf8'), savedInput);
+    assert.equal(await readFile(sidecar, 'utf8'), saved);
+  }
   const native = invoke('--json', 'beads', 'sidecar', file, '--capture', sidecar, '--fields', 'description');
   assert.equal(native.status, 2, native.stdout + native.stderr);
   assert.match(native.stdout + native.stderr, /native_conflict/);
-  await writeFile(file, JSON.stringify({ id: 'bd-alpha', title: 'Unsafe', vendor: { apiToken: 'synthetic' } }));
+  await writeFile(file, JSON.stringify({ id: 'bd-alpha', title: 'Unsafe', vendor: { nested: [{ API_KEY: 'synthetic' }] } }));
   const privacy = invoke('--json', 'beads', 'sidecar', file, '--capture', sidecar, '--fields', 'vendor');
   assert.equal(privacy.status, 2, privacy.stdout + privacy.stderr);
   assert.match(privacy.stdout + privacy.stderr, /privacy_limit/);

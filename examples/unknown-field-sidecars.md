@@ -66,8 +66,10 @@ per nested object/array, and 16 nesting levels. Numbers must be finite and integ
 values must be safe JavaScript integers; represent larger integers as strings
 in the source tool to prevent precision loss.
 Sensitive key names, obvious credentials, email addresses, private home paths,
-and prototype-related keys refuse recursively before any output write. These
-conservative checks are a baseline, not a general personal-data detector. Review
+and prototype-related keys refuse recursively before any output write. The
+key checks ignore case, underscores and hyphens, including `api_key`, `apiKey`,
+`API-KEY`, `accessToken`, `client_secret`, `password` and `private_key`.
+These conservative checks are a baseline, not a general personal-data detector. Review
 opted-in fields before capture. Sidecars contain the original opted-in values
 and external ids: apply the same access controls and retention policy as the
 source snapshot. Receipts contain counts and remedies, never extension values.
@@ -78,3 +80,6 @@ Expected SDK/CLI refusal codes are `invalid_input`, `invalid_sidecar`,
 CLI refusals exit 2. CLI capture and restore validate the entire operation before
 atomically replacing the selected output. Use distinct input and output files;
 existing outputs are replaced on success and remain intact on validation failure.
+Input/output comparisons resolve directory aliases and existing file symlinks;
+an output alias of either input refuses before writing. New outputs require an
+existing accessible parent directory.
