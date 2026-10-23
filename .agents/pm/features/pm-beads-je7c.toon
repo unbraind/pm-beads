@@ -6,10 +6,10 @@ status: in_progress
 priority: 2
 tags[1]: "gh:unbraind/pm-beads#163"
 created_at: "2026-10-23T19:31:11.967Z"
-updated_at: "2026-10-23T21:18:19.405Z"
+updated_at: "2026-10-23T21:50:46.119Z"
 author: codex-agent
 acceptance_criteria: Unknown nested fields survive import/export; Conflicting native mappings refuse; Size and privacy limits apply before mutation
-comments[27]{created_at,author,text}:
+comments[31]{created_at,author,text}:
   "2026-10-23T19:31:43.910Z",codex-agent,"Overlap check against the current CLI and sibling packages: core extension custom fields provide schema-owned values; beads diff compares mapped fields, and snapshot reconciliation manages mapped fields and acknowledged bases. pm-csv owns tabular column mapping. None preserves explicitly selected opaque Beads extension objects. Design: portable schema-1 sidecar capture before ordinary import, restore after ordinary export, keyed by exact external ids. Reuse native import/export and SDK atomic file writing and host rendering; never duplicate tracker mutation, settings, locking or mappings. Reject native field selection and overlay collisions. Report every unselected extension occurrence as loss; enforce bounded JSON and privacy policy before any output write. Sidecars stay separate from tracker items and must travel with the JSONL snapshot."
   "2026-10-23T19:41:00.552Z",codex-agent,"Behavioral revert proof: disabling the restore overlay alone makes the nested-object round-trip regression fail (exit 1); disabling the native-selector guard alone makes the native-name refusal regression fail (exit 1). Restored both implementations afterward. Real compiled CLI native import/export preserved both synthetic nested extension fixtures and one dependency with no git executable available. Public-data validation archived origin/main d9b4152 into a non-git scratch tracker made read-only; all 97 public items read completely, 97 native exports, 97 synthetic nested extension fields restored, 97 deliberately unselected fields reported dropped. Source and copied tracker unchanged. Native JSONL 62639 bytes; sidecar 12087 bytes; restored JSONL 71166 bytes; compact JSON receipt 260 bytes. Native conflict, differing overlay, privacy and size refusals verified. These extension values are synthetic fixtures layered on public records, not claimed as naturally occurring source extensions."
   "2026-10-23T19:42:27.606Z",codex-agent,"All three linked checks pass via pm test --run --progress: targeted compiled-host/SDK/flag/docstring suite 15/15 (zero skipped); typecheck plus docstring lint pass; read-only public tracker validation passes. Targeted sidecar coverage is 100% lines, branches and functions. No separate lint script is defined; the repository docstring gate is the local lint check. Full npm and Bun release checks are delegated to the unchanged CI matrix as requested because host CPU is saturated. The installed host is current 2026.10.23; tracker writes use the package-pinned SDK/CLI 2026.10.20 without changing its pin."
@@ -37,14 +37,26 @@ comments[27]{created_at,author,text}:
   "2026-10-23T21:09:48.018Z",codex-agent,"Extended SDK audit reproduced two additional serialization-before-refusal failures after the 419-test gates passed. SDK array subclasses can invoke an inherited toJSON serializer, and arrays with a null prototype can break selectors/record iteration or canonical map. Preflight now requires the ordinary array prototype. Revert only that preflight condition, then node --test --test-name-pattern=\"SDK arrays require\" test/sidecar-adversarial.test.ts => exit 1, 0/1 passed, actual RangeError from inherited serializer. Added a lower-bound aggregate UTF-8 string/key byte budget before serialization: 128 references to a shared 4 MiB string fit the node/width limits but previously expand beyond V8 maximum string size. Revert only the raw-byte budget checks, then node --test --test-name-pattern=\"SDK raw-byte preflight\" test/sidecar-adversarial.test.ts => exit 1, 0/1 passed, actual RangeError: Invalid string length. Both guards restored in finally. Huge SDK keys are bounded too. Restored suite passes 10/10; total individual behavioral revert experiments now 12, each exit 1. Full gates rerun for the final SDK changes."
   "2026-10-23T21:18:15.530Z",codex-agent,"Final acceptance on unchanged final source: npm run release:check AND bun run release:check each pass 421/421 tests, zero failures/cancellations/skips and 100% measured lines/branches/functions across all 10 configured source files, unchanged thresholds. Fresh HOME, disabled global/system Git config, PM_AUTHOR unset; Node 24.19.0, Bun 1.3.5. No timeout or timeout retry. Typecheck/build, docstrings (85 declarations), workflow, production audit (zero vulnerabilities), pack dry-run, changelog, attestation/date checks all pass. Built dist is ignored and untracked. Linked restored adversarial suite passes 10/10; linked public read-only non-git validation passes 97/97 synthetic nested extension round trips with source/copy unchanged. All final source/test/documentation hashes verified unchanged across both gates and restored after proof experiments. Strict PM health remains separate: pre-existing merge_fence_drift:2 tracked by pm-beads-v9r1; history_drift passes. No new upstream PM defect filed."
   "2026-10-23T21:18:17.084Z",codex-agent,"Refreshed ALL behavioral revert proofs against the FINAL source: 12/12 scenarios exit 1 with AssertionError, totaling 14 failing tests, no import/syntax failures. Depth capture now has overlapping early/output guards, so its current proof reverts only parseRecords AND serializeRecords together: node --test --test-name-pattern=\"iterative depth preflight\" test/sidecar-adversarial.test.ts => 0/2 passed. This supersedes the earlier parseRecords-only depth proof from before the assembled-output guard. validateSidecar-only with the same pattern => 0/2 passed. Remaining final scenarios each 0/1: preflight disabled with patterns \"iterative node\" and \"Unicode, prototype\"; duplicate-key guard disabled with \"duplicate JSON keys\"; input-only or distinctOutput-only with \"filesystem matrix\"; negative-zero guard or parseRecords-only with \"negative zero and BOM-only\"; serializeRecords-only with \"restore bounds combined\"; array-prototype guard with \"SDK arrays require\"; raw-byte guards with \"SDK raw-byte preflight\". Every command is node --test --test-name-pattern=\"<pattern>\" test/sidecar-adversarial.test.ts. Implementations restored in finally; final hashes match both successful release gates. Restored linked suite then passes 10/10. Full thread/comment pagination refreshed: zero unresolved threads; resolved CodeQL thread unchanged; no CodeRabbit review body or outside-diff findings available. No thread replies/resolutions, merge or release. Item remains in progress for orchestrator verification."
-files[6]{path,scope}:
-  index.ts,project
-  sidecar.ts,project
-  test/public-sidecar-validation.ts,project
-  test/sidecar-adversarial.test.ts,project
-  test/sidecar-cli.test.ts,project
-  test/sidecar.test.ts,project
-tests[8]:
+  "2026-10-23T21:24:28.664Z",codex-agent,"Review round d: remote head and main verified current. Complete GitHub thread/comment pagination found unresolved PRRT_kwDOSZpl5M6vxu45 (duplicate-key scanner polynomial regex); no CodeRabbit review body exists. Will unify iterative JSON structural/privacy checks, cover nested keys and values at capture/restore, replace regex tokenization, prove regressions by behavioral revert, and rerun unchanged npm/Bun release gates."
+  "2026-10-23T21:27:38.232Z",codex-agent,"Behavioral revert proof: restored only preflight to its parent implementation while retaining the shared safeValue delegate and all new tests. node --test --test-name-pattern='unified privacy' test/sidecar-adversarial.test.ts exited 1: 9/9 tests failed with missing privacy refusals, including all four required fixtures separately at capture and hand-crafted valid-digest restore. Restored implementation afterward. Tests import source directly, so no dist rebuild was needed for this experiment. Focused build plus sidecar/adversarial suite passed 31/31. Original parseJson stress test passed (200000 escaped quote/backslash pairs, 455 ms test body); polynomial exploit not reproduced because JSON.parse first validates strings and regex alternatives consume disjoint characters. Removed the reported regex anyway in favor of a monotonic character scanner; duplicate-key and punctuation behavior retained. No thread replies or resolutions."
+  "2026-10-23T21:40:50.684Z",codex-agent,"Whole-diff hostile review completed: nested email keys, nested array emails, normalized credential keys and third-level private values; native/unselected/malformed-envelope bypasses; duplicate and escaped-alias keys; quote/backslash/punctuation runs; 20000-deep arrays/objects; wide/aggregate node floods; shared-string/key byte expansion; combined output node/byte overflow; negative zero, unsafe/nonfinite numbers, BOMs, invalid UTF-8 and lone surrogates; cycles, accessors, hidden/symbol properties, sparse/custom arrays and inherited serializers; native selectors, mismatched ids, bad versions/loss counts/digests, differing overlays; input/output aliases, symlinks, FIFOs, directories and concurrent capture. Regression suites retain earlier blockers and pass. Full npm run release:check passed 431/431, zero failures/cancellations/skips, 100% measured lines/branches/functions across all ten configured source files at unchanged thresholds. Typecheck/build, workflow, docstrings (85 declarations), production audit, package dry-run, changelog, attestation and date gates passed. Source/test/docs hashes unchanged. No timeout/retry. Bun gate running with fresh HOME, disabled global/system Git configuration and PM_AUTHOR unset. Linked adversarial suite passed 20/20 via pm test --run --only-last --progress; focused sidecar suites passed 31/31. Read-only public non-git validation passed 97/97 synthetic nested round trips, with source and copied tracker unchanged and git absent from PATH. dist rebuilt but ignored/untracked. npm prepare regenerated the known extension merge-fence drift; restored that generated change, existing follow-up pm-beads-v9r1 retained. No new PM CLI/SDK defect found."
+  "2026-10-23T21:50:42.890Z",codex-agent,"Final round d acceptance: npm run release:check AND bun run release:check both completed successfully on the same unchanged source/test/docs hashes. Each passed 431/431 tests, zero failures/cancellations/skips, 100% measured lines/branches/functions over all ten configured source files, unchanged thresholds. Both production audits found zero vulnerabilities; typecheck/build, workflow, 85 docstrings, package dry-run, changelog, attestation and version-derived date checks passed. Node 24.19.0 and Bun 1.3.5; fresh HOME and disabled global/system Git configuration, PM_AUTHOR unset for both gates. No timeout or retry occurred. Revert proof remains 9/9 missing-refusal assertion failures when only the shared traversal is reverted; restored linked adversarial suite is 20/20, focused sidecar suites 31/31, public read-only non-git validation 97/97. Existing history bytes preserved, additions append-only. All review threads/comments/reviews paginated again: one unresolved CodeQL scanner thread addressed by monotonic scanning, no CodeRabbit review body/outside-diff findings. No replies, resolutions, merge or release. Privacy remains conservative and digest is not sender authentication; fresh pushed-head CI and independent review remain separate. Release claim for orchestrator verification; keep item in progress."
+files[6]:
+  - path: index.ts
+    scope: project
+  - path: sidecar.ts
+    scope: project
+    note: Shared iterative structural and privacy traversal plus bounded JSON scanner
+  - path: test/public-sidecar-validation.ts
+    scope: project
+  - path: test/sidecar-adversarial.test.ts
+    scope: project
+    note: Round d nested privacy and scanner regressions
+  - path: test/sidecar-cli.test.ts
+    scope: project
+  - path: test/sidecar.test.ts
+    scope: project
+tests[9]:
   - command: "npm run build && npm run build:test && node --test test/sidecar.test.ts test/sidecar-cli.test.ts test/flag-declarations.test.ts test/docstring-gate.test.ts"
     scope: project
     provenance:
@@ -103,7 +115,18 @@ tests[8]:
       created_at: "2026-10-23T20:35:24.090Z"
       source_kind: local_mutation
       source_ref: feat/unknown-field-sidecars
-docs[2]{path,scope}:
-  examples/unknown-field-sidecars.md,project
-  README.md,project
+  - command: npm run build && node --test test/sidecar-adversarial.test.ts
+    scope: project
+    provenance:
+      author: codex-agent
+      created_at: "2026-10-23T21:27:21.193Z"
+      source_kind: local_mutation
+      source_ref: feat/unknown-field-sidecars
+    note: Round d unified privacy and hostile input regressions
+docs[2]:
+  - path: examples/unknown-field-sidecars.md
+    scope: project
+    note: Every key and value privacy contract
+  - path: README.md
+    scope: project
 body: ""

@@ -70,8 +70,8 @@ function privateText(value: string): boolean {
     /(?:Bearer\s+\S+|gh[pousr]_[A-Za-z0-9]+|[/](?:home|Users)[/])/i.test(value) ||
     value.split("@").slice(1).some(part => /^[\w.-]+\.[a-z]{2,}/i.test(part));
 }
-/** Bound every tree iteratively before serialization or recursive native validation can touch it. */
-function preflight(value: unknown, maxDepth: number): void {
+/** Enforce structural, byte and privacy limits together on every key and value before recursive consumers. */
+function preflight(value: unknown, maxDepth: number, maxEntries: number = BEADS_SIDECAR_LIMITS.nodes): void {
   const stack = [{ value, depth: 0 }];
   let nodes = 0;
   let rawBytes = 0;
@@ -82,17 +82,20 @@ function preflight(value: unknown, maxDepth: number): void {
     const item = current.value;
     if (typeof item === "string") rawBytes += Buffer.byteLength(item);
     if (rawBytes > BEADS_SIDECAR_LIMITS.bytes) refuse("size_limit", "Reduce JSON text bytes before capture or restore.");
+    if (typeof item === "string" && privateText(item)) refuse("privacy_limit", "Remove credentials, private identity data and local home paths before capture or restore.");
     if (typeof item === "string" && /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(item)) refuse("invalid_input", "Use well-formed Unicode strings and keys.");
     if (typeof item === "number" && (!Number.isFinite(item) || Object.is(item, -0) || (Number.isInteger(item) && !Number.isSafeInteger(item)))) refuse("invalid_input", "Use finite numbers and safe integers; encode negative zero or larger integers as strings.");
     if (item === null || typeof item === "string" || typeof item === "number" || typeof item === "boolean") continue;
     if (typeof item !== "object" || (Array.isArray(item) ? Object.getPrototypeOf(item) !== Array.prototype : Object.getPrototypeOf(item) !== Object.prototype && Object.getPrototypeOf(item) !== null)) refuse("invalid_input", "Use only plain JSON objects, arrays and scalar values.");
     const keys = Object.keys(item);
+    if (keys.length > maxEntries) refuse("size_limit", "Reduce each extension object or array to at most 128 entries.");
     if (keys.length > BEADS_SIDECAR_LIMITS.nodes - nodes - stack.length) refuse("size_limit", "Reduce JSON object keys or total node count.");
     if (Reflect.ownKeys(item).length !== keys.length + (Array.isArray(item) ? 1 : 0) || (Array.isArray(item) && (keys.length !== item.length || keys.some((key, index) => key !== String(index))))) refuse("invalid_input", "Use enumerable JSON data properties and dense arrays without custom or symbol properties.");
     for (const key of keys) {
       if (/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(key)) refuse("invalid_input", "Use well-formed Unicode strings and keys.");
       rawBytes += Buffer.byteLength(key);
       if (rawBytes > BEADS_SIDECAR_LIMITS.bytes) refuse("size_limit", "Reduce JSON key bytes before capture or restore.");
+      if (privateKey(key) || privateText(key)) refuse("privacy_limit", "Remove sensitive, private or prototype-related JSON keys before capture or restore.");
       const property = Object.getOwnPropertyDescriptor(item, key)!;
       if (!("value" in property)) refuse("invalid_input", "Use JSON data properties without accessors.");
       stack.push({ value: property.value, depth: current.depth + 1 });
@@ -105,37 +108,32 @@ function parseJson(text: string, code: BeadsSidecarRefusalCode): unknown {
   try { parsed = JSON.parse(text); }
   catch { return refuse(code, "Use complete, valid JSON without a byte-order mark."); }
   const stack: Array<Set<string> | null> = [];
-  const tokens = /"(?:\\[\s\S]|[^"\\])*"|[{}\[\]:]/g;
   let key = "";
-  for (const token of text.matchAll(tokens)) {
-    const part = token[0];
-    if (part === "{") stack.push(new Set());
+  // JSON.parse has validated syntax. Consume each string once, skipping escaped
+  // code units explicitly; no regex engine can retry at escaped quote positions.
+  for (let offset = 0; offset < text.length; offset++) {
+    const part = text[offset];
+    if (part === '"') {
+      const start = offset++;
+      while (text[offset] !== '"') {
+        if (text[offset] === "\\") offset++;
+        offset++;
+      }
+      key = JSON.parse(text.slice(start, offset + 1)) as string;
+    } else if (part === "{") stack.push(new Set());
     else if (part === "[") stack.push(null);
     else if (part === "}" || part === "]") stack.pop();
     else if (part === ":") {
       const keys = stack[stack.length - 1]!;
       if (keys.has(key)) refuse(code, "Remove duplicate JSON keys before capture or restore.");
       keys.add(key);
-    } else key = JSON.parse(part) as string;
+    }
   }
   return parsed;
 }
-/** Check selected extension privacy and width with an explicit stack. */
+/** Apply the shared traversal with the tighter extension width and depth budgets. */
 function safeValue(value: unknown): asserts value is BeadsExtensionValue {
-  preflight(value, BEADS_SIDECAR_LIMITS.depth);
-  const stack = [value];
-  while (stack.length) {
-    const item = stack.pop();
-    if (typeof item === "string" && privateText(item)) refuse("privacy_limit", "Remove credentials, private identity data and local home paths from opted-in extensions before capture or restore.");
-    if (item !== null && typeof item === "object") {
-      const entries = Object.entries(item);
-      if (entries.length > BEADS_SIDECAR_LIMITS.fields) refuse("size_limit", "Reduce each extension object or array to at most 128 entries.");
-      for (const [key, child] of entries) {
-        if (privateKey(key)) refuse("privacy_limit", "Remove sensitive or prototype-related extension keys before capture or restore.");
-        stack.push(child);
-      }
-    }
-  }
+  preflight(value, BEADS_SIDECAR_LIMITS.depth, BEADS_SIDECAR_LIMITS.fields);
 }
 /** Validate explicit top-level extension selectors; selecting a native field always refuses. */
 function selectors(fields: readonly string[]): string[] {

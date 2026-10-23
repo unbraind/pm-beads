@@ -1,6 +1,7 @@
 /** Adversarial public-entrypoint checks use bounded fixtures and real filesystem operations. */
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { lstat, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -22,6 +23,64 @@ function envelope(value: unknown): BeadsExtensionSidecar {
   const good = captureBeadsExtensions(snapshot('0'), ['vendor']);
   return { ...good, records: [{ id: 'bd-one', fields: { vendor: value } }] } as BeadsExtensionSidecar;
 }
+
+
+/** Hash handcrafted envelopes exactly as the documented sorted-key integrity format. */
+function canonicalFixture(value: unknown): string {
+  if (Array.isArray(value)) return '[' + value.map(canonicalFixture).join(',') + ']';
+  if (value !== null && typeof value === 'object') {
+    const row = value as Record<string, unknown>;
+    return '{' + Object.keys(row).sort().map(key => JSON.stringify(key) + ':' + canonicalFixture(row[key])).join(',') + '}';
+  }
+  return JSON.stringify(value);
+}
+
+/** Deliberately bypass capture, with a valid digest so privacy is the only refusal. */
+function signedEnvelope(value: unknown): BeadsExtensionSidecar {
+  const sidecar = envelope(value);
+  sidecar.digest = createHash('sha256').update(canonicalFixture({ ...sidecar, digest: '' })).digest('hex');
+  return sidecar;
+}
+
+const privateCases = [
+  ['nested identity key', { ['user' + '@example.invalid']: true }],
+  ['nested array identity', { list: [[['user' + '@example.invalid']]] }],
+  ['nested credential key', { list: [{ child: { access_token: true } }] }],
+  ['third level private value', { first: { second: { third: 'Bearer synthetic' } } }],
+] as const;
+
+for (const [name, value] of privateCases) {
+  test('unified privacy capture refuses ' + name, () => {
+    assert.throws(() => captureBeadsExtensions(snapshot(JSON.stringify(value)), ['vendor']), refusal('privacy_limit'));
+  });
+  test('unified privacy restore refuses ' + name, () => {
+    const sidecar = signedEnvelope(value);
+    assert.throws(() => restoreBeadsExtensions(base, sidecar), refusal('privacy_limit'));
+    assert.throws(() => parseBeadsExtensionSidecar(JSON.stringify(sidecar)), refusal('privacy_limit'));
+  });
+}
+
+test('unified privacy also screens native, unselected and malformed envelope slots', () => {
+  const good = captureBeadsExtensions(base, ['vendor']);
+  for (const [, value] of privateCases) {
+    for (const key of ['vendor', 'description']) {
+      const raw = snapshot(JSON.stringify(value), key);
+      assert.throws(() => captureBeadsExtensions(raw, []), refusal('privacy_limit'));
+      assert.throws(() => restoreBeadsExtensions(raw, good), refusal('privacy_limit'));
+    }
+    assert.throws(() => parseBeadsExtensionSidecar(JSON.stringify({ ...good, extra: value })), refusal('privacy_limit'));
+  }
+});
+
+test('JSON scanner bounds escaped-quote runs and preserves string punctuation', { timeout: 10000 }, () => {
+  const description = '\\"'.repeat(200000) + '{}[]:';
+  const raw = JSON.stringify({ id: 'bd-one', title: 'One', description, vendor: { ['a"\\:{}[]']: 'visible' } });
+  const sidecar = captureBeadsExtensions(raw, ['vendor']);
+  assert.deepEqual(JSON.parse(restoreBeadsExtensions(raw, sidecar).text), JSON.parse(raw));
+  const duplicate = raw.replace('"vendor":', '"vendor":0,"\\u0076endor":');
+  assert.throws(() => captureBeadsExtensions(duplicate, ['vendor']), refusal('invalid_input'));
+  assert.throws(() => parseBeadsExtensionSidecar(JSON.stringify(sidecar).replace('"version":1', '"version":0,"\\u0076ersion":1')), refusal('invalid_sidecar'));
+});
 
 for (const kind of ['arrays', 'objects']) {
   test(`iterative depth preflight rejects 20000 nested ${kind} at every entrypoint`, () => {
@@ -98,7 +157,7 @@ test('Unicode, prototype keys, malformed roots and truncation are explicit acros
     assert.throws(() => parseBeadsExtensionSidecar(JSON.stringify(envelope(value))), refusal('privacy_limit'));
     assert.throws(() => restoreBeadsExtensions(base, envelope(value)), refusal('privacy_limit'));
     assert.throws(() => restoreBeadsExtensions(raw, good), refusal('privacy_limit'));
-    assert.equal(captureBeadsExtensions(raw, []).loss.droppedFields, 1);
+    assert.throws(() => captureBeadsExtensions(raw, []), refusal('privacy_limit'));
   }
   for (const raw of ['null', '[]', 'true', '1', '"root"', '{', base.slice(0, -1), '\uFEFF' + base]) {
     assert.throws(() => captureBeadsExtensions(raw, []), refusal('invalid_input'));

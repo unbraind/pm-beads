@@ -133,7 +133,7 @@ test('limits and conservative privacy checks apply before capture and again at r
   }
   const unchecked = snapshot({ vendor: { apiToken: 'secret fixture' } });
   assert.equal(captureBeadsExtensions(snapshot({ vendor: '-----begin '.repeat(800) }), ['vendor']).loss.preservedFields, 1);
-  assert.equal(captureBeadsExtensions(unchecked, []).loss.droppedFields, 1, 'unselected values never enter the envelope');
+  assert.throws(() => captureBeadsExtensions(unchecked, []), refusal('privacy_limit'), 'unselected values are screened too');
   let nested: unknown = 0;
   for (let i = 0; i < 18; i++) nested = { nested };
   for (const vendor of [nested, Array(129).fill(0), 'a'.repeat(BEADS_SIDECAR_LIMITS.recordBytes)]) {

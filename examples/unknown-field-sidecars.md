@@ -82,8 +82,11 @@ Negative zero refuses because JSON serialization would change it to zero.
 Numbers must be finite and integer
 values must be safe JavaScript integers; represent larger integers as strings
 in the source tool to prevent precision loss.
-Sensitive key names, obvious credentials, email addresses, private home paths,
-and prototype-related keys refuse recursively before any output write. The
+One shared explicit-stack traversal screens every object key and every string
+value, including nested array elements, native fields, unselected fields and
+malformed envelope slots. It enforces structural, byte and privacy limits in
+the same pass. Sensitive key names, obvious credentials, email addresses, private
+home paths, and prototype-related keys refuse before any output write. The
 key checks ignore case, underscores and hyphens, including `api_key`, `apiKey`,
 `API-KEY`, `accessToken`, `client_secret`, `password` and `private_key`.
 These conservative checks are a baseline, not a general personal-data detector. Review
