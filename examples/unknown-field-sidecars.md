@@ -60,7 +60,14 @@ and avoid filtered exports, unrelated records, or reusing ids for different
 items. A different tracker can use the same ids: the sidecar intentionally has
 no tracker binding, so choose the matching snapshot yourself.
 
-All input files and generated artifacts are bounded to 8 MiB, with at most
+All input files and generated artifacts are bounded to 8 MiB in UTF-8 bytes.
+The same limit applies to the actual JSON sidecar and restored JSONL, without
+expanding sidecar entries into synthetic native records. Capture checks the
+normalized original JSONL output too, including its terminal newline, so an
+accepted snapshot can be restored within the limit. SDK sidecars use
+`JSON.stringify(sidecar)`; CLI capture writes exactly those bytes with no extra
+newline. A later native export that grows beyond the restored output limit
+still refuses. Other ceilings are at most
 10,000 records, 128 selected fields, 16 KiB of extensions per record, 128 entries
 per nested object/array, and 16 nesting levels. Numbers must be finite and integer
 values must be safe JavaScript integers; represent larger integers as strings

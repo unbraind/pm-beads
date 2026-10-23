@@ -95,6 +95,18 @@ function selectors(fields: readonly string[]): string[] {
   if (fields.some(privateKey)) refuse("privacy_limit", "Select only non-sensitive extension keys; sensitive and prototype-related keys cannot be retained.");
   return [...new Set(fields)].sort();
 }
+/** Enforce the same exact, unique external identities in snapshots and envelopes. */
+function validateIdentity(id: unknown, ids: Set<string>): asserts id is string {
+  if (typeof id !== "string" || !isEncodableBeadId(id) || ids.has(id)) refuse("invalid_input", "Give every record a unique, encodable external id and preserve ids during import/export.");
+  safeValue(id);
+  ids.add(id);
+}
+/** Serialize and bound the actual JSONL output, including its terminal newline. */
+function serializeRecords(records: readonly Record<string, unknown>[]): string {
+  const text = records.map(row => JSON.stringify(row)).join("\n") + (records.length ? "\n" : "");
+  bounded(text);
+  return text;
+}
 /** Parse a bounded, structurally valid JSONL snapshot with exact unique ids. */
 function parseRecords(text: string): Array<Record<string, unknown> & { id: string }> {
   bounded(text);
@@ -104,9 +116,7 @@ function parseRecords(text: string): Array<Record<string, unknown> & { id: strin
   const ids = new Set<string>();
   return lines.map(line => {
     const row = JSON.parse(line) as Record<string, unknown>;
-    if (typeof row.id !== "string" || !isEncodableBeadId(row.id) || ids.has(row.id)) refuse("invalid_input", "Give every record a unique, encodable external id and preserve ids during import/export.");
-    safeValue(row.id);
-    ids.add(row.id);
+    validateIdentity(row.id, ids);
     return row as Record<string, unknown> & { id: string };
   });
 }
@@ -124,6 +134,7 @@ function digest(sidecar: BeadsExtensionSidecar): string {
 export function captureBeadsExtensions(text: string, fields: readonly string[]): BeadsExtensionSidecar {
   const selected = selectors(fields);
   const rows = parseRecords(text);
+  serializeRecords(rows);
   const loss: BeadsExtensionLossReport = { records: rows.length, extensionFields: 0, preservedFields: 0, droppedFields: 0 };
   const records = rows.map(row => {
     const extensions: Record<string, BeadsExtensionValue> = {};
@@ -157,16 +168,19 @@ function validateSidecar(parsed: unknown): BeadsExtensionSidecar {
   if (parsed.version !== 1) refuse("unsupported_version", "Use a compatible pm-beads version; never rewrite an unknown sidecar version.");
   if (Object.keys(parsed).sort().join(",") !== "digest,fields,loss,records,schema,version" || !Array.isArray(parsed.fields) || !Array.isArray(parsed.records) || !object(parsed.loss) || typeof parsed.digest !== "string") refuse("invalid_sidecar", "Restore a complete sidecar envelope from capture.");
   const selected = selectors(parsed.fields);
-  const rows: Record<string, unknown>[] = [];
+  if (parsed.records.length > BEADS_SIDECAR_LIMITS.records) refuse("size_limit", "Split the snapshot into at most 10000 records per sidecar.");
+  const ids = new Set<string>();
+  let preservedFields = 0;
   for (const entry of parsed.records) {
     if (!object(entry) || Object.keys(entry).sort().join(",") !== "fields,id" || typeof entry.id !== "string" || !object(entry.fields) || Object.keys(entry.fields).some(key => !selected.includes(key))) refuse("invalid_sidecar", "Repair malformed records or fields outside the explicit opt-in set by recapturing.");
+    validateIdentity(entry.id, ids);
     for (const value of Object.values(entry.fields)) safeValue(value);
-    rows.push({ ...entry.fields, id: entry.id, title: "Sidecar identity validation" });
+    bounded(JSON.stringify(entry.fields), BEADS_SIDECAR_LIMITS.recordBytes);
+    preservedFields += Object.keys(entry.fields).length;
   }
-  const rebuilt = captureBeadsExtensions(rows.map(row => JSON.stringify(row)).join("\n"), selected);
   const loss = parsed.loss;
   if (Object.keys(loss).sort().join(",") !== "droppedFields,extensionFields,preservedFields,records" || ["records", "extensionFields", "preservedFields", "droppedFields"].some(key => !Number.isSafeInteger(loss[key]) || Number(loss[key]) < 0) ||
-      loss.records !== rebuilt.loss.records || loss.preservedFields !== rebuilt.loss.preservedFields ||
+      loss.records !== parsed.records.length || loss.preservedFields !== preservedFields ||
       loss.extensionFields !== Number(loss.preservedFields) + Number(loss.droppedFields)) refuse("invalid_sidecar", "Recapture a sidecar with consistent nonnegative loss counts.");
   const sidecar = parsed as unknown as BeadsExtensionSidecar;
   bounded(JSON.stringify(sidecar));
@@ -186,8 +200,7 @@ export function restoreBeadsExtensions(text: string, envelope: BeadsExtensionSid
       row[key] = value;
     }
   }
-  const restored = records.map(row => JSON.stringify(row)).join("\n") + (records.length ? "\n" : "");
-  bounded(restored);
+  const restored = serializeRecords(records);
   return { text: restored, loss: sidecar.loss };
 }
 /** Read one bounded input with a sanitized filesystem refusal. */
@@ -240,7 +253,7 @@ async function runSidecar(ctx: CommandHandlerContext) {
   const raw = await input(file);
   const sidecar = capture ? captureBeadsExtensions(raw, fields!.split(",").map(field => field.trim())) : parseBeadsExtensionSidecar(await input(restore!));
   const restored = capture ? undefined : restoreBeadsExtensions(raw, sidecar);
-  const content = capture ? JSON.stringify(sidecar) + "\n" : restored!.text;
+  const content = capture ? JSON.stringify(sidecar) : restored!.text;
   try { await writeFileAtomic(destination, content); }
   catch { return refuse("io_error", "Choose a writable output file and retry; no tracker items were changed."); }
   return { schema: sidecar.schema, version: sidecar.version, action: capture ? "capture" : "restore", bytes: Buffer.byteLength(content), loss: sidecar.loss,

@@ -43,6 +43,74 @@ test('opaque nested objects, arrays, nulls, booleans and numbers round-trip with
   assert.deepEqual(parseBeadsExtensionSidecar(JSON.stringify(empty)), empty);
 });
 
+test('near-limit captured records parse and restore using actual sidecar and output bytes', () => {
+  const rows = Array.from({ length: 523 }, (_, i) => ({ id: `bd-${i}`, title: 'X', vendor: 'x'.repeat(15980) }));
+  const text = rows.map(row => JSON.stringify(row)).join('\n');
+  const sidecar = captureBeadsExtensions(text, ['vendor']);
+  assert.ok(Buffer.byteLength(text) < BEADS_SIDECAR_LIMITS.bytes);
+  assert.ok(Buffer.byteLength(JSON.stringify(sidecar)) < BEADS_SIDECAR_LIMITS.bytes);
+  const parsed = parseBeadsExtensionSidecar(JSON.stringify(sidecar));
+  const exported = rows.map(({ id, title }) => JSON.stringify({ id, title })).join('\n');
+  assert.equal(restoreBeadsExtensions(exported, parsed).text, text + '\n');
+  assert.equal(restoreBeadsExtensions(text, sidecar).text, text + '\n');
+});
+
+test('capture refuses restored output one byte over the limit with a typed refusal', () => {
+  const overhead = Buffer.byteLength(snapshot({ description: '' }));
+  const fitting = snapshot({ description: 'x'.repeat(BEADS_SIDECAR_LIMITS.bytes - overhead - 1) });
+  const sidecar = captureBeadsExtensions(fitting, []);
+  assert.equal(Buffer.byteLength(restoreBeadsExtensions(fitting, sidecar).text), BEADS_SIDECAR_LIMITS.bytes);
+  const overflowing = snapshot({ description: 'x'.repeat(BEADS_SIDECAR_LIMITS.bytes - overhead) });
+  assert.equal(Buffer.byteLength(overflowing), BEADS_SIDECAR_LIMITS.bytes);
+  assert.equal(Buffer.byteLength(overflowing + '\n'), BEADS_SIDECAR_LIMITS.bytes + 1);
+  assert.throws(() => captureBeadsExtensions(overflowing, []), refusal('size_limit'));
+  assert.throws(() => restoreBeadsExtensions(overflowing, sidecar), refusal('size_limit'));
+});
+
+test('CLI capture and restore share the SDK exact sidecar byte limit without extra framing', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'beads-sidecar-limit-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const ext = await harness();
+  // The native name alias keeps the source smaller than the sidecar envelope.
+  const rows = Array.from({ length: 523 }, (_, i) => ({ id: `bd-${i}`, name: 'X', vendor: 'x'.repeat(15980) }));
+  let padding = BEADS_SIDECAR_LIMITS.bytes - Buffer.byteLength(JSON.stringify(captureBeadsExtensions(rows.map(row => JSON.stringify(row)).join('\n'), ['vendor'])));
+  for (const row of rows) {
+    const extra = Math.min(padding, BEADS_SIDECAR_LIMITS.recordBytes - Buffer.byteLength(JSON.stringify({ vendor: row.vendor })));
+    row.vendor += 'x'.repeat(extra);
+    padding -= extra;
+  }
+  assert.equal(padding, 0);
+  const raw = rows.map(row => JSON.stringify(row)).join('\n');
+  const envelope = captureBeadsExtensions(raw, ['vendor']);
+  const encoded = JSON.stringify(envelope);
+  assert.equal(Buffer.byteLength(encoded), BEADS_SIDECAR_LIMITS.bytes);
+  assert.deepEqual(parseBeadsExtensionSidecar(encoded).records.map(row => row.id), rows.map(row => row.id));
+  assert.throws(() => parseBeadsExtensionSidecar(encoded + '\n'), refusal('size_limit'));
+  assert.throws(() => restoreBeadsExtensions(raw, { ...envelope, digest: envelope.digest + 'x' }), refusal('size_limit'));
+  const file = join(dir, 'incoming.jsonl'), sidecar = join(dir, 'extensions.json'), output = join(dir, 'restored.jsonl');
+  await writeFile(file, raw);
+  const receipt = await runCommand(ext, { command: 'beads sidecar', args: [file], options: { capture: sidecar, fields: 'vendor' } }) as { bytes: number };
+  assert.equal(receipt.bytes, BEADS_SIDECAR_LIMITS.bytes);
+  assert.equal(await readFile(sidecar, 'utf8'), encoded);
+  await writeFile(file, rows.map(({ id, name }) => JSON.stringify({ id, name })).join('\n'));
+  await runCommand(ext, { command: 'beads sidecar', args: [file], options: { restore: sidecar, output } });
+  assert.equal(await readFile(output, 'utf8'), raw + '\n');
+});
+
+test('direct envelope validation retains identity, record-count and extension byte limits', () => {
+  const good = captureBeadsExtensions(snapshot({ vendor: 1 }), ['vendor']);
+  for (const id of ['', ' trailing ', 'bad]id']) {
+    const invalid = { ...good, records: [{ id, fields: { vendor: 1 } }] };
+    assert.throws(() => parseBeadsExtensionSidecar(JSON.stringify(invalid)), refusal('invalid_input'));
+    assert.throws(() => restoreBeadsExtensions(snapshot(), invalid), refusal('invalid_input'));
+  }
+  assert.throws(() => parseBeadsExtensionSidecar(JSON.stringify({ ...good, records: [good.records[0], good.records[0]] })), refusal('invalid_input'));
+  assert.throws(() => restoreBeadsExtensions(snapshot(), { ...good, records: Array(10001).fill(good.records[0]) }), refusal('size_limit'));
+  const oversized = { ...good, records: [{ id: 'bd-one', fields: { vendor: 'x'.repeat(BEADS_SIDECAR_LIMITS.recordBytes) } }] };
+  assert.throws(() => parseBeadsExtensionSidecar(JSON.stringify(oversized)), refusal('size_limit'));
+  assert.throws(() => restoreBeadsExtensions(snapshot(), oversized), refusal('size_limit'));
+});
+
 test('all native names and aliases refuse opt-in, with exact id matching and collision protection', () => {
   for (const field of BEADS_NATIVE_FIELDS) assert.throws(() => captureBeadsExtensions(snapshot(), [field]), refusal('native_conflict'));
   const sidecar = captureBeadsExtensions(snapshot({ vendor: 1 }), ['vendor']);
