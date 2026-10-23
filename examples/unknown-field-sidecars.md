@@ -78,6 +78,14 @@ BOMs, lone Unicode surrogates, and invalid UTF-8 refuse; CRLF framing and valid
 Unicode preserve JSON values. SDK envelopes must contain plain JSON data, with
 no accessors, custom instances, sparse arrays or hidden properties. Arrays must
 use the ordinary array prototype; inherited serializers cannot run during validation.
+Every native field is type-checked before native validation or mapping: ids and
+text fields must be strings, priority a string or finite safe number, tags and
+labels arrays of strings, and `blocked_by`/`blocks` strings or string arrays.
+Dependencies must be arrays of strings or objects whose `id`, `kind`, `issue_id`,
+`depends_on_id` and `type` slots are strings when present. Optional native slots
+may be null to denote absence; every record still needs a string id and usable
+title or name. Malformed native types refuse with `invalid_input`, including
+unused aliases, before any object-to-string coercion or output write.
 Negative zero refuses because JSON serialization would change it to zero.
 Numbers must be finite and integer
 values must be safe JavaScript integers; represent larger integers as strings

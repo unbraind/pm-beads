@@ -6,10 +6,66 @@ import { execFileSync } from 'node:child_process';
 import { lstat, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { captureBeadsExtensions, parseBeadsExtensionSidecar, restoreBeadsExtensions, BeadsSidecarRefusal, BEADS_SIDECAR_LIMITS, type BeadsExtensionSidecar } from '../index.ts';
+import { captureBeadsExtensions, parseBeadsExtensionSidecar, restoreBeadsExtensions, BeadsSidecarRefusal, BEADS_NATIVE_FIELDS, BEADS_SIDECAR_LIMITS, type BeadsExtensionSidecar } from '../index.ts';
 import { harness, runCommand } from './helpers.ts';
 
 const base = '{"id":"bd-one","title":"One"}';
+
+test('native types refuse before every native consumer, including shadowed aliases and dependency slots', () => {
+  const good = captureBeadsExtensions(base, ['vendor']);
+  for (const field of BEADS_NATIVE_FIELDS) {
+    for (const value of [{ toString: 0 }, { valueOf: [] }, true, 7, ['text'], [null]]) {
+      if (field === 'priority' && typeof value === 'number') continue;
+      if (['tags', 'labels', 'blocks', 'blocked_by', 'dependencies'].includes(field) && Array.isArray(value) && value.every(entry => typeof entry === 'string')) continue;
+      const raw = JSON.stringify({ id: 'bd-one', title: 'One', ...{ [field]: value }, vendor: 1 });
+      assert.throws(() => captureBeadsExtensions(raw, ['vendor']), refusal('invalid_input'), field);
+      assert.throws(() => restoreBeadsExtensions(raw, good), refusal('invalid_input'), field);
+    }
+  }
+  for (const key of ['id', 'kind', 'issue_id', 'depends_on_id', 'type']) {
+    for (const value of [{ toString: 0 }, [], 1, false]) {
+      const raw = JSON.stringify({ id: 'bd-one', title: 'One', dependencies: [{ [key]: value }] });
+      assert.throws(() => captureBeadsExtensions(raw, []), refusal('invalid_input'), key);
+      assert.throws(() => restoreBeadsExtensions(raw, good), refusal('invalid_input'), key);
+    }
+  }
+  for (const dependencies of [[null], [[]], [1], [true]]) {
+    const raw = JSON.stringify({ id: 'bd-one', title: 'One', dependencies });
+    assert.throws(() => captureBeadsExtensions(raw, []), refusal('invalid_input'));
+    assert.throws(() => restoreBeadsExtensions(raw, good), refusal('invalid_input'));
+  }
+  for (const id of [null, undefined]) assert.throws(() => captureBeadsExtensions(JSON.stringify({ id, title: 'One' }), []), refusal('invalid_input'));
+});
+
+test('SDK text types refuse without implicit object coercion', () => {
+  const good = captureBeadsExtensions(base, ['vendor']);
+  for (const raw of [null, 1, { toString: 0 }]) {
+    assert.throws(() => captureBeadsExtensions(raw as unknown as string, []), refusal('invalid_input'));
+    assert.throws(() => parseBeadsExtensionSidecar(raw as unknown as string), refusal('invalid_input'));
+    assert.throws(() => restoreBeadsExtensions(raw as unknown as string, good), refusal('invalid_input'));
+  }
+});
+
+test('native types preserve supported scalar, nullable, label and dependency representations', () => {
+  const row: Record<string, unknown> = Object.fromEntries(BEADS_NATIVE_FIELDS.map(field => [field, null]));
+  Object.assign(row, { id: 'bd-one', title: 'One', vendor: 1 });
+  const cases = [row, { ...row, priority: 2, tags: ['visible'], labels: ['visible'], blocked_by: [], blocks: 'bd-two', dependencies: [{ kind: null }, {}] },
+    { ...row, priority: '2', blocked_by: '', blocks: [], dependencies: ['bd-two', { depends_on_id: 'bd-two', kind: 'blocked_by', type: 'blocks', issue_id: 'bd-one', id: 'bd-two' }] }];
+  for (const incoming of cases) {
+    const raw = [incoming, { id: 'bd-two', title: 'Two' }].map(record => JSON.stringify(record)).join('\n');
+    const sidecar = captureBeadsExtensions(raw, ['vendor']);
+    assert.equal(restoreBeadsExtensions(raw, parseBeadsExtensionSidecar(JSON.stringify(sidecar))).text, raw + '\n');
+  }
+});
+
+test('seeded hostile JSON fuzz: 2048 cases through capture, parse, restore, integrity verification and filesystem publication', { timeout: 30000 }, () => {
+  // A separate process supplies a hard deadline even for a synchronous infinite loop.
+  const result = JSON.parse(execFileSync(process.execPath, [join(import.meta.dirname, 'fixtures', 'sidecar-fuzz.ts')], { encoding: 'utf8', timeout: 25000 }));
+  assert.equal(result.cases, 2048);
+  assert.equal(result.calls, 2048 * 4 + 16);
+  assert.ok(result.successes > 0 && result.refusals > 0);
+  assert.equal(result.outsideDestinationUnchanged, true);
+});
 /** Require a stable typed refusal, never a RangeError or arbitrary thrown exception. */
 function refusal(code: string): (error: unknown) => boolean {
   return error => error instanceof BeadsSidecarRefusal && error.code === code;

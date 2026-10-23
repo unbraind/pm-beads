@@ -55,6 +55,7 @@ function object(value: unknown): value is Record<string, unknown> {
 }
 /** Enforce byte ceilings before parsing or writing strings. */
 function bounded(text: string, limit = BEADS_SIDECAR_LIMITS.bytes): void {
+  if (typeof text !== "string") refuse("invalid_input", "Supply snapshot and sidecar text as UTF-8 strings.");
   if (Buffer.byteLength(text) > limit) refuse("size_limit", "Reduce snapshot or extension payload size and retry; limits cannot be disabled.");
 }
 /** Reject prototype-sensitive keys, obvious credentials and private identity data recursively. */
@@ -158,6 +159,24 @@ function serializeRecords(records: readonly Record<string, unknown>[]): string {
   bounded(text);
   return text;
 }
+/** Validate every native slot before mapping helpers can coerce it; null denotes an absent optional value. */
+function validateNativeFields(row: unknown): asserts row is Record<string, unknown> {
+  if (!object(row)) refuse("invalid_input", "Use JSON objects with correctly typed native Beads fields.");
+  if (typeof row.id !== "string") refuse("invalid_input", "Give every record a string external id.");
+  for (const field of BEADS_NATIVE_FIELDS) {
+    const value = row[field];
+    if (value === undefined || value === null) continue;
+    let valid: boolean;
+    if (field === "priority") valid = typeof value === "string" || typeof value === "number";
+    else if (field === "tags" || field === "labels") valid = Array.isArray(value) && value.every(entry => typeof entry === "string");
+    else if (field === "blocked_by" || field === "blocks") valid = typeof value === "string" || (Array.isArray(value) && value.every(entry => typeof entry === "string"));
+    else if (field === "dependencies") {
+      valid = Array.isArray(value) && value.every(entry => typeof entry === "string" || (object(entry) &&
+        ["id", "kind", "issue_id", "depends_on_id", "type"].every(key => entry[key] === undefined || entry[key] === null || typeof entry[key] === "string")));
+    } else valid = typeof value === "string";
+    if (!valid) refuse("invalid_input", "Use strings for native text fields, string or numeric priority, string label arrays and typed dependency edges.");
+  }
+}
 /** Parse a bounded, structurally valid JSONL snapshot with exact unique ids. */
 function parseRecords(text: string): Array<Record<string, unknown> & { id: string }> {
   bounded(text);
@@ -166,6 +185,7 @@ function parseRecords(text: string): Array<Record<string, unknown> & { id: strin
   const rows = lines.map(line => {
     const row = parseJson(line, "invalid_input");
     preflight(row, BEADS_SIDECAR_LIMITS.depth + 1);
+    validateNativeFields(row);
     return row;
   });
   preflight(rows, BEADS_SIDECAR_LIMITS.depth + 2);
