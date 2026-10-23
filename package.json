@@ -97,7 +97,8 @@
     ],
     "examples": [
       "README.md",
-      "examples/snapshot-reconciliation.md"
+      "examples/snapshot-reconciliation.md",
+      "examples/unknown-field-sidecars.md"
     ]
   },
   "publishConfig": {

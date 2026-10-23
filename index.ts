@@ -42,6 +42,8 @@ import type {
 } from "@unbrained/pm-cli/sdk/authoring";
 import { registerReconcileCommands } from "./reconcile.ts";
 export * from "./reconcile.ts";
+import { registerSidecarCommands } from "./sidecar.ts";
+export * from "./sidecar.ts";
 import { suppressHostOutput } from "@unbrained/pm-cli/sdk";
 // Top-level SDK runtime import. This fleet once believed extensions could not
 // resolve `@unbrained/pm-cli` at runtime and hid SDK access behind inline
@@ -2893,6 +2895,7 @@ export default defineExtension({
 
   activate(api: ExtensionApi) {
     registerReconcileCommands(api);
+    registerSidecarCommands(api);
     // -----------------------------------------------------------------------
     // schema — declare the bead_id provenance field
     // -----------------------------------------------------------------------

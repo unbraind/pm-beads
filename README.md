@@ -429,9 +429,34 @@ snapshots and the tracker. See the
 [worked example](examples/snapshot-reconciliation.md) for conflict, omission and
 recovery behavior.
 
+## Unknown-field sidecars
+
+Preserve explicitly opted-in opaque Beads extensions through ordinary import/export:
+
+```sh
+pm beads sidecar incoming.jsonl --capture extensions.json --fields vendor --json
+pm beads import incoming.jsonl
+pm beads export --output exported.jsonl
+pm beads sidecar exported.jsonl --restore extensions.json --output restored.jsonl
+```
+
+Versioned sidecars preserve nested JSON values without flattening. Compact TOON
+or JSON receipts report preserved and dropped unknown top-level field counts.
+Native field selection, differing overlays, unknown versions, missing identities,
+oversized payloads and sensitive extensions refuse before any output write.
+Capture must succeed **before import**; sidecars stay separate from item metadata
+and must accompany the matching complete snapshot. The sidecar contains original
+opted-in values and ids: use the source snapshot's access controls and retention.
+Unknown properties inside native mapped fields are outside this contract.
+
+The typed SDK exports `captureBeadsExtensions`, `parseBeadsExtensionSidecar`,
+`restoreBeadsExtensions`, `BeadsExtensionSidecar`, `BeadsExtensionLossReport`,
+`BeadsSidecarRefusal` and the fixed limits. See the [complete example and refusal
+remedies](examples/unknown-field-sidecars.md) for bounds, privacy policy and SDK usage.
+
 ## Without git
 
-Import, export, validate, diff and snapshot reconciliation work in a plain pm
+Import, export, validate, diff, sidecar capture/restore and snapshot reconciliation work in a plain pm
 tracker directory. Reconciliation uses SDK reads, history and transactions and
 invokes no git subprocess. None of these workflows needs a git repository.
 
