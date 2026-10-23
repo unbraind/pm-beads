@@ -69,7 +69,17 @@ accepted snapshot can be restored within the limit. SDK sidecars use
 newline. A later native export that grows beyond the restored output limit
 still refuses. Other ceilings are at most
 10,000 records, 128 selected fields, 16 KiB of extensions per record, 128 entries
-per nested object/array, and 16 nesting levels. Numbers must be finite and integer
+per nested extension object/array, 16 nesting levels within field values, and
+100,000 total JSON nodes per snapshot or envelope, including assembled restore output. An explicit stack checks
+nesting, node counts and a lower bound on UTF-8 text bytes before serialization
+or recursive validation, including
+native and unselected fields. Duplicate JSON keys (including escaped aliases),
+BOMs, lone Unicode surrogates, and invalid UTF-8 refuse; CRLF framing and valid
+Unicode preserve JSON values. SDK envelopes must contain plain JSON data, with
+no accessors, custom instances, sparse arrays or hidden properties. Arrays must
+use the ordinary array prototype; inherited serializers cannot run during validation.
+Negative zero refuses because JSON serialization would change it to zero.
+Numbers must be finite and integer
 values must be safe JavaScript integers; represent larger integers as strings
 in the source tool to prevent precision loss.
 Sensitive key names, obvious credentials, email addresses, private home paths,
@@ -89,4 +99,6 @@ atomically replacing the selected output. Use distinct input and output files;
 existing outputs are replaced on success and remain intact on validation failure.
 Input/output comparisons resolve directory aliases and existing file symlinks;
 an output alias of either input refuses before writing. New outputs require an
-existing accessible parent directory.
+existing accessible parent directory. Inputs may link to regular files; existing
+output links, FIFOs and directories refuse. Concurrent captures atomically
+publish one complete envelope; the last successful writer wins.

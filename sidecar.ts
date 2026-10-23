@@ -1,6 +1,6 @@
 /** Opt-in, portable Beads extension sidecars; native import/export remains the mapping authority. */
 import { createHash } from "node:crypto";
-import { open, realpath } from "node:fs/promises";
+import { lstat, open, realpath } from "node:fs/promises";
 import { constants } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
 import { writeFileAtomic } from "@unbrained/pm-cli/sdk";
@@ -9,7 +9,7 @@ import { CommandError } from "./contracts.ts";
 import { isEncodableBeadId, optionString, resolveImportInputFile, validateBeadsText } from "./index.ts";
 
 /** Hard ceilings apply equally to SDK calls, capture, and restore; callers cannot disable them. */
-export const BEADS_SIDECAR_LIMITS = { bytes: 8 * 1024 * 1024, recordBytes: 16 * 1024, records: 10_000, fields: 128, depth: 16 } as const;
+export const BEADS_SIDECAR_LIMITS = { bytes: 8 * 1024 * 1024, recordBytes: 16 * 1024, records: 10_000, fields: 128, depth: 16, nodes: 100_000 } as const;
 /** Fields consumed by native Beads mapping, including aliases and closure provenance. */
 export const BEADS_NATIVE_FIELDS: readonly string[] = [
   "id", "title", "name", "description", "status", "type", "issue_type", "priority", "tags", "labels", "assignee", "owner",
@@ -70,24 +70,76 @@ function privateText(value: string): boolean {
     /(?:Bearer\s+\S+|gh[pousr]_[A-Za-z0-9]+|[/](?:home|Users)[/])/i.test(value) ||
     value.split("@").slice(1).some(part => /^[\w.-]+\.[a-z]{2,}/i.test(part));
 }
-/** Validate the opaque JSON tree before retaining it; this baseline is intentionally conservative. */
-function safeValue(value: unknown, depth = 0): asserts value is BeadsExtensionValue {
-  if (depth > BEADS_SIDECAR_LIMITS.depth) refuse("size_limit", "Reduce extension nesting to at most 16 levels.");
-  if (typeof value === "number" && (!Number.isFinite(value) || (Number.isInteger(value) && !Number.isSafeInteger(value)))) refuse("invalid_input", "Use finite numbers and safe integers in extensions; encode larger integers as strings in the source tool.");
-  if (typeof value === "string" && privateText(value)) {
-    refuse("privacy_limit", "Remove credentials, private identity data and local home paths from opted-in extensions before capture or restore.");
+/** Bound every tree iteratively before serialization or recursive native validation can touch it. */
+function preflight(value: unknown, maxDepth: number): void {
+  const stack = [{ value, depth: 0 }];
+  let nodes = 0;
+  let rawBytes = 0;
+  while (stack.length) {
+    const current = stack.pop()!;
+    nodes++;
+    if (current.depth > maxDepth) refuse("size_limit", "Reduce JSON nesting or node count before capture or restore.");
+    const item = current.value;
+    if (typeof item === "string") rawBytes += Buffer.byteLength(item);
+    if (rawBytes > BEADS_SIDECAR_LIMITS.bytes) refuse("size_limit", "Reduce JSON text bytes before capture or restore.");
+    if (typeof item === "string" && /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(item)) refuse("invalid_input", "Use well-formed Unicode strings and keys.");
+    if (typeof item === "number" && (!Number.isFinite(item) || Object.is(item, -0) || (Number.isInteger(item) && !Number.isSafeInteger(item)))) refuse("invalid_input", "Use finite numbers and safe integers; encode negative zero or larger integers as strings.");
+    if (item === null || typeof item === "string" || typeof item === "number" || typeof item === "boolean") continue;
+    if (typeof item !== "object" || (Array.isArray(item) ? Object.getPrototypeOf(item) !== Array.prototype : Object.getPrototypeOf(item) !== Object.prototype && Object.getPrototypeOf(item) !== null)) refuse("invalid_input", "Use only plain JSON objects, arrays and scalar values.");
+    const keys = Object.keys(item);
+    if (keys.length > BEADS_SIDECAR_LIMITS.nodes - nodes - stack.length) refuse("size_limit", "Reduce JSON object keys or total node count.");
+    if (Reflect.ownKeys(item).length !== keys.length + (Array.isArray(item) ? 1 : 0) || (Array.isArray(item) && (keys.length !== item.length || keys.some((key, index) => key !== String(index))))) refuse("invalid_input", "Use enumerable JSON data properties and dense arrays without custom or symbol properties.");
+    for (const key of keys) {
+      if (/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(key)) refuse("invalid_input", "Use well-formed Unicode strings and keys.");
+      rawBytes += Buffer.byteLength(key);
+      if (rawBytes > BEADS_SIDECAR_LIMITS.bytes) refuse("size_limit", "Reduce JSON key bytes before capture or restore.");
+      const property = Object.getOwnPropertyDescriptor(item, key)!;
+      if (!("value" in property)) refuse("invalid_input", "Use JSON data properties without accessors.");
+      stack.push({ value: property.value, depth: current.depth + 1 });
+    }
   }
-  if (value !== null && typeof value === "object") {
-    const entries = Object.entries(value);
-    if (entries.length > BEADS_SIDECAR_LIMITS.fields) refuse("size_limit", "Reduce each extension object or array to at most 128 entries.");
-    for (const [key, child] of entries) {
-      if (privateKey(key)) refuse("privacy_limit", "Remove sensitive or prototype-related extension keys before capture or restore.");
-      safeValue(child, depth + 1);
+}
+/** Parse JSON without silently discarding duplicate keys, including escaped aliases. */
+function parseJson(text: string, code: BeadsSidecarRefusalCode): unknown {
+  let parsed: unknown;
+  try { parsed = JSON.parse(text); }
+  catch { return refuse(code, "Use complete, valid JSON without a byte-order mark."); }
+  const stack: Array<Set<string> | null> = [];
+  const tokens = /"(?:\\[\s\S]|[^"\\])*"|[{}\[\]:]/g;
+  let key = "";
+  for (const token of text.matchAll(tokens)) {
+    const part = token[0];
+    if (part === "{") stack.push(new Set());
+    else if (part === "[") stack.push(null);
+    else if (part === "}" || part === "]") stack.pop();
+    else if (part === ":") {
+      const keys = stack[stack.length - 1]!;
+      if (keys.has(key)) refuse(code, "Remove duplicate JSON keys before capture or restore.");
+      keys.add(key);
+    } else key = JSON.parse(part) as string;
+  }
+  return parsed;
+}
+/** Check selected extension privacy and width with an explicit stack. */
+function safeValue(value: unknown): asserts value is BeadsExtensionValue {
+  preflight(value, BEADS_SIDECAR_LIMITS.depth);
+  const stack = [value];
+  while (stack.length) {
+    const item = stack.pop();
+    if (typeof item === "string" && privateText(item)) refuse("privacy_limit", "Remove credentials, private identity data and local home paths from opted-in extensions before capture or restore.");
+    if (item !== null && typeof item === "object") {
+      const entries = Object.entries(item);
+      if (entries.length > BEADS_SIDECAR_LIMITS.fields) refuse("size_limit", "Reduce each extension object or array to at most 128 entries.");
+      for (const [key, child] of entries) {
+        if (privateKey(key)) refuse("privacy_limit", "Remove sensitive or prototype-related extension keys before capture or restore.");
+        stack.push(child);
+      }
     }
   }
 }
 /** Validate explicit top-level extension selectors; selecting a native field always refuses. */
 function selectors(fields: readonly string[]): string[] {
+  preflight(fields, 1);
   if (!Array.isArray(fields) || fields.length > BEADS_SIDECAR_LIMITS.fields || fields.some(field => typeof field !== "string" || !/^[A-Za-z_][A-Za-z0-9_-]{0,127}$/.test(field))) {
     refuse("invalid_input", "Choose at most 128 top-level extension names using letters, digits, underscores or hyphens.");
   }
@@ -103,6 +155,7 @@ function validateIdentity(id: unknown, ids: Set<string>): asserts id is string {
 }
 /** Serialize and bound the actual JSONL output, including its terminal newline. */
 function serializeRecords(records: readonly Record<string, unknown>[]): string {
+  preflight(records, BEADS_SIDECAR_LIMITS.depth + 2);
   const text = records.map(row => JSON.stringify(row)).join("\n") + (records.length ? "\n" : "");
   bounded(text);
   return text;
@@ -110,12 +163,18 @@ function serializeRecords(records: readonly Record<string, unknown>[]): string {
 /** Parse a bounded, structurally valid JSONL snapshot with exact unique ids. */
 function parseRecords(text: string): Array<Record<string, unknown> & { id: string }> {
   bounded(text);
-  const lines = text.split("\n").filter(line => line.trim());
+  const lines = text.split("\n").filter(line => /[^\t\r ]/.test(line));
   if (lines.length > BEADS_SIDECAR_LIMITS.records) refuse("size_limit", "Split the snapshot into at most 10000 records per sidecar.");
+  const rows = lines.map(line => {
+    const row = parseJson(line, "invalid_input");
+    preflight(row, BEADS_SIDECAR_LIMITS.depth + 1);
+    return row;
+  });
+  preflight(rows, BEADS_SIDECAR_LIMITS.depth + 2);
   if (!validateBeadsText(text).valid) refuse("invalid_input", "Run beads validate and repair the JSONL snapshot before capture or restore.");
   const ids = new Set<string>();
-  return lines.map(line => {
-    const row = JSON.parse(line) as Record<string, unknown>;
+  return rows.map(parsed => {
+    const row = parsed as Record<string, unknown>;
     validateIdentity(row.id, ids);
     return row as Record<string, unknown> & { id: string };
   });
@@ -150,6 +209,7 @@ export function captureBeadsExtensions(text: string, fields: readonly string[]):
     return { id: row.id, fields: extensions };
   });
   const sidecar: BeadsExtensionSidecar = { schema: "pm-beads/extensions", version: 1, fields: selected, records, loss, digest: "" };
+  preflight(sidecar, BEADS_SIDECAR_LIMITS.depth + 5);
   sidecar.digest = digest(sidecar);
   bounded(JSON.stringify(sidecar));
   return sidecar;
@@ -157,13 +217,11 @@ export function captureBeadsExtensions(text: string, fields: readonly string[]):
 /** Read an untrusted envelope and reapply version, shape, privacy, size and integrity checks. */
 export function parseBeadsExtensionSidecar(text: string): BeadsExtensionSidecar {
   bounded(text);
-  let parsed: unknown;
-  try { parsed = JSON.parse(text); }
-  catch { return refuse("invalid_sidecar", "Use a valid JSON sidecar produced by beads sidecar --capture."); }
-  return validateSidecar(parsed);
+  return validateSidecar(parseJson(text, "invalid_sidecar"));
 }
 /** Validate JSON and typed SDK envelopes before serialization can coerce non-finite values. */
 function validateSidecar(parsed: unknown): BeadsExtensionSidecar {
+  preflight(parsed, BEADS_SIDECAR_LIMITS.depth + 5);
   if (!object(parsed) || parsed.schema !== "pm-beads/extensions") refuse("invalid_sidecar", "Use a pm-beads/extensions envelope produced by capture.");
   if (parsed.version !== 1) refuse("unsupported_version", "Use a compatible pm-beads version; never rewrite an unknown sidecar version.");
   if (Object.keys(parsed).sort().join(",") !== "digest,fields,loss,records,schema,version" || !Array.isArray(parsed.fields) || !Array.isArray(parsed.records) || !object(parsed.loss) || typeof parsed.digest !== "string") refuse("invalid_sidecar", "Restore a complete sidecar envelope from capture.");
@@ -217,7 +275,7 @@ async function input(file: string): Promise<string> {
         length += bytesRead;
       }
       if (length > BEADS_SIDECAR_LIMITS.bytes) refuse("size_limit", "Reduce input files to at most 8 MiB before retrying.");
-      return new TextDecoder("utf-8", { fatal: true }).decode(buffer.subarray(0, length));
+      return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(buffer.subarray(0, length));
     } finally { await handle.close(); }
   }
   catch (error) {
@@ -229,12 +287,14 @@ async function input(file: string): Promise<string> {
 async function distinctOutput(destination: string, sources: string[]): Promise<string> {
   try {
     const output = resolve(await realpath(dirname(destination)), basename(destination));
-    const target = await realpath(output).catch((error: NodeJS.ErrnoException) => {
+    const existing = await lstat(output).catch((error: NodeJS.ErrnoException) => {
       if (error.code !== "ENOENT") throw error;
-      return output;
+      return undefined;
     });
+    const target = existing ? await realpath(output) : output;
     const inputs = await Promise.all(sources.map(source => realpath(source)));
     if (inputs.includes(output) || inputs.includes(target)) refuse("invalid_input", "Choose an output different from both input files; capture and restore preserve their sources.");
+    if (existing && !existing.isFile()) refuse("io_error", "Choose a regular output file or a new file name; links and special files cannot be replaced.");
     return output;
   } catch (error) {
     if (error instanceof BeadsSidecarRefusal) throw error;
