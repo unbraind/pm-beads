@@ -5,9 +5,18 @@ import { mkdtemp, readFile, writeFile, rm, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { PmClient, WorkspaceTransactionInterruptedError, getHistoryPath, readSettings, type WorkspaceTransactionTransitionContext } from '@unbrained/pm-cli/sdk';
-import { planBeadsTransfer, applyBeadsTransfer, summarizeBeadsTransfer, beadsTransferItemId, BeadsTransferRefusal, type BeadsTransferPlan } from '../transfer.ts';
+import { planBeadsTransfer as buildTransfer, snapshotBeadsTransferSettings, applyBeadsTransfer, summarizeBeadsTransfer, beadsTransferItemId, BeadsTransferRefusal, type BeadsTransferPlan, type BeadsTransferLimits } from '../transfer.ts';
 import { harness, runCommand } from './helpers.ts';
 
+// The synchronous planner consumes an explicit snapshot from a real default receiver.
+const settingsDir = await mkdtemp(join(tmpdir(), 'beads-plan-settings-'));
+await new PmClient({ pmRoot: settingsDir, author: 'transfer-test', noExtensions: true }).init('sample');
+const baselineSettings = await snapshotBeadsTransferSettings(settingsDir);
+await rm(settingsDir, { recursive: true });
+/** Plan fixture inputs against the same default receiver configuration used below. */
+function planBeadsTransfer(text: string, selected: readonly string[], source: string, options: Partial<BeadsTransferLimits> = {}) {
+  return buildTransfer(text, selected, source, baselineSettings, options);
+}
 /** Serialize synthetic Beads source records through the same public entry point as users. */
 function plan(source = 'team', chunkSize = 2): BeadsTransferPlan {
   return planBeadsTransfer([
@@ -61,9 +70,9 @@ test('bounded drain resumes chunks without duplicates, resolves cross-chunk link
   const { pmRoot, client } = await fixture(t); const p = plan();
   const first = await applyBeadsTransfer(pmRoot, p, 'transfer-test');
   assert.equal(first.completedChunks, 1); assert.equal(first.complete, false); assert.equal(first.transferred, 2);
-  await client.update(first.rows[0].pmId, { title: 'Later peer edit' });
   const second = await applyBeadsTransfer(pmRoot, p, 'second-agent');
   assert.equal(second.complete, true); assert.equal(second.replayedChunks, 1); assert.equal(second.transferred, 3);
+  await client.update(first.rows[0].pmId, { title: 'Later peer edit' });
   const items = (await client.listAllComplete()).items;
   assert.equal(items.length, 3); assert.equal((await client.get(first.rows[0].pmId)).item.title, 'Later peer edit');
   const dependent = items.find(i => i.description?.includes('[bead_id: a]'))!;
@@ -72,7 +81,7 @@ test('bounded drain resumes chunks without duplicates, resolves cross-chunk link
   assert.equal(dependent.priority, 1);
   const histories = await Promise.all(items.map(i => readFile(getHistoryPath(pmRoot, i.id), 'utf8')));
   const replay = await applyBeadsTransfer(pmRoot, p, 'third-agent');
-  assert.equal(replay.replayedChunks, 2); assert.equal(replay.complete, true);
+  assert.equal(replay.replayedChunks, 2); assert.equal(replay.complete, true); assert.equal(replay.skipped, 1);
   assert.deepEqual(await Promise.all(items.map(i => readFile(getHistoryPath(pmRoot, i.id), 'utf8'))), histories);
   for (const invalid of [{ ...p, digest: 'bad' }, { ...p, schema: 2 }, { ...p, records: null }, { ...p, limits: { ...p.limits, chunkSize: 0 } }, null]) {
     await assert.rejects(applyBeadsTransfer(pmRoot, invalid as unknown as BeadsTransferPlan, 'test'), refusal('invalid_plan'));
@@ -196,10 +205,10 @@ test('row creation boundaries preserve competing foreign creates and peer edits 
       if (phase === 'before_create') await client.create({ id: c.pmId, title: 'Foreign winner' });
       else await client.update(c.pmId, { title: 'Peer edit after creation' });
     } });
-    assert.equal(calls, phase === 'before_create' ? 2 : 3);
-    assert.equal(result.transferred, phase === 'before_create' ? 0 : 3);
-    assert.equal(result.skipped, phase === 'before_create' ? 3 : 0);
-    if (phase === 'after_create') for (const row of result.rows) assert.equal((await client.get(row.pmId)).item.title, 'Peer edit after creation');
+    assert.equal(calls, 2);
+    assert.equal(result.transferred, 0);
+    assert.equal(result.skipped, 3);
+    if (phase === 'after_create') for (const row of result.rows.filter(row => row.reason === 'item_changed')) assert.equal((await client.get(row.pmId)).item.title, 'Peer edit after creation');
   }
   const p = plan('failed-create', 3); p.records[0].fields.type = 'invalid-type';
   // Regenerate a valid plan with a source type the receiving core schema does not declare.

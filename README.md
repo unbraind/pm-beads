@@ -490,7 +490,8 @@ edge author provenance. Reconciliation updates retain unrelated local fields.
 Receiver validation and workflow transition policies still apply and may refuse
 an incompatible source; they do not substitute receiver defaults for source data.
 
-The public SDK exports `planBeadsTransfer`, `applyBeadsTransfer`,
+The public SDK exports `snapshotBeadsTransferSettings`, `planBeadsTransfer`,
+`validateBeadsTransferPlan`, `applyBeadsTransfer`,
 `summarizeBeadsTransfer`, `beadsTransferItemId`, their option/receipt types, and
 `BeadsTransferRefusal` with `code`, `remedy` and optional `omission`. Expected CLI
 refusals return those fields as TOON/JSON and exit 2. Plan and drain summaries
@@ -504,6 +505,18 @@ Input JSONL is capped at 16 MiB and Beads ids at 128 characters. `--chunks` boun
 new/resumed chunks per invocation; completed chunks replay without consuming that
 budget. A completed transfer can include skipped rows: inspect `skipped` and
 `rows[].reason`, not only `complete`.
+
+Plans bind a non-secret snapshot of creation settings, template hashes and saved
+focus. The SDK planner takes this snapshot as its fourth argument, followed by
+optional bounds; see the [SDK example](examples/dependency-closed-transfer.md).
+A changed configuration returns `plan_settings_changed` until every creation has
+been pinned; restore the original configuration before resuming incomplete work.
+The identity ledger at `transactions/beads-transfer/<digest>.json` records each
+source row's exact `pmId` before create and its `itemHash` before `after_create`.
+Resume uses only these recorded identities. Missing/corrupt ledgers refuse with
+`invalid_journal`. Edited or deleted items become `item_changed` skips, including
+when replaying committed chunks; they are never recreated or counted as current
+successful transfers. Normalized plan descriptions round-trip verbatim.
 
 Each chunk uses the core SDK workspace writer lease and durable journal. Reads
 that select mutations occur inside that lease; the core releases it after

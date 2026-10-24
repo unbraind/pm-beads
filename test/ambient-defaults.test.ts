@@ -8,7 +8,7 @@ import {
   PmClient, getHistoryPath, loadCreateTemplateOptions, locateItem, readLocatedItem,
   readSettings, runTemplatesSave, type ItemDocument,
 } from "@unbrained/pm-cli/sdk";
-import { applyBeadsTransfer, beadsTransferItemId, planBeadsTransfer } from "../transfer.ts";
+import { applyBeadsTransfer, beadsTransferItemId, planBeadsTransfer, snapshotBeadsTransferSettings } from "../transfer.ts";
 import { acknowledgeBeadsSnapshot, applyBeadsReconciliation, parseBeadsSnapshot, planBeadsReconciliation } from "../reconcile.ts";
 import { encodeBeadId } from "../index.ts";
 import { beadsMutationAuthor, sourceCreateOptions } from "../mutation.ts";
@@ -111,7 +111,7 @@ test("transfer ignores active focus, template tags/assignee and workflow default
       assignee: "source-assignee", type: "Feature", status: "blocked", deadline: "2027-01-01", sprint: "s", release: "r" },
     { id: "c", title: "C", status: "closed" },
   ].map(row => JSON.stringify(row)).join("\n");
-  const plan = planBeadsTransfer(text, ["a", "b", "c"], "ambient-transfer");
+  const plan = planBeadsTransfer(text, ["a", "b", "c"], "ambient-transfer", await snapshotBeadsTransferSettings(pmRoot));
   const result = await applyBeadsTransfer(pmRoot, plan, "source-agent");
   assert.equal(result.complete, true); assert.equal(result.transferred, 3); assert.equal(result.skipped, 0);
   const ids = Object.fromEntries(["a", "b", "c"].map(id => [id, beadsTransferItemId(plan, id, prefix)]));

@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { PmClient, WorkspaceTransactionInterruptedError } from '@unbrained/pm-cli/sdk';
-import { planBeadsTransfer, applyBeadsTransfer, summarizeBeadsTransfer, BeadsTransferRefusal, pmItemToBead, decodeBeadId, type PmItem } from '../index.ts';
+import { planBeadsTransfer, snapshotBeadsTransferSettings, applyBeadsTransfer, summarizeBeadsTransfer, BeadsTransferRefusal, pmItemToBead, decodeBeadId, type PmItem } from '../index.ts';
 const root = resolve(import.meta.dirname, '..');
 const sourceDirectory = process.argv[2] ? resolve(process.argv[2]) : root;
 const sourceRepository = process.argv[3] ?? 'unbraind/pm-beads';
@@ -43,8 +43,9 @@ try {
   const ids = new Map(items.map(item => [item.id, decodeBeadId(item as PmItem) ?? item.id]));
   const rows = items.map(item => pmItemToBead(item as PmItem, ids, true));
   const text = rows.map(row => JSON.stringify(row)).join('\n');
-  const plan = planBeadsTransfer(text, rows.map(row => row.id!), 'public-fleet', { chunkSize: 15 });
   const pmRoot = join(dir, 'receiver'); const receiver = new PmClient({ pmRoot, author: 'public-transfer-validation', noExtensions: true }); await receiver.init('sample');
+  const settings = await snapshotBeadsTransferSettings(pmRoot);
+  const plan = planBeadsTransfer(text, rows.map(row => row.id!), 'public-fleet', settings, { chunkSize: 15 });
   let interrupted = false;
   await assert.rejects(applyBeadsTransfer(pmRoot, plan, 'public-transfer-validation', { maxChunks: 10_000, onTransition(c) {
     if (!interrupted && c.transition === 'step_applied') { interrupted = true; throw new WorkspaceTransactionInterruptedError('deterministic public-data interruption'); }
@@ -59,7 +60,7 @@ try {
   assert(dependencies.every(edge => receivedIds.has(edge.id))); assert(parents.every(row => receivedIds.has(row.parent!)));
   const refusals: string[] = [];
   for (const options of [{ maxRows: 1 }, { maxBytes: 1 }]) {
-    assert.throws(() => planBeadsTransfer(text, rows.map(row => row.id!), 'public-fleet', options), (error: unknown) => {
+    assert.throws(() => planBeadsTransfer(text, rows.map(row => row.id!), 'public-fleet', settings, options), (error: unknown) => {
       assert(error instanceof BeadsTransferRefusal); refusals.push(error.omission!.dimension); return true;
     });
   }

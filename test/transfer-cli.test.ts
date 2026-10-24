@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { PmClient } from '@unbrained/pm-cli/sdk';
-import { planBeadsTransfer, applyBeadsTransfer } from '../transfer.ts';
+import { planBeadsTransfer, snapshotBeadsTransferSettings, applyBeadsTransfer } from '../transfer.ts';
 const root = resolve(import.meta.dirname, '..');
 
 test('compiled CLI plans TOON/JSON, drains and replays chunks, and emits nonzero typed refusal receipts without git', async t => {
@@ -45,7 +45,7 @@ test('a genuinely SIGKILLed transfer resumes its SDK checkpoint without duplicat
   t.after(() => rm(dir, { recursive: true, force: true }));
   const pmRoot = join(dir, 'tracker'), file = join(dir, 'plan.json');
   const client = new PmClient({ pmRoot, author: 'kill-test', noExtensions: true }); await client.init('sample');
-  const plan = planBeadsTransfer('{"id":"a","title":"A","dependencies":["b"]}\n{"id":"b","title":"B"}', ['a'], 'kill-test', { chunkSize: 1 });
+  const plan = planBeadsTransfer('{"id":"a","title":"A","dependencies":["b"]}\n{"id":"b","title":"B"}', ['a'], 'kill-test', await snapshotBeadsTransferSettings(pmRoot), { chunkSize: 1 });
   await writeFile(file, JSON.stringify(plan));
   const killed = spawnSync(process.execPath, [join(root, 'test', 'fixtures', 'transfer-kill.ts'), pmRoot, file], {
     cwd: dir, encoding: 'utf8', env: { ...process.env, PATH: '', GIT_CEILING_DIRECTORIES: tmpdir() },

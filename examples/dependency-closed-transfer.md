@@ -37,11 +37,12 @@ The SDK uses the same workflow without shelling out or requiring git:
 
 ```ts
 import {
-  planBeadsTransfer, applyBeadsTransfer, BeadsTransferRefusal,
+  planBeadsTransfer, snapshotBeadsTransferSettings, applyBeadsTransfer, BeadsTransferRefusal,
 } from 'pm-beads';
 
 try {
-  const plan = planBeadsTransfer(jsonl, ['bd-root'], 'team', { chunkSize: 1 });
+  const settings = await snapshotBeadsTransferSettings(pmRoot);
+  const plan = planBeadsTransfer(jsonl, ['bd-root'], 'team', settings, { chunkSize: 1 });
   const receipt = await applyBeadsTransfer(pmRoot, plan, 'transfer-agent', {
     maxChunks: 2,
   });
@@ -59,7 +60,7 @@ new exchange, rather than updating the earlier one. This workflow creates rows;
 use acknowledged reconciliation to merge changes to existing rows. Mutable
 `bead_id` provenance is never proof of ownership. Foreign occupied ids and their
 unavailable dependents are preserved and skipped with explicit reasons. Resume
-counts describe recorded completion, including work committed by another drainer.
+counts include peer completions while their pinned documents still match.
 
 Chunks preserve completed creations on error and use the SDK's journal for
 recovery. After an actual process kill the abandoned SDK lease can take 30 seconds
@@ -67,5 +68,20 @@ to expire; a `busy` refusal means retry the same plan. The SDK `lockWaitMs` opti
 can wait for that expiry (up to 60 seconds). Keep chunks within the coordinator's
 lease lifetime. Optional SDK `onTransition` and `onRowTransition` observers run
 under that lease; do not await another drainer from them. They support bounded
-diagnostics and deliberate interruption, without adding a second transaction
-engine or checkpoint store.
+diagnostics and deliberate interruption at `before_create`, `created_unrecorded`
+and `after_create`. The last boundary follows durable recording of the exact
+created item ID and document hash.
+
+The plan snapshots creation settings (including prefix, ID generation, schema,
+validation and governance), template hashes and saved focus. Changing these before
+apply or while rows remain uncreated returns `plan_settings_changed`; restore the
+original settings before resuming. Fully created exchanges can replay after
+settings change because every item is already pinned. Keep the identity ledger
+at `transactions/beads-transfer/<digest>.json` alongside the plan and SDK journals.
+Each source row records `pmId` before create and `itemHash` immediately afterward;
+resume never recomputes it from live settings. Missing or corrupt ledgers refuse
+with `invalid_journal`. Edited or deleted pinned items report `item_changed` skips,
+including on completed-chunk replay, and are never recreated. An interrupted
+create-to-ledger gap can recover only an unchanged, history-verified creation at
+the recorded ID. Saved-plan validation preserves already normalized descriptions
+verbatim, including marker-like text, rather than stripping provenance again.
