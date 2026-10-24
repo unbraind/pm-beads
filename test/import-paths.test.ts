@@ -267,7 +267,7 @@ test("a strict-type rejection on update retries once without --type and preserve
 test("a failed update counts the record as skipped and still resolves other records' edges to it", async () => {
   const ext = await harness();
   const s = stubScenario({
-    listEnvelope: envelope([EXISTING_MARKER_ITEM]),
+    listEnvelope: envelope([{ ...EXISTING_MARKER_ITEM, bead_id: "bd-1" }]),
     update: { fail: true },
   });
   try {
@@ -281,6 +281,7 @@ test("a failed update counts the record as skipped and still resolves other reco
       options: { upsert: true },
       pmRoot: join(s.dir, "ws"),
     });
+    assert.ok(s.logLines().some(argv => argv.includes("update") && argv.includes("--title") && argv.includes("Broken")), "the structured item reaches the failing update transport");
     assert.equal(result.updated, 0);
     assert.equal(result.skipped, 1);
     const depArgs = s.logLines().find((argv) => argv.includes("--dep"))!;
