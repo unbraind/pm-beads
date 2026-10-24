@@ -498,7 +498,11 @@ Each chunk uses the core SDK workspace writer lease and durable journal. Reads
 that select mutations occur inside that lease; the core releases it after
 journal persistence. Immutable create-history messages establish row ownership.
 Foreign ids, missing/corrupt foreign histories, and unavailable foreign blockers
-are skipped with reasons. No transfer recovery deletes, closes, restores or
+are skipped with reasons, including deleted ids reserved by retained history.
+The full recorded row receipts are the `results` maps in the receiving tracker's
+`transactions/sdk/beads-transfer-<digest>-<chunk>.json` journals (chunk numbers
+start at zero); inspect them when the summary reports omitted rows.
+No transfer recovery deletes, closes, restores or
 rewrites a record. Already created rows remain valid progress when a chunk fails,
 and the same plan resumes them without duplicating items. Competing drainers
 report the same recorded completion, including a peer's success. After an abrupt

@@ -151,11 +151,12 @@ export function beadsTransferItemId(plan: BeadsTransferPlan, id: string, prefix:
 function ownershipMarker(plan: BeadsTransferPlan, id: string): string { return `beads-transfer:${plan.digest}:${hash(id)}`; }
 /** Inspect only the selected deterministic identity; foreign or missing history never confers ownership. */
 async function ownership(pmRoot: string, plan: BeadsTransferPlan, id: string, pmId: string): Promise<"missing" | "owned" | "foreign"> {
-  if (!await locateItem(pmRoot, pmId)) return "missing";
   try {
+    const item = await locateItem(pmRoot, pmId);
     const history = await readHistorySnapshot(getHistoryPath(pmRoot, pmId), pmId);
-    const first = history.entries[0];
-    return first?.op === "create" && first.message === ownershipMarker(plan, id) ? "owned" : "foreign";
+    if (!item) return history.entries.length ? "foreign" : "missing";
+    const creation = history.entries.filter(entry => entry.op === "create").at(-1);
+    return creation?.message === ownershipMarker(plan, id) ? "owned" : "foreign";
   } catch { return "foreign"; }
 }
 /** Convert canonical fields to SDK lifecycle options; edges point only to earlier owned creations. */
@@ -199,7 +200,7 @@ function transferSteps(pmRoot: string, plan: BeadsTransferPlan, rows: SnapshotRe
           throw error;
         }
         await options.onRowTransition?.({ phase: "after_create", id: row.id, pmId });
-        return (await inspect()).result ?? { id: row.id, pmId, outcome: "skipped", reason: "dependency_unavailable" };
+        return (await inspect()).result;
       },
       // A transfer intentionally preserves completed creations as resumable progress.
       // Compensation never deletes, closes or restores an item another writer may have edited.

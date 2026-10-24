@@ -226,3 +226,20 @@ test('disappearing creations are reported as skipped and command handler propaga
     assert.equal(refusal.code, 'invalid_input');
   } finally { process.exitCode = exit; }
 });
+
+test('foreign tombstoned identities remain reserved and skip without attempting to recreate them', async t => {
+  const { pmRoot, client } = await fixture(t);
+  const p = plan('foreign-reserved', 3);
+  const { id_prefix } = await readSettings(pmRoot);
+  const pmId = beadsTransferItemId(p, 'b', id_prefix);
+  await client.create({ id: pmId, title: 'Foreign original' });
+  await client.delete(pmId, { force: true });
+  const history = await readFile(getHistoryPath(pmRoot, pmId), 'utf8');
+  const result = await applyBeadsTransfer(pmRoot, p, 'test');
+  assert.equal(result.skipped, 2); assert.equal(result.transferred, 1);
+  assert.equal(result.rows.find(r => r.id === 'b')!.reason, 'foreign_record');
+  assert.equal(result.rows.find(r => r.id === 'a')!.reason, 'dependency_unavailable');
+  assert.equal(await readFile(getHistoryPath(pmRoot, pmId), 'utf8'), history);
+  const replay = await applyBeadsTransfer(pmRoot, p, 'peer');
+  assert.equal(replay.skipped, 2);
+});
