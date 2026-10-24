@@ -1614,7 +1614,8 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
           if (priority) updArgs.push("--priority", priority);
           if (tags) updArgs.push("--tags", tags); // --tags replaces; idempotent re-import
           appendPlanningArgs(updArgs, item);
-          updArgs.push("--bead-id", beadId ?? "");
+          // A matched upsert necessarily has the normalized source id used by the index.
+          updArgs.push("--bead-id", beadId!);
           let result = await mutateImportedItem(updArgs, pmRoot, description, opts.author);
           // `pm create` maps synonym types (bug -> Issue, story -> Feature, ...)
           // through its fallback table, but `pm update` validates types strictly.

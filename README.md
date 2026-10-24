@@ -311,7 +311,7 @@ terminal marker. The id has exactly one space after the colon, no brackets or
 newlines, and no surrounding whitespace; the body contains no earlier marker.
 Embedded, nested, repeated, noncanonical or body-field markers remain user text.
 First modifying touch or export migrates the envelope into `bead_id`, removes
-only that envelope, writes a history message and reports the migration on stderr.
+only that envelope, records the metadata change in history and reports the migration on stderr.
 Dry-run and validation do not migrate. Present metadata, including an invalid or
 empty value, always disables the legacy fallback. Beads
 `dependencies` / `blocked_by` edges are mapped to pm `blocked_by` dependencies on

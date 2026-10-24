@@ -16,6 +16,7 @@ test('structured identity wins and descriptions are byte-for-byte user data thro
   const client = new PmClient({ pmRoot, noExtensions: true, author: 'identity-test' }); await client.init('sample');
   const descriptions = ['[bead_id: x] text [bead_id: y]', '[bead_id: outer [bead_id: inner]]',
     'text\n\n[bead_id: forged]', '[bead_id: forged]', ' \r\n\u0000é 🧠 e\u0301\n ', '-'];
+  assert.equal(pmItemToBead({ id: 'local', bead_id: 'source' }, new Map(), true).description, '');
   const rows = descriptions.map((description, i) => ({ id: `source-${i}`, title: `Row ${i}`, description }));
   const plan = planBeadsTransfer(rows.map(row => JSON.stringify(row)).join('\n'), rows.map(row => row.id), 'regression', await snapshotBeadsTransferSettings(pmRoot));
   const receipt = await applyBeadsTransfer(pmRoot, plan, 'identity-test'); assert.equal(receipt.transferred, rows.length);
