@@ -1324,19 +1324,20 @@ export async function assertBeadsImportable(filePath: string, pmRoot?: string): 
   );
 }
 
-/** Use the SDK for values argv cannot transport literally; ordinary child behavior stays unchanged. */
-async function mutateImportedItem(args: string[], pmRoot: string, description: string, author: string) {
-  if (!description.includes("\0") && description.trim() !== "-") return spawnSync("pm", args, { encoding: "utf-8" });
+/** Reuse local SDK mutations; retain the CLI transport when no initialized local tracker is available. */
+async function mutateImportedItem(args: string[], pmRoot: string, description: string | undefined, author: string) {
+  if (!existsSync(join(pmRoot, "settings.json"))) return spawnSync("pm", args, { encoding: "utf-8" });
   const start = args.findIndex(token => token === "create" || token === "update");
   const command = args[start] === "create" ? "create" : "update";
-  const options: PmClientFullMutationOptions = { description };
+  const options: PmClientFullMutationOptions = description === undefined ? {} : { description };
   for (let i = start + (command === "create" ? 1 : 2); i < args.length; i++) {
     const flag = args[i];
     if (flag === "--no-extensions") continue;
+    const key = flag.slice(2).replace(/-([a-z])/g, (_match, letter: string) => letter.toUpperCase());
+    if (flag === "--clear-deps" || flag === "--replace-deps") { options[key] = true; continue; }
     const value = args[++i];
     if (flag === "--description") continue;
-    const key = flag.slice(2).replace(/-([a-z])/g, (_match, letter: string) => letter.toUpperCase());
-    if (flag === "--unset") options.unset = [...(options.unset as string[] | undefined ?? []), value];
+    if (flag === "--unset" || flag === "--dep") options[key] = [...(options[key] as string[] | undefined ?? []), value];
     else options[key] = value;
   }
   preserveMutationStdinTokenFields(options, ["description"]);
@@ -1721,15 +1722,14 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
         if (resolvedBlockers.length === 0) {
           depArgs.splice(depArgs.indexOf("--replace-deps"), 1, "--clear-deps");
         }
-        const dep = spawnSync("pm", depArgs, { encoding: "utf-8" });
+        const dep = await mutateImportedItem(depArgs, pmRoot, undefined, opts.author);
         if (dep.status === 0) edges += resolvedBlockers.length;
         else console.error(`  dep replace failed: ${entry.pmId}: ${dep.stderr?.trim()}`);
       } else {
         for (const b of resolvedBlockers) {
-          const dep = spawnSync(
-            "pm",
+          const dep = await mutateImportedItem(
             ["--path", pmRoot, "update", entry.pmId, "--no-extensions", "--author", opts.author, "--dep", sourceDependency(b.pm!, opts.author)],
-            { encoding: "utf-8" },
+            pmRoot, undefined, opts.author,
           );
           if (dep.status === 0) edges++;
           else console.error(`  dep failed: ${entry.pmId} -> ${b.pm}: ${dep.stderr?.trim()}`);
@@ -1738,10 +1738,9 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
 
       const parentId = resolveParentId(entry.bead.parent, beadToPm);
       if (parentId) {
-        const parent = spawnSync(
-          "pm",
+        const parent = await mutateImportedItem(
           ["--path", pmRoot, "update", entry.pmId, "--no-extensions", "--author", opts.author, "--parent", parentId],
-          { encoding: "utf-8" },
+          pmRoot, undefined, opts.author,
         );
         if (parent.status === 0) parents++;
         else console.error(`  parent failed: ${entry.pmId} -> ${parentId}: ${parent.stderr?.trim()}`);

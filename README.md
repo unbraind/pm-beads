@@ -302,8 +302,8 @@ registered `bead_id` string field using the pm SDK schema registry. Descriptions
 are stored and exported byte-for-byte, including whitespace and marker-like text.
 The field supplies export ids and upsert keys independently of descriptions.
 Identity opt-out and id-less imports persist an empty field to disable legacy
-fallback for new user text. NUL and literal-dash descriptions use public SDK
-mutations with the literal-field policy; no stdin newline normalization is applied.
+fallback for new user text. Initialized local imports use public SDK mutations with the literal-field policy,
+preserving NUL, literal dashes and CRLF without stdin newline normalization.
 
 For legacy items only, an absent `bead_id` permits the exact historical envelope:
 `[bead_id: ID]` alone or a trimmed body followed by two LF newlines and that
