@@ -4,8 +4,8 @@
 
 ### Added
 
-- Reconcile Beads snapshots against an acknowledged base and live tracker ([pm-beads-i59r](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/features/pm-beads-i59r.toon))
 - Preserve opted-in Beads extensions with versioned sidecars and explicit loss reports ([pm-beads-je7c](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/features/pm-beads-je7c.toon))
+- Reconcile Beads snapshots against an acknowledged base and live tracker ([pm-beads-i59r](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/features/pm-beads-i59r.toon))
 
 ## 2026.10.23 - 2026-10-23
 

@@ -6,9 +6,9 @@ status: closed
 priority: 2
 tags: []
 created_at: "2026-10-21T20:31:04.869Z"
-updated_at: "2026-10-24T21:43:40.343Z"
+updated_at: "2026-10-24T23:09:20.246Z"
 closed_at: "2026-10-24T21:43:40.333Z"
-completed_at: "2026-10-24T21:43:40.333Z"
+completed_at: "2026-10-22T21:43:33.000Z"
 author: codex-agent
 resolution: "Reconciles snapshots against acknowledged bases and live tracker state, preserving concurrent edits with real-tracker conflict/recovery regressions."
 expected_result: "Acceptance: concurrent local and external edits conflict deterministically; external omissions only propose deletion and never delete by default; stale-base application refuses. Deliver typed SDK and CLI, compact TOON/JSON reports, typed remedies, README/example, non-git public tracker validation and npm/Bun CI release gates."
