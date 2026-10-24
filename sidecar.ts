@@ -302,7 +302,7 @@ async function input(file: string): Promise<string> {
   }
 }
 /** Resolve the output's existing parent and refuse aliases of either input before any write. */
-async function distinctOutput(destination: string, sources: string[]): Promise<string> {
+export async function distinctOutput(destination: string, sources: string[]): Promise<string> {
   try {
     const output = resolve(await realpath(dirname(destination)), basename(destination));
     const existing = await lstat(output).catch((error: NodeJS.ErrnoException) => {
