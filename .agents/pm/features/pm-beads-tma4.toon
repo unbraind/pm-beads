@@ -6,10 +6,12 @@ status: in_progress
 priority: 2
 tags[1]: "gh:unbraind/pm-beads#165"
 created_at: "2026-10-24T11:13:36.736Z"
-updated_at: "2026-10-24T15:48:19.677Z"
+updated_at: "2026-10-24T17:03:01.005Z"
+assignee: codex-agent
+claim_principal: codex-agent
 author: codex-agent
 acceptance_criteria: "A killed transfer resumes without duplicates; A late cross-chunk dependency is resolved without dangling edges; Exceeding closure limits yields an explicit omission or refusal receipt; Concurrent drainers inspect and mutate state under the SDK writer lease; foreign records are skipped with reasons; all transition boundaries have interleaving tests on one non-git tracker; Typed SDK and CLI, bounded TOON/JSON receipts, README and example, public tracker copy measurements, and npm plus Bun CI release gates"
-comments[25]{created_at,author,text}:
+comments[31]{created_at,author,text}:
   "2026-10-24T11:13:52.625Z",codex-agent,"Overlap audit: registry confirms CLI 2026.10.24; this package retains its 2026.10.20 SDK pin. Existing Beads validation handles structural errors, cycles and aliases; existing import batches delegate core mutations. Core SDK exports commitItemMutations and commitWorkspaceTransaction with resumable journals; pm-context provides bounded neighborhood/delta packs, not a transfer ledger. Add only closure planning, immutable transfer identities and per-chunk receipts around those public coordinators. Use non-git trackers and deterministic interleaving at every package/coordinator transition."
   "2026-10-24T11:20:04.804Z",codex-agent,"Design refinement: dependency-first creation includes parent closure, so every published edge targets an earlier owned row even when its source record appears later or crosses chunks. The SDK transaction journal itself is the per-chunk checkpoint; no second mutable checkpoint store. Ownership comes from immutable create history, not copied bead_id markers. Skip foreign identities and their unavailable dependents, preserve peer edits, and never delete or close progress during compensation. The pinned bulk-create helper adopts any occupied id, so ownership-aware steps use commitWorkspaceTransaction plus PmClient.create instead."
   "2026-10-24T11:29:18.808Z",codex-agent,"Verification: linked command node --test test/transfer.test.ts test/transfer-cli.test.ts passed 11/11, zero skips, including an actual SIGKILL after durable creation and recovery after the SDK lease TTL. Same-tracker interleavings cover all 9 forward coordinator boundaries, all 8 compensation boundaries, both create boundaries and competing drainers before acquisition. New transfer module targeted V8 coverage: 100% lines/branches/functions. Existing smoke and flag tests: 117/117. Typecheck, test typecheck and docstring lint pass; this repository has no separate lint script."
@@ -35,15 +37,26 @@ comments[25]{created_at,author,text}:
   "2026-10-24T15:42:34.104Z",codex-agent,"Round 2 round-trip behavioral revert proof: reverted only toBead and validateBeadsTransferPlan to the previous second-pass description normalization, adapting solely the new settings argument. Identity journal fix and tests retained. Rebuild succeeds. node --test --test-name-pattern=\"plan round-trip\" test/transfer-properties.test.ts fails 0/2 with invalid_plan on generated saved plans (512 rows per seed, 23404582 and 12648430). Restored transfer.ts byte-for-byte at SHA256 e1ef620031118265e25b2c18f5cdfd91c482ad26e4cc21d274f6059c9e6f932e and rebuilt."
   "2026-10-24T15:43:54.219Z",codex-agent,"Round 2 verification: pm test --run --only-last --progress ran node --test test/transfer-properties.test.ts test/ambient-defaults.test.ts test/transfer.test.ts test/transfer-cli.test.ts test/reconcile.test.ts test/reconcile-cli.test.ts test/import-paths.test.ts; 106/106 pass, zero failures/skips/cancellations/todos. Includes actual SIGKILL recovery, 24 every-row interruption cases (three rows, four settings, chunk sizes 1 and 3), creation-to-ledger interruption, bootstrap and missing/corrupt ledger cases, edited/deleted pinned item replay, and two seeds 23404582/12648430 with 512 adversarial rows each (1024 total). Local transfer.ts V8 coverage is 100% lines/branches/functions. Typecheck, build, build:test, docstring lint (91 declarations across 12 sources) and whitespace checks pass; no separate lint script exists. Full unchanged npm and Bun release gates on Node 22 and 26 remain required CI evidence after push. Existing project policy disables linked-test result persistence; this comment retains the counts."
   "2026-10-24T15:48:19.677Z",codex-agent,"Round 2 full release evidence on implementation head 4c9fc77d1c1ee898f2fb8b7dc8ec5c0a1bfc1a05: CI https://github.com/unbraind/pm-beads/actions/runs/40108341218 passes npm run release:check and bun run release:check on both Node 22 and Node 26. Every gate passes 464/464 tests, zero failures/skips/cancellations/todos, 100% measured lines/branches/functions across all 12 declared sources, and docstring lint 91/91 declarations. Four gates total 1856 test executions; unchanged scope and thresholds. Fresh tracker health, audit, packing, changelog, release attestation and Bun dependency-graph installation pass. CodeQL https://github.com/unbraind/pm-beads/actions/runs/40108341231 passes. No new pm CLI/SDK defect found; pre-existing installer drift remains on pm-beads-v9r1. Claim is released, item stays in_progress for orchestrator verification, and no merge or release is performed. This evidence-only tracker commit will receive its own exact-head CI run."
-files[15]{path,scope}:
+  "2026-10-24T16:38:39.559Z",codex-agent,"Round 3: pulled remote head 6806409; origin/main is already contained. Replacing in-band source identity with registered bead_id metadata across transfer, import, export and reconciliation. Preserve source descriptions verbatim; recognize only the historical exact terminal marker when structured identity is absent and report first-touch migration. Extend both seeded 512-row cases through transfer, export and upsert, with independent behavioral revert proofs."
+  "2026-10-24T16:44:26.059Z",codex-agent,"Implementation now uses registered bead_id metadata for transfer/import/reconciliation and structured export/upsert matching. Legacy decoding is limited to the exact old terminal envelope, disabled whenever metadata is present; migration removes only that envelope and reports via stderr plus history. New full-pipeline tests exposed an existing argv transport gap for NUL descriptions; importer now sends descriptions through the host stdin contract to preserve arbitrary bytes. Focused transfer/identity tests passed; updating legacy-format expectations and validating the two 512-row seeds."
+  "2026-10-24T16:50:29.515Z",codex-agent,"Round 3 behavioral revert proofs (each changed function reverted alone, then restored): (1) reverted transfer createOptions to marker-based descriptions; node --test --test-name-pattern=\"structured identity wins\" test/identity.test.ts failed 0/1 because bead_id was absent. (2) restored broad legacy scanning in legacyBeadIdentity; node --test --test-name-pattern=\"legacy fallback\" test/identity.test.ts failed 0/1 on an embedded marker. Separately disabling first-touch migration failed the same test 0/1. (3) reverted only pmItemToBead to ignore structured identity; node --test --test-name-pattern=\"seed 23404582\" test/transfer-properties.test.ts failed 0/1 after transferring/exporting 512 rows, proving the pipeline catches an incorrect exported id. All changes restored; identity tests passed 3/3 before additional opt-out/error coverage was added. No thresholds changed."
+  "2026-10-24T16:50:35.273Z",codex-agent,"Transport correction: the host stdin contract normalizes CRLF, so NUL and literal-dash descriptions now use public SDK mutations with preserveMutationStdinTokenFields; normal argv mutations preserve their existing behavior. An empty bead_id is persisted for identity opt-out and id-less imports, preventing new user-authored suffixes from being mistaken for legacy identity. Reconciliation migration disables unrelated extensions and refreshes the returned metadata after mutation."
+  "2026-10-24T17:00:07.788Z",codex-agent,"Focused verification: node --test test/identity.test.ts executed through pm test --run --only-last --progress passes 5/5, zero failures/skips/cancellations/todos. Tests cover structured identity, exact legacy parsing and one-time reported migration, real import/export/upsert with NUL/CRLF/whitespace/literal dash, SDK validation/type fallback, and identity opt-out. Typecheck, test typecheck, docstring lint and whitespace checks pass. Full unchanged coverage and npm/Bun release evidence remain in progress. Local health retains existing installer fence drift and extension host/package version skew; no history repair or unrelated configuration change is applied."
+  "2026-10-24T17:03:01.005Z",codex-agent,"Broader restored-source verification: node --test --experimental-test-coverage --test-coverage-include=identity.ts --test-coverage-include=index.ts --test-coverage-include=reconcile.ts --test-coverage-include=transfer.ts test/identity.test.ts test/import-paths.test.ts test/export-diff-paths.test.ts test/helper-truth-tables.test.ts test/ambient-defaults.test.ts test/smoke.test.ts test/transfer.test.ts test/reconcile.test.ts passes 257/257, zero failures/skips/cancellations/todos. Diagnostic coverage is 100% lines/branches/functions for identity.ts and reconciliation, and every newly introduced index.ts identity/transport branch is covered. This focused scope is not full-gate evidence; the unchanged full suite remains required on npm and Bun in CI. The seeded full pipeline retains two seeds with 512 rows each in a single receiving tracker per seed."
+files[20]{path,scope}:
   .github/workflows/ci.yml,project
+  identity.ts,project
   index.ts,project
   mutation.ts,project
   package.json,project
   reconcile.ts,project
   sidecar.ts,project
   test/ambient-defaults.test.ts,project
+  test/export-diff-paths.test.ts,project
+  test/fixtures/stub-pm.ts,project
   test/fixtures/transfer-kill.ts,project
+  test/helper-truth-tables.test.ts,project
+  test/identity.test.ts,project
   test/import-paths.test.ts,project
   test/public-transfer-validation.ts,project
   test/smoke.test.ts,project
@@ -51,11 +64,43 @@ files[15]{path,scope}:
   test/transfer-properties.test.ts,project
   test/transfer.test.ts,project
   transfer.ts,project
-tests[4]{command,scope,provenance{author,created_at,source_kind,source_ref}}:
-  node --test test/transfer.test.ts test/transfer-cli.test.ts,project,codex-agent,"2026-10-24T11:27:47.324Z",local_mutation,feat/dependency-closed-resumable-transfer
-  node --test test/ambient-defaults.test.ts test/transfer.test.ts test/transfer-cli.test.ts test/reconcile.test.ts test/reconcile-cli.test.ts test/import-paths.test.ts,project,codex-agent,"2026-10-24T13:03:36.000Z",local_mutation,feat/dependency-closed-resumable-transfer
-  node --test test/smoke.test.ts test/flag-declarations.test.ts,project,codex-agent,"2026-10-24T13:34:11.549Z",local_mutation,feat/dependency-closed-resumable-transfer
-  node --test test/transfer-properties.test.ts test/ambient-defaults.test.ts test/transfer.test.ts test/transfer-cli.test.ts test/reconcile.test.ts test/reconcile-cli.test.ts test/import-paths.test.ts,project,codex-agent,"2026-10-24T15:42:36.320Z",local_mutation,feat/dependency-closed-resumable-transfer
+tests[5]:
+  - command: node --test test/transfer.test.ts test/transfer-cli.test.ts
+    scope: project
+    provenance:
+      author: codex-agent
+      created_at: "2026-10-24T11:27:47.324Z"
+      source_kind: local_mutation
+      source_ref: feat/dependency-closed-resumable-transfer
+  - command: node --test test/ambient-defaults.test.ts test/transfer.test.ts test/transfer-cli.test.ts test/reconcile.test.ts test/reconcile-cli.test.ts test/import-paths.test.ts
+    scope: project
+    provenance:
+      author: codex-agent
+      created_at: "2026-10-24T13:03:36.000Z"
+      source_kind: local_mutation
+      source_ref: feat/dependency-closed-resumable-transfer
+  - command: node --test test/smoke.test.ts test/flag-declarations.test.ts
+    scope: project
+    provenance:
+      author: codex-agent
+      created_at: "2026-10-24T13:34:11.549Z"
+      source_kind: local_mutation
+      source_ref: feat/dependency-closed-resumable-transfer
+  - command: node --test test/transfer-properties.test.ts test/ambient-defaults.test.ts test/transfer.test.ts test/transfer-cli.test.ts test/reconcile.test.ts test/reconcile-cli.test.ts test/import-paths.test.ts
+    scope: project
+    provenance:
+      author: codex-agent
+      created_at: "2026-10-24T15:42:36.320Z"
+      source_kind: local_mutation
+      source_ref: feat/dependency-closed-resumable-transfer
+  - command: node --test test/identity.test.ts
+    scope: project
+    timeout_seconds: 300
+    provenance:
+      author: codex-agent
+      created_at: "2026-10-24T16:50:47.292Z"
+      source_kind: local_mutation
+      source_ref: feat/dependency-closed-resumable-transfer
 docs[2]{path,scope}:
   examples/dependency-closed-transfer.md,project
   README.md,project

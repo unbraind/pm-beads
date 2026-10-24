@@ -151,9 +151,7 @@ located is skipped with a warning (never a hard failure). Opt out with
 
 Re-importing the same Beads file with `--upsert` updates the previously imported
 items instead of creating duplicates. Matching is keyed on the original Beads
-`id` — recovered from the `[bead_id: <id>]` provenance marker that round-trip
-already maintains (**not** on tags, which pm case-folds on storage, which would
-mangle mixed-case ids). On upsert, dependency edges are replaced atomically
+`id`, stored in the registered `bead_id` metadata field with its original case. On upsert, dependency edges are replaced atomically
 (`--replace-deps`) so repeated imports never accumulate duplicate edges, and a
 status that is already terminal (e.g. `closed`) is not re-sent (which would
 otherwise demand `--force`). Items imported with `--no-preserve-ids` have no
@@ -171,7 +169,7 @@ zero exit.
 
 By default the dangling-dependency check also cross-references the **current pm
 workspace**: a dependency that is not defined in the file but already exists in
-the workspace (from a prior import, matched on its `[bead_id]` provenance) is
+the workspace (from a prior import, matched on its `bead_id` metadata) is
 downgraded from an error to a `cross_workspace_dependency` warning, since it
 will resolve at import time. A dependency present in neither the file nor the
 workspace stays a hard error. The workspace is read via the SDK item-store
@@ -299,10 +297,23 @@ Beads diff: /abs/before.jsonl (A) → workspace (B)
 
 ## Round-trip: ids and dependencies
 
-`pm create` exposes no generic custom-field setter to standalone extensions, so
-on import the original Beads `id` is persisted in the item description behind a
-parseable marker (`[bead_id: <id>]`). On export the marker is read back and the
-native Beads id is re-emitted (and stripped from the description). Beads
+Imports, transfers and reconciliation persist the original Beads `id` in the
+registered `bead_id` string field using the pm SDK schema registry. Descriptions
+are stored and exported byte-for-byte, including whitespace and marker-like text.
+The field supplies export ids and upsert keys independently of descriptions.
+Identity opt-out and id-less imports persist an empty field to disable legacy
+fallback for new user text. NUL and literal-dash descriptions use public SDK
+mutations with the literal-field policy; no stdin newline normalization is applied.
+
+For legacy items only, an absent `bead_id` permits the exact historical envelope:
+`[bead_id: ID]` alone or a trimmed body followed by two LF newlines and that
+terminal marker. The id has exactly one space after the colon, no brackets or
+newlines, and no surrounding whitespace; the body contains no earlier marker.
+Embedded, nested, repeated, noncanonical or body-field markers remain user text.
+First modifying touch or export migrates the envelope into `bead_id`, removes
+only that envelope, writes a history message and reports the migration on stderr.
+Dry-run and validation do not migrate. Present metadata, including an invalid or
+empty value, always disables the legacy fallback. Beads
 `dependencies` / `blocked_by` edges are mapped to pm `blocked_by` dependencies on
 import and translated back to current Beads `dependencies`
 (`issue_id` / `depends_on_id`, `type: "blocks"`) on export, with upstream ids
@@ -347,7 +358,7 @@ pm beads reconcile --source team --apply-plan review.json --json
 
 Acknowledge once, after the baseline matches live items. When bootstrapping with
 an import, export the live tracker and acknowledge that export: import fills a
-missing or empty description with the title and normalizes defaults. A snapshot
+missing description with the title and normalizes defaults. A snapshot
 that already matches every supported live field can be acknowledged directly.
 Reuse the same source name for the same external tracker. The source
 owns a durable base under the tracker’s `beads/` directory; retain that directory
@@ -516,7 +527,9 @@ source row's exact `pmId` before create and its `itemHash` before `after_create`
 Resume uses only these recorded identities. Missing/corrupt ledgers refuse with
 `invalid_journal`. Edited or deleted items become `item_changed` skips, including
 when replaying committed chunks; they are never recreated or counted as current
-successful transfers. Normalized plan descriptions round-trip verbatim.
+successful transfers. Source descriptions round-trip verbatim. The package-owned
+`bead_id` registration is excluded from the ambient settings fingerprint; other
+creation settings remain guarded.
 
 Each chunk uses the core SDK workspace writer lease and durable journal. Reads
 that select mutations occur inside that lease; the core releases it after

@@ -83,5 +83,10 @@ resume never recomputes it from live settings. Missing or corrupt ledgers refuse
 with `invalid_journal`. Edited or deleted pinned items report `item_changed` skips,
 including on completed-chunk replay, and are never recreated. An interrupted
 create-to-ledger gap can recover only an unchanged, history-verified creation at
-the recorded ID. Saved-plan validation preserves already normalized descriptions
+the recorded ID. Saved-plan validation preserves source descriptions
 verbatim, including marker-like text, rather than stripping provenance again.
+
+Source Beads ids live in the registered `bead_id` metadata field. Descriptions
+remain verbatim, including marker-looking text. Legacy terminal envelopes are
+migrated only when metadata is absent, with a history message and stderr report;
+present metadata always disables legacy decoding.

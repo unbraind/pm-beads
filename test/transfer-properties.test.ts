@@ -4,6 +4,9 @@ import test from 'node:test';
 import { mkdtemp, readFile, writeFile, rm, mkdir, symlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { delimiter, resolve } from 'node:path';
+import { harness, runImport, runExport } from './helpers.ts';
+import type { BeadsItem } from '../index.ts';
 import { PmClient, WorkspaceTransactionInterruptedError, readSettings, locateItem } from '@unbrained/pm-cli/sdk';
 import {
   planBeadsTransfer, validateBeadsTransferPlan, snapshotBeadsTransferSettings, applyBeadsTransfer,
@@ -29,15 +32,16 @@ function changed(error: unknown): boolean {
 }
 
 for (const seed of [0x1652026, 0xc0ffee]) {
-  test(`plan round-trip is pure and byte-idempotent for 512 adversarial rows, seed ${seed}`, async t => {
-    const { pmRoot } = await receiver(t), next = random(seed);
+  test(`full transfer-export-upsert pipeline preserves 512 adversarial rows, seed ${seed}`, async t => {
+    const { pmRoot, client } = await receiver(t), next = random(seed);
     const fragments = ['', '[bead_id: x] text [bead_id: y]', '[bead_id: outer [bead_id: inner]]',
       '[bead_id:', '[bead_id: ] [bead_id: a]', 'é 🧠 中文 e\u0301 \u0000', 'line one\r\nline two\r\n',
-      'long'.repeat(4096), '[bead_id: x]\r\n[bead_id: y]\r\n[bead_id: z]'];
+      'long'.repeat(4096), '[bead_id: x]\r\n[bead_id: y]\r\n[bead_id: z]',
+      'legacy position\n\n[bead_id: conflicting]', '[bead_id: r0]', '  whitespace\n\n', '\r\n'];
     const rows = Array.from({ length: 512 }, (_, index) => ({ id: `r${index}`, title: `Row ${index}`,
       description: fragments[index % fragments.length] + (index < fragments.length ? "" : fragments[next() % fragments.length]),
-      tags: [`tag-${next() % 13}`, 'Unicode-é'], dependencies: index ? [`r${index - 1}`] : [] }));
-    const plan = planBeadsTransfer(rows.map(row => JSON.stringify(row)).join('\r\n'), ['r511'], `seed-${seed}`,
+      tags: [`tag-${next() % 13}`, 'Unicode-é'], dependencies: index && index % 64 === 0 ? [`r${index - 1}`] : [] }));
+    const plan = planBeadsTransfer(rows.map(row => JSON.stringify(row)).join('\r\n'), rows.map(row => row.id), `seed-${seed}`,
       await snapshotBeadsTransferSettings(pmRoot), { maxBytes: 16_777_216 });
     const saved = JSON.stringify(plan) + '\n', before = structuredClone(plan);
     const file = join(pmRoot, 'saved-plan.json'); await writeFile(file, saved);
@@ -48,6 +52,42 @@ for (const seed of [0x1652026, 0xc0ffee]) {
     assert.equal(JSON.stringify(validated) + '\n', saved);
     assert.equal(JSON.stringify(validateBeadsTransferPlan(JSON.parse(JSON.stringify(validated)) as BeadsTransferPlan)) + '\n', saved);
     assert.ok(validated.records.some(row => row.fields.description.includes('[bead_id: y]')));
+    const source = new Map(rows.map(row => [row.id, row]));
+    for (const row of validated.records) assert.equal(row.fields.description, source.get(row.id)!.description);
+    const receipt = await applyBeadsTransfer(pmRoot, validated, 'property-test', { maxChunks: 100 });
+    assert.equal(receipt.transferred, 512); assert.equal(receipt.skipped, 0); assert.equal(receipt.complete, true);
+    const originalIds = new Map(receipt.rows.map(row => [row.id, row.pmId]));
+    const ext = await harness(); t.after(() => ext.deactivate());
+    const oldPath = process.env.PATH;
+    process.env.PATH = resolve('node_modules/.bin') + delimiter + oldPath;
+    t.after(() => { process.env.PATH = oldPath; });
+    const output = join(pmRoot, 'export.jsonl');
+    await runExport(ext, { pmRoot, options: { output } });
+    const exported = (await readFile(output, 'utf8')).trimEnd().split('\n').map(line => JSON.parse(line) as BeadsItem);
+    assert.equal(exported.length, 512);
+    for (const row of exported) {
+      assert.ok(source.has(row.id!), `exported id ${row.id} must be a source id`);
+      assert.equal(row.id, `r${String(row.title).slice(4)}`);
+      assert.equal(row.description, source.get(row.id!)!.description);
+      row.title = `Upsert exactly ${row.id}`;
+    }
+    await writeFile(output, exported.map(row => JSON.stringify(row)).join('\n'));
+    const upsert = await runImport(ext, { pmRoot, args: [output], options: { upsert: true, 'no-preserve-timestamps': true } });
+    assert.equal(upsert.imported, 0); assert.equal(upsert.updated, 512); assert.equal(upsert.skipped, 0);
+    const after = (await client.listAllComplete()).items;
+    assert.equal(after.length, 512);
+    for (const item of after) {
+      const id = String(item.bead_id);
+      assert.equal(item.id, originalIds.get(id));
+      assert.equal(item.title, `Upsert exactly ${id}`);
+      assert.equal(item.description, source.get(id)!.description);
+    }
+    await runExport(ext, { pmRoot, options: { output } });
+    for (const line of (await readFile(output, 'utf8')).trimEnd().split('\n')) {
+      const row = JSON.parse(line) as BeadsItem;
+      assert.ok(source.has(row.id!)); assert.equal(row.description, source.get(row.id!)!.description);
+    }
+
   });
 }
 

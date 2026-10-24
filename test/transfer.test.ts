@@ -75,7 +75,7 @@ test('bounded drain resumes chunks without duplicates, resolves cross-chunk link
   await client.update(first.rows[0].pmId, { title: 'Later peer edit' });
   const items = (await client.listAllComplete()).items;
   assert.equal(items.length, 3); assert.equal((await client.get(first.rows[0].pmId)).item.title, 'Later peer edit');
-  const dependent = items.find(i => i.description?.includes('[bead_id: a]'))!;
+  const dependent = items.find(i => i.bead_id === 'a')!;
   assert.equal(dependent.parent, second.rows.find(r => r.id === 'c')!.pmId);
   assert.equal(dependent.dependencies![0].id, second.rows.find(r => r.id === 'b')!.pmId);
   assert.equal(dependent.priority, 1);

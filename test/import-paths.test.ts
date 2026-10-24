@@ -729,3 +729,20 @@ test("the legacy beads-import alias also falls back to the --file option", async
     s.restorePath();
   }
 });
+
+
+test("identity field registration failures stop before creating or updating source rows", async () => {
+  const ext = await harness();
+  try {
+    for (const stderr of ["registration refused", ""]) {
+      const scenario = stubScenario({ schemaFail: { stderr } });
+      try {
+        const file = scenario.jsonlPath("rows.jsonl");
+        writeFileSync(file, jsonl([{ id: "source", title: "Source" }]));
+        await assert.rejects(runImport(ext, { pmRoot: scenario.dir, args: [file], options: {} }),
+          new RegExp(stderr || "Could not register Beads identity field"));
+        assert.ok(!scenario.logLines().some(args => args.includes("create")));
+      } finally { scenario.restorePath(); }
+    }
+  } finally { await ext.deactivate(); }
+});

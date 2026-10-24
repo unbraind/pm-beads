@@ -437,3 +437,19 @@ test("diff treats absent raw args the same as empty ones", async () => {
     s.restorePath();
   }
 });
+
+
+test("legacy identity migration failures refuse export before serializing an unrecorded identity", async () => {
+  const ext = await harness();
+  try {
+    for (const stderr of ["migration refused", ""]) {
+      const scenario = stubScenario({ migrationFail: { stderr }, listEnvelope: envelope([
+        { id: "legacy-item", title: "Legacy", description: "[bead_id: source]" },
+      ]) });
+      try {
+        await assert.rejects(runExport(ext, { pmRoot: scenario.dir, options: { output: scenario.jsonlPath("out.jsonl") } }),
+          new RegExp(stderr || "Could not migrate legacy Beads identity"));
+      } finally { scenario.restorePath(); }
+    }
+  } finally { await ext.deactivate(); }
+});

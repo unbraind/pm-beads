@@ -3,16 +3,17 @@ import { createHash } from "node:crypto";
 import { readFile, readdir, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import {
-  PmClient, commitWorkspaceTransaction, getHistoryPath, readHistorySnapshot,
+  PmClient, preserveMutationStdinTokenFields, commitWorkspaceTransaction, getHistoryPath, readHistorySnapshot,
   locateItem, readLocatedItem, verifyHistoryEntries, normalizeItemId, readSettings, writeFileAtomic,
   type CommitWorkspaceTransactionOptions, type PmClientFullMutationOptions,
   type WorkspaceTransactionStep,
 } from "@unbrained/pm-cli/sdk";
 import type { CommandHandlerContext, ExtensionApi } from "@unbrained/pm-cli/sdk/authoring";
 import { CommandError } from "./contracts.ts";
-import { encodeBeadId, optionString, resolveImportInputFile, type BeadsItem } from "./index.ts";
+import { optionString, resolveImportInputFile, type BeadsItem } from "./index.ts";
 import { parseBeadsSnapshot, type SnapshotRecord } from "./reconcile.ts";
 import { distinctOutput } from "./sidecar.ts";
+import { ensureBeadIdentityField } from "./identity.ts";
 import { beadsMutationAuthor, sourceCreateOptions, sourceDependency } from "./mutation.ts";
 
 /** Hard ceilings keep saved plans and individual coordinator attempts bounded. */
@@ -197,7 +198,7 @@ export async function snapshotBeadsTransferSettings(pmRoot: string): Promise<Bea
   const s = await readSettings(pmRoot);
   const session = JSON.parse(await optionalFile(join(pmRoot, "runtime", "session.json")) || "{}") as { focused_item?: string };
   return { idPrefix: s.id_prefix,
-    configuration: stable({ ids: s.ids, item_format: s.item_format, item_types: s.item_types, schema: s.schema, governance: s.governance, validation: s.validation }),
+    configuration: stable({ ids: s.ids, item_format: s.item_format, item_types: s.item_types, schema: { ...s.schema, fields: s.schema.fields.filter(field => field.key !== "bead_id") }, governance: s.governance, validation: s.validation }),
     templates: await templateSnapshot(join(pmRoot, "templates")), focus: session.focused_item ?? "" };
 }
 /** Locate the package-owned ledger; SDK chunk journals remain owned by the public coordinator. */
@@ -250,7 +251,7 @@ async function ownership(pmRoot: string, plan: BeadsTransferPlan, id: string, pi
 function createOptions(row: SnapshotRecord, plan: BeadsTransferPlan, ids: Map<string, string>, author: string): PmClientFullMutationOptions {
   const f = row.fields;
   const options: PmClientFullMutationOptions = {
-    title: f.title, type: f.type, status: f.status, description: encodeBeadId(f.description, row.id),
+    title: f.title, type: f.type, status: f.status, description: f.description, beadId: row.id,
     message: ownershipMarker(plan, row.id), tags: f.tags,
     dep: (JSON.parse(f.dependencies) as string[]).map(id => sourceDependency(ids.get(id)!, author)),
   };
@@ -294,7 +295,7 @@ function transferSteps(pmRoot: string, plan: BeadsTransferPlan, rows: SnapshotRe
         }
         await options.onRowTransition?.({ phase: "before_create", id: row.id, pmId });
         await checkSettings(pmRoot, plan, journal);
-        try { await client.create({ ...createOptions(row, plan, ids, author), id: pmId }); }
+        try { await client.create(preserveMutationStdinTokenFields({ ...createOptions(row, plan, ids, author), id: pmId }, ["description"])); }
         catch (error) {
           const after = await inspect();
           if (after.state === "applied") return after.result;
@@ -323,6 +324,7 @@ export async function applyBeadsTransfer(pmRoot: string, input: BeadsTransferPla
   const lockWaitMs = boundedInteger(options.lockWaitMs ?? 3000, 60_000);
   await checkSettings(pmRoot, plan, await readJournal(pmRoot, plan));
   const client = new PmClient({ pmRoot, author, noExtensions: true });
+  await ensureBeadIdentityField(client);
   // A distinct committed bootstrap prevents a missing identity ledger from being
   // silently regenerated on replay. The bootstrap and chunks use the same lease.
   try {

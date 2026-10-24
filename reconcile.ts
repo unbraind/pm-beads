@@ -3,17 +3,18 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFile, mkdir, rm, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import {
-  PmClient, commitWorkspaceTransaction, getHistoryPath, readHistorySnapshot,
+  PmClient, preserveMutationStdinTokenFields, commitWorkspaceTransaction, getHistoryPath, readHistorySnapshot,
   writeFileAtomic, normalizeItemId, readSettings, parseTags, resolveTypeSynonym,
   type CommitWorkspaceTransactionOptions,
   type WorkspaceTransactionStep, type PmClientFullMutationOptions, type Dependency,
 } from "@unbrained/pm-cli/sdk";
 import type { ExtensionApi, CommandHandlerContext } from "@unbrained/pm-cli/sdk/authoring";
 import { beadsMutationAuthor, sourceCreateOptions, sourceDependency } from "./mutation.ts";
+import { ensureBeadIdentityField, migrateLegacyBeadIdentity } from "./identity.ts";
 import { CommandError, DIFF_FIELDS } from "./contracts.ts";
 import {
-  normalizeDiffField, extractBlockerIds, stripBeadIdMarker,
-  pmItemToBead, decodeBeadId, encodeBeadId, isEncodableBeadId, validateBeadsText,
+  normalizeDiffField, extractBlockerIds,
+  pmItemToBead, decodeBeadId, isEncodableBeadId, validateBeadsText,
   optionString, readBoolOption, resolveImportInputFile, type BeadsItem, type PmItem,
 } from "./index.ts";
 
@@ -88,7 +89,7 @@ export function canonicalBeadsRecord(bead: BeadsItem): SnapshotRecord {
   if (typeof id !== "string" || !isEncodableBeadId(id)) refuse("invalid_snapshot", "Give every record a stable, unique, encodable Beads id.");
   const fields = {} as SnapshotFields;
   for (const field of RECONCILE_FIELDS) {
-    if (field === "description") fields[field] = stripBeadIdMarker(bead.description);
+    if (field === "description") fields[field] = bead.description ?? "";
     else if (field === "sprint" || field === "release") fields[field] = String(bead[field] ?? "");
     else if (field === "dependencies") fields[field] = JSON.stringify([...new Set(extractBlockerIds(bead))].sort());
     else if (field === "tags") fields[field] = JSON.stringify(parseTags(JSON.stringify(bead.labels ?? bead.tags ?? [])));
@@ -237,9 +238,10 @@ async function sourceIdentities(pmRoot: string, source: string, records: readonl
   return translated;
 }
 /** Read the certified corpus and bind source aliases to core identities and history versions. */
-export async function readLiveBeadsSnapshot(pmRoot: string, source?: string, records: readonly SnapshotRecord[] = [], bindings: Readonly<Record<string, string>> = {}): Promise<LiveSnapshotRecord[]> {
-  const client = new PmClient({ pmRoot });
+export async function readLiveBeadsSnapshot(pmRoot: string, source?: string, records: readonly SnapshotRecord[] = [], bindings: Readonly<Record<string, string>> = {}, author?: string): Promise<LiveSnapshotRecord[]> {
+  const client = new PmClient({ pmRoot, noExtensions: true, author: beadsMutationAuthor(author) });
   const { items } = await client.listAllComplete();
+  for (const item of items) await migrateLegacyBeadIdentity(client, item);
   const translated = source === undefined
     ? new Map(items.map(item => [item.id, decodeBeadId(item as PmItem) ?? item.id]))
     : await sourceIdentities(pmRoot, source, records, bindings, items as PmItem[]);
@@ -287,7 +289,7 @@ export async function acknowledgeBeadsSnapshot(pmRoot: string, source: string, r
       if (migrating) {
         if (currentBase?.revision !== existing.revision) refuse("stale_base", "The legacy source advanced; re-read its baseline before adding bindings.");
       } else if (currentBase) refuse("base_exists", "Use reconcile against the existing base; choose another source only for a different tracker.");
-      const snapshot = await readLiveBeadsSnapshot(pmRoot, source, records, options.bindings);
+      const snapshot = await readLiveBeadsSnapshot(pmRoot, source, records, options.bindings, author);
       const live = new Map(snapshot.map(row => [row.id, row.fields]));
       bindings = Object.fromEntries(snapshot.filter(row => records.some(record => record.id === row.id)).map(row => [row.id, row.pmId]));
       if (records.some(row => {
@@ -323,7 +325,7 @@ function mutationOptions(row: SnapshotRecord, fields: ReconcileField[], ids: Map
   const options: PmClientFullMutationOptions = {};
   for (const field of fields) {
     const value = row.fields[field];
-    if (field === "description") options.description = encodeBeadId(value, row.id);
+    if (field === "description") options.description = value;
     else if (field === "dependencies") {
       const incoming = new Set((JSON.parse(value) as string[]).map(id => ids.get(id) ?? id));
       // Kind-scoped deltas retain local edge records and their original provenance.
@@ -354,7 +356,7 @@ export async function applyBeadsReconciliation(pmRoot: string, plan: BeadsReconc
   if (!base || base.revision !== plan.baseRevision) refuse("stale_base", "The acknowledged base advanced; preview again against the current base.");
   const live = plan.live;
   assertRecords(live);
-  const currentLive = await readLiveBeadsSnapshot(pmRoot, plan.source, [...base.records, ...plan.incoming], base.bindings);
+  const currentLive = await readLiveBeadsSnapshot(pmRoot, plan.source, [...base.records, ...plan.incoming], base.bindings, author);
   const transactionId = `beads-reconcile-${plan.digest}`;
   // A crashed attempt may already own some forward writes. Only exact latest
   // journal markers permit replay; unrelated edits still invalidate the plan.
@@ -376,6 +378,7 @@ export async function applyBeadsReconciliation(pmRoot: string, plan: BeadsReconc
   for (const change of plan.changes) if (change.kind === "create") ids.set(change.id, normalizeItemId(`beads-${digest([plan.source, change.id]).slice(0, 24)}`, settings.id_prefix));
   const rows = new Map(plan.incoming.map(row => [row.id, row]));
   const client = new PmClient({ pmRoot, author, noExtensions: true });
+  await ensureBeadIdentityField(client);
   // Create identities first, then update scalar fields, then link relationships.
   const operations = [
     ...plan.changes.filter(change => change.kind === "create").map(change => ({ ...change, fields: change.fields.filter(field => field !== "parent" && field !== "dependencies"), phase: "create" })),
@@ -411,10 +414,11 @@ export async function applyBeadsReconciliation(pmRoot: string, plan: BeadsReconc
         const options: PmClientFullMutationOptions = { ...mutationOptions(rows.get(change.id)!, fields, ids, dependencies, author), message: marker, author };
         if (change.kind === "create") {
           // New identities always carry provenance even when the source has no description.
-          options.description = encodeBeadId(rows.get(change.id)!.fields.description, change.id);
+          options.description = rows.get(change.id)!.fields.description;
+          options.beadId = change.id;
           delete options.unset;
-          await client.create(sourceCreateOptions({ ...options, id }, author));
-        } else await client.update(id, options);
+          await client.create(preserveMutationStdinTokenFields(sourceCreateOptions({ ...options, id }, author), ["description"]));
+        } else await client.update(id, preserveMutationStdinTokenFields(options, ["description"]));
         return id;
       },
       async compensate(target) {
@@ -446,7 +450,7 @@ export async function applyBeadsReconciliation(pmRoot: string, plan: BeadsReconc
       if (context.transition === "prepared") {
         const current = await readBeadsAcknowledgement(pmRoot, plan.source);
         if (current?.revision !== base.revision) refuse("stale_base", "The base advanced while waiting for the writer lock; preview again.");
-        if (digest(await readLiveBeadsSnapshot(pmRoot, plan.source, [...base.records, ...plan.incoming], base.bindings)) !== plan.trackerRevision) refuse("stale_tracker", "The tracker changed while waiting for the writer lock; preview again.");
+        if (digest(await readLiveBeadsSnapshot(pmRoot, plan.source, [...base.records, ...plan.incoming], base.bindings, author)) !== plan.trackerRevision) refuse("stale_tracker", "The tracker changed while waiting for the writer lock; preview again.");
       }
     },
   });

@@ -2161,16 +2161,11 @@ function assertLinearGrowth<TInput>(label: string, build: (size: number) => TInp
 /** The shape CodeQL names: the marker prefix, a long space run, no closing bracket. */
 const adversarialMarker = (size: number): string => "[bead_id: " + " ".repeat(size) + "!";
 
-test("a marker written with a newline or Unicode separator still decodes", () => {
-  // The original separator was `\s*`, so markers already written as
-  // `[bead_id:\nbd-42]` decode today. Narrowing to space-and-tab to bound the
-  // quantifier would have made those unreadable and lost the id they carry -
-  // a compatibility regression on data already on disk, which is worse than
-  // the alert it was closing. The separator is bounded whitespace instead, and
-  // the capture's leading non-space is what keeps the two disjoint.
-  assert.strictEqual(decodeBeadId({ description: "[bead_id:\nbd-42]" } as never), "bd-42");
-  assert.strictEqual(decodeBeadId({ description: "[bead_id:\u00a0bd-9]" } as never), "bd-9");
-  assert.strictEqual(decodeBeadId({ description: "[bead_id:bd-7]" } as never), "bd-7");
+test("noncanonical separators are user text and never decode as legacy identity", () => {
+  // Only the exact historical encoder spelling is a migration candidate.
+  assert.strictEqual(decodeBeadId({ description: "[bead_id:\nbd-42]" } as never), undefined);
+  assert.strictEqual(decodeBeadId({ description: "[bead_id:\u00a0bd-9]" } as never), undefined);
+  assert.strictEqual(decodeBeadId({ description: "[bead_id:bd-7]" } as never), undefined);
 });
 
 test("an id the marker cannot read back is refused rather than silently dropped", () => {
@@ -2206,26 +2201,18 @@ test("every BEAD_ID_MARKER call site stays linear on adversarial whitespace (pol
 });
 
 
-test("BEAD_ID_MARKER accepts multi-word ids and bounds leading spaces (behaviour pin)", () => {
-  // The capture `\S[^\]]*` allows spaces inside the id, restoring the
-  // permissive behaviour of the original `[^\]]+` (the intermediate
-  // `[^\]\s]+` narrowed the language and did NOT match multi-word ids —
-  // Greptile P1 / cubic P1: a Beads id with internal whitespace lost its
-  // persisted identity). `encodeBeadId` only writes single-token slugs, so this
-  // only affects externally-authored markers; pinned here so a future narrowing
-  // is caught.
+test("legacy envelopes retain exact multi-word ids and reject noncanonical spacing", () => {
+  // Internal spaces were written verbatim; delimiter and padding variations were not.
   assert.equal(decodeBeadId({ description: "[bead_id: multi word]" }), "multi word");
-  // A trailing space inside the brackets is captured then trimmed away.
-  assert.equal(decodeBeadId({ description: "[bead_id: abc ]" }), "abc");
+  // The old encoder did not write trailing padding or alternate delimiters.
+  assert.equal(decodeBeadId({ description: "[bead_id: abc ]" }), undefined);
   // The slug forms the exporter actually writes still round-trip unchanged.
   assert.equal(decodeBeadId({ description: "[bead_id: bd-42]" }), "bd-42");
-  assert.equal(decodeBeadId({ description: "[bead_id:bd-42]" }), "bd-42");
+  assert.equal(decodeBeadId({ description: "[bead_id:bd-42]" }), undefined);
   // A whitespace-only id is not a valid bead id and must not match.
   assert.equal(decodeBeadId({ description: "[bead_id:   ]" }), undefined);
-  // The separator is bounded to 64 space/tab chars: 64 leading spaces still
-  // match, 65 do not. `encodeBeadId` writes exactly one, so this only affects
-  // degenerate externally-authored markers.
-  assert.equal(decodeBeadId({ description: "[bead_id:" + " ".repeat(64) + "abc]" }), "abc");
+  // Only the one space written by the old encoder is accepted.
+  assert.equal(decodeBeadId({ description: "[bead_id:" + " ".repeat(64) + "abc]" }), undefined);
   assert.equal(decodeBeadId({ description: "[bead_id:" + " ".repeat(65) + "abc]" }), undefined);
   // The capture tail is bounded to 4096 chars after the first id char (4097 total):
   // a 4097-char id round-trips, a 5000-char id does not. Real Beads ids are short

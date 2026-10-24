@@ -10,7 +10,6 @@ import {
 } from "@unbrained/pm-cli/sdk";
 import { applyBeadsTransfer, beadsTransferItemId, planBeadsTransfer, snapshotBeadsTransferSettings } from "../transfer.ts";
 import { acknowledgeBeadsSnapshot, applyBeadsReconciliation, parseBeadsSnapshot, planBeadsReconciliation } from "../reconcile.ts";
-import { encodeBeadId } from "../index.ts";
 import { beadsMutationAuthor, sourceCreateOptions } from "../mutation.ts";
 import { harness, runCommand, runImport } from "./helpers.ts";
 
@@ -80,10 +79,12 @@ async function document(pmRoot: string, id: string): Promise<ItemDocument> {
 
 /** Expected minimal source-owned document, including the package's explicit provenance. */
 function expected(id: string, beadId: string, title: string, extra: Record<string, unknown> = {}): unknown {
-  return { metadata: {
-    id, title, description: encodeBeadId("", beadId), type: "Task", status: "open", priority: 2,
+  const document = { metadata: {
+    id, title, description: "", bead_id: beadId, type: "Task", status: "open", priority: 2,
     tags: [], created_at: "<time>", updated_at: "<time>", author: "source-agent", ...extra,
   }, body: "" };
+  if (document.metadata.bead_id === undefined) delete (document.metadata as Record<string, unknown>).bead_id;
+  return document;
 }
 
 test("mutation authors resolve explicit invocation, environment and package fallback in order", () => {
@@ -100,7 +101,7 @@ test("mutation authors resolve explicit invocation, environment and package fall
 test("source creation policy explicitly replaces every supported receiver fallback", async t => {
   const { pmRoot, client } = await receiver(t);
   const item = (await client.create(sourceCreateOptions({ title: "Policy", description: "[bead_id: policy]" }, "source-agent"))).item;
-  assert.deepEqual(stable(await document(pmRoot, item.id)), expected(item.id, "policy", "Policy"));
+  assert.deepEqual(stable(await document(pmRoot, item.id)), expected(item.id, "policy", "Policy", { bead_id: undefined, description: "[bead_id: policy]" }));
 });
 
 test("transfer ignores active focus, template tags/assignee and workflow defaults with exact full documents", async t => {
@@ -136,13 +137,13 @@ test("reconciliation create, update and links retain only source fields under am
   await applyBeadsReconciliation(pmRoot, await planBeadsReconciliation(pmRoot, "ambient-reconcile", rows), "source-agent", {
     async onTransition({ transition, stepId }) {
       if (transition === "step_applied" && stepId === "item-0") {
-        const created = (await client.listAllComplete()).items.find(item => item.description === "[bead_id: a]")!;
+        const created = (await client.listAllComplete()).items.find(item => item.bead_id === "a")!;
         assert.deepEqual(stable(await document(pmRoot, created.id)), expected(created.id, "a", "A"));
       }
     },
   });
   const all = (await client.listAllComplete()).items;
-  const a = all.find(item => item.description === "[bead_id: a]")!, b = all.find(item => item.description === "[bead_id: b]")!;
+  const a = all.find(item => item.bead_id === "a")!, b = all.find(item => item.bead_id === "b")!;
   assert.deepEqual(stable(await document(pmRoot, a.id)), expected(a.id, "a", "A"));
   const links = { parent: a.id, dependencies: [{ id: a.id, kind: "blocked_by", author: "source-agent", created_at: "<time>", author_source: "asserted", source_kind: "cli:update:dep" }] };
   assert.deepEqual(stable(await document(pmRoot, b.id)), expected(b.id, "b", "B", links));
@@ -165,16 +166,16 @@ test("legacy importer and alias pin author for create, upsert, links and close u
   await writeFile(file, '{"id":"a","title":"A"}\n{"id":"b","title":"B","parent":"a","dependencies":["a"],"status":"closed"}');
   assert.equal((await runImport(ext, { args: [file], options: { preserveTimestamps: false }, pmRoot, global: { author: "source-agent" } })).imported, 2);
   const all = (await client.listAllComplete()).items;
-  const a = all.find(item => item.description === "A\n\n[bead_id: a]")!, b = all.find(item => item.description === "B\n\n[bead_id: b]")!;
-  assert.deepEqual(stable(await document(pmRoot, a.id)), expected(a.id, "a", "A", { description: "A\n\n[bead_id: a]" }));
+  const a = all.find(item => item.bead_id === "a")!, b = all.find(item => item.bead_id === "b")!;
+  assert.deepEqual(stable(await document(pmRoot, a.id)), expected(a.id, "a", "A", { description: "A" }));
   const before = stable(await document(pmRoot, b.id));
   assert.deepEqual(before, expected(b.id, "b", "B", {
-    description: "B\n\n[bead_id: b]", status: "closed", close_reason: "Imported from Beads record b (source status: closed)",
+    description: "B", status: "closed", close_reason: "Imported from Beads record b (source status: closed)",
     closed_at: "<time>", completed_at: "<time>", parent: a.id,
     dependencies: [{ id: a.id, kind: "blocked_by", author: "source-agent", created_at: "<time>", author_source: "asserted", source_kind: "cli:update:dep" }],
   }));
   await runCommand(ext, { command: "beads-import", args: [file], options: { upsert: true, preserveTimestamps: false }, pmRoot, global: { author: "source-agent" } });
-  assert.deepEqual(stable(await document(pmRoot, a.id)), expected(a.id, "a", "A", { description: "A\n\n[bead_id: a]" }));
+  assert.deepEqual(stable(await document(pmRoot, a.id)), expected(a.id, "a", "A", { description: "A" }));
   assert.deepEqual(stable(await document(pmRoot, b.id)), before);
   for (const id of [a.id, b.id]) {
     const history = (await readFile(getHistoryPath(pmRoot, id), "utf8")).trim().split("\n").map(line => JSON.parse(line) as { author: string });
@@ -192,7 +193,7 @@ test("reconciliation compensation restores and closes with explicit author under
     if (transition === "step_applied" && stepId === "acknowledge") throw new Error("deliberate compensation");
   } }), /deliberate compensation/);
   assert.deepEqual(stable(await document(pmRoot, a)), expected(a, "a", "A"));
-  const b = (await client.listAllComplete()).items.find(item => item.description === "[bead_id: b]")!;
+  const b = (await client.listAllComplete()).items.find(item => item.bead_id === "b")!;
   assert.deepEqual(stable(await document(pmRoot, b.id)), expected(b.id, "b", "B", {
     status: "closed", close_reason: "Compensated interrupted Beads reconciliation", closed_at: "<time>", completed_at: "<time>",
   }));

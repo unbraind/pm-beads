@@ -71,9 +71,15 @@ function priorWhere(pred: (argv: string[]) => boolean) {
 const isCreateCall = (argv: string[]): boolean => resolveSubcommand(argv) === "create";
 const isTitleUpdate = (argv: string[]): boolean =>
   resolveSubcommand(argv) === "update" &&
+  argv.includes("--title") &&
   !argv.some((a) => ["--dep", "--parent", "--replace-deps", "--clear-deps"].includes(a));
 
 appendFileSync(logPath, `${JSON.stringify(args)}\n`);
+
+if (subcommand === "schema") {
+  if (scenario.schemaFail) { process.stderr.write(scenario.schemaFail.stderr); process.exit(1); }
+  process.stdout.write("{}\n"); process.exit(0);
+}
 
 if (subcommand === "list") {
   if (scenario.listFail) {
@@ -97,6 +103,11 @@ if (subcommand === "create") {
   const seq = priorWhere(isCreateCall) + 1;
   process.stdout.write(`${JSON.stringify({ id: create.idBase ? `${create.idBase}-${seq}` : `pm-stub-${seq}` })}\n`);
   process.exit(0);
+}
+
+if (subcommand === "update" && args.includes("--bead-id") && !args.includes("--title")) {
+  if (scenario.migrationFail) { process.stderr.write(scenario.migrationFail.stderr); process.exit(1); }
+  process.stdout.write("{}\n"); process.exit(0);
 }
 
 if (isTitleUpdate(args)) {
