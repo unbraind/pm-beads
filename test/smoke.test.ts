@@ -595,6 +595,10 @@ test("resolvePreserveTimestamps defaults on and honors negation", () => {
   assert.strictEqual(resolvePreserveTimestamps({ "no-preserve-timestamps": true }), false);
   assert.strictEqual(resolvePreserveTimestamps({ noPreserveTimestamps: true }), false);
   assert.strictEqual(resolvePreserveTimestamps({ preserveTimestamps: false }), false);
+  for (const spelling of ["preserveTimestamps", "preserve-timestamps"]) {
+    for (const value of [false, "false", "0"]) assert.strictEqual(resolvePreserveTimestamps({ [spelling]: value }), false);
+    for (const value of [true, "true", "1"]) assert.strictEqual(resolvePreserveTimestamps({ [spelling]: value }), true);
+  }
 });
 
 // --- Workspace dependency validation (feature 2) -----------------------------
