@@ -2,13 +2,18 @@ id: pm-beads-je7c
 title: Preserve opted-in Beads extensions with versioned sidecars and explicit loss reports
 description: "Acceptance: unknown nested fields survive import/export; conflicting native mappings refuse; size and privacy limits apply before mutation. Provide typed SDK and compact TOON/JSON command output, documentation and public-tracker copy validation without git."
 type: Feature
-status: in_progress
+status: closed
 priority: 2
 tags[1]: "gh:unbraind/pm-beads#163"
 created_at: "2026-10-23T19:31:11.967Z"
-updated_at: "2026-10-23T22:17:13.870Z"
+updated_at: "2026-10-24T21:43:40.257Z"
+closed_at: "2026-10-24T21:43:40.210Z"
+completed_at: "2026-10-24T21:43:40.210Z"
 author: codex-agent
 acceptance_criteria: Unknown nested fields survive import/export; Conflicting native mappings refuse; Size and privacy limits apply before mutation
+resolution: "Versioned opted-in sidecars preserve unknown nested extensions, reject native-field conflicts and enforce size/privacy limits before mutation."
+expected_result: Unknown nested fields survive import/export; Conflicting native mappings refuse; Size and privacy limits apply before mutation
+actual_result: "https://github.com/unbraind/pm-beads/pull/163, merged 2026-10-23T22:22:22Z, merge aced9a72a799b0f7b512febeb1999a69e5ab5ed9: Versioned opted-in sidecars preserve unknown nested extensions, reject native-field conflicts and enforce size/privacy limits before mutation."
 comments[36]{created_at,author,text}:
   "2026-10-23T19:31:43.910Z",codex-agent,"Overlap check against the current CLI and sibling packages: core extension custom fields provide schema-owned values; beads diff compares mapped fields, and snapshot reconciliation manages mapped fields and acknowledged bases. pm-csv owns tabular column mapping. None preserves explicitly selected opaque Beads extension objects. Design: portable schema-1 sidecar capture before ordinary import, restore after ordinary export, keyed by exact external ids. Reuse native import/export and SDK atomic file writing and host rendering; never duplicate tracker mutation, settings, locking or mappings. Reject native field selection and overlay collisions. Report every unselected extension occurrence as loss; enforce bounded JSON and privacy policy before any output write. Sidecars stay separate from tracker items and must travel with the JSONL snapshot."
   "2026-10-23T19:41:00.552Z",codex-agent,"Behavioral revert proof: disabling the restore overlay alone makes the nested-object round-trip regression fail (exit 1); disabling the native-selector guard alone makes the native-name refusal regression fail (exit 1). Restored both implementations afterward. Real compiled CLI native import/export preserved both synthetic nested extension fixtures and one dependency with no git executable available. Public-data validation archived origin/main d9b4152 into a non-git scratch tracker made read-only; all 97 public items read completely, 97 native exports, 97 synthetic nested extension fields restored, 97 deliberately unselected fields reported dropped. Source and copied tracker unchanged. Native JSONL 62639 bytes; sidecar 12087 bytes; restored JSONL 71166 bytes; compact JSON receipt 260 bytes. Native conflict, differing overlay, privacy and size refusals verified. These extension values are synthetic fixtures layered on public records, not claimed as naturally occurring source extensions."
@@ -137,4 +142,5 @@ docs[2]:
     note: Explicit native type and nullable-slot contract
   - path: README.md
     scope: project
+close_reason: "https://github.com/unbraind/pm-beads/pull/163, merged 2026-10-23T22:22:22Z, merge aced9a72a799b0f7b512febeb1999a69e5ab5ed9: Versioned opted-in sidecars preserve unknown nested extensions, reject native-field conflicts and enforce size/privacy limits before mutation."
 body: ""

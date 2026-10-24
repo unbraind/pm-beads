@@ -2,12 +2,17 @@ id: pm-beads-i59r
 title: Reconcile Beads snapshots against an acknowledged base and live tracker
 description: "Acceptance: concurrent local and external edits conflict deterministically; external omissions only propose deletion and never delete by default; stale-base application refuses. Deliver typed SDK and CLI, compact TOON/JSON reports, typed remedies, README/example, non-git public tracker validation and npm/Bun CI release gates."
 type: Feature
-status: in_progress
+status: closed
 priority: 2
 tags: []
 created_at: "2026-10-21T20:31:04.869Z"
-updated_at: "2026-10-22T21:36:42.232Z"
+updated_at: "2026-10-24T21:43:40.343Z"
+closed_at: "2026-10-24T21:43:40.333Z"
+completed_at: "2026-10-24T21:43:40.333Z"
 author: codex-agent
+resolution: "Reconciles snapshots against acknowledged bases and live tracker state, preserving concurrent edits with real-tracker conflict/recovery regressions."
+expected_result: "Acceptance: concurrent local and external edits conflict deterministically; external omissions only propose deletion and never delete by default; stale-base application refuses. Deliver typed SDK and CLI, compact TOON/JSON reports, typed remedies, README/example, non-git public tracker validation and npm/Bun CI release gates."
+actual_result: "https://github.com/unbraind/pm-beads/pull/160, merged 2026-10-22T21:43:33Z, merge f14e38fc10d5b7d01c7582203416b644f8964f95: Reconciles snapshots against acknowledged bases and live tracker state, preserving concurrent edits with real-tracker conflict/recovery regressions."
 comments[39]{created_at,author,text}:
   "2026-10-21T20:31:26.295Z",codex-agent,"Overlap recheck: pm-beads import --upsert strategies update/skip/fail and beads diff compare incoming/live data without an acknowledged external base. Core bulk keyed upsert likewise lacks external base ownership. Jira import uses SDK transactions and ADO owns remote revision assertions; their provider reconciliation stays in those adapters. This feature owns only Beads snapshot acknowledgement and three-way field classification, reusing core item versions and workspace transactions. Tracker-only PR #159 and its eight items are excluded."
   "2026-10-21T20:39:13.625Z",codex-agent,"Implemented source-scoped acknowledged bases, pure field-level three-way plans, bounded summaries and SDK/CLI preview/apply workflows. Real non-git tracker tests verify disjoint merges, conflicts, persistent omission proposals, stale-base and stale-tracker refusal. Application uses core history hashes and workspace journals; new identities are created before relationship wiring. Targeted failure testing caught and corrected SDK dependency flag syntax and empty-edge clearing requirements. Full release coverage remains assigned to CI because the host is saturated."
@@ -72,4 +77,5 @@ tests[8]{command,scope,provenance{author,created_at,source_kind,source_ref}}:
 docs[2]{path,scope}:
   examples/snapshot-reconciliation.md,project
   README.md,project
+close_reason: "https://github.com/unbraind/pm-beads/pull/160, merged 2026-10-22T21:43:33Z, merge f14e38fc10d5b7d01c7582203416b644f8964f95: Reconciles snapshots against acknowledged bases and live tracker state, preserving concurrent edits with real-tracker conflict/recovery regressions."
 body: ""
