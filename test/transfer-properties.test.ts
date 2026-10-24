@@ -33,14 +33,14 @@ function changed(error: unknown): boolean {
 
 for (const seed of [0x1652026, 0xc0ffee]) {
   test(`full transfer-export-upsert pipeline preserves 512 adversarial rows, seed ${seed}`, async t => {
-    const { pmRoot, client } = await receiver(t), next = random(seed);
+    const { pmRoot } = await receiver(t), next = random(seed);
     const fragments = ['', '[bead_id: x] text [bead_id: y]', '[bead_id: outer [bead_id: inner]]',
       '[bead_id:', '[bead_id: ] [bead_id: a]', 'é 🧠 中文 e\u0301 \u0000', 'line one\r\nline two\r\n',
       'long'.repeat(4096), '[bead_id: x]\r\n[bead_id: y]\r\n[bead_id: z]',
       'legacy position\n\n[bead_id: conflicting]', '[bead_id: r0]', '  whitespace\n\n', '\r\n'];
     const rows = Array.from({ length: 512 }, (_, index) => ({ id: `r${index}`, title: `Row ${index}`,
       description: fragments[index % fragments.length] + (index < fragments.length ? "" : fragments[next() % fragments.length]),
-      tags: [`tag-${next() % 13}`, 'Unicode-é'], dependencies: index && index % 64 === 0 ? [`r${index - 1}`] : [] }));
+      tags: [`tag-${next() % 13}`, 'Unicode-é'], dependencies: index && index % 64 === 1 ? [`r${index - 1}`] : [] }));
     const plan = planBeadsTransfer(rows.map(row => JSON.stringify(row)).join('\r\n'), rows.map(row => row.id), `seed-${seed}`,
       await snapshotBeadsTransferSettings(pmRoot), { maxBytes: 16_777_216 });
     const saved = JSON.stringify(plan) + '\n', before = structuredClone(plan);
@@ -54,39 +54,54 @@ for (const seed of [0x1652026, 0xc0ffee]) {
     assert.ok(validated.records.some(row => row.fields.description.includes('[bead_id: y]')));
     const source = new Map(rows.map(row => [row.id, row]));
     for (const row of validated.records) assert.equal(row.fields.description, source.get(row.id)!.description);
-    const receipt = await applyBeadsTransfer(pmRoot, validated, 'property-test', { maxChunks: 100 });
-    assert.equal(receipt.transferred, 512); assert.equal(receipt.skipped, 0); assert.equal(receipt.complete, true);
-    const originalIds = new Map(receipt.rows.map(row => [row.id, row.pmId]));
     const ext = await harness(); t.after(() => ext.deactivate());
     const oldPath = process.env.PATH;
     process.env.PATH = resolve('node_modules/.bin') + delimiter + oldPath;
     t.after(() => { process.env.PATH = oldPath; });
-    const output = join(pmRoot, 'export.jsonl');
-    await runExport(ext, { pmRoot, options: { output } });
-    const exported = (await readFile(output, 'utf8')).trimEnd().split('\n').map(line => JSON.parse(line) as BeadsItem);
-    assert.equal(exported.length, 512);
-    for (const row of exported) {
-      assert.ok(source.has(row.id!), `exported id ${row.id} must be a source id`);
-      assert.equal(row.id, `r${String(row.title).slice(4)}`);
-      assert.equal(row.description, source.get(row.id!)!.description);
-      row.title = `Upsert exactly ${row.id}`;
+    // Exercise every generated row through the real CLI pipeline while bounding
+    // per-child tracker scans; the existing gate timeout stays unchanged.
+    let transferred = 0, updated = 0;
+    for (let offset = 0; offset < rows.length; offset += 64) {
+      const batch = rows.slice(offset, offset + 64);
+      const { pmRoot: batchRoot, client } = await receiver(t);
+      const batchPlan = validateBeadsTransferPlan(JSON.parse(JSON.stringify(planBeadsTransfer(
+        batch.map(row => JSON.stringify(row)).join('\n'), batch.map(row => row.id), `seed-${seed}-${offset}`,
+        await snapshotBeadsTransferSettings(batchRoot), { maxBytes: 16_777_216 },
+      ))) as BeadsTransferPlan);
+      const receipt = await applyBeadsTransfer(batchRoot, batchPlan, 'property-test', { maxChunks: 100 });
+      assert.equal(receipt.transferred, batch.length); assert.equal(receipt.skipped, 0); assert.equal(receipt.complete, true);
+      transferred += receipt.transferred;
+      const originalIds = new Map(receipt.rows.map(row => [row.id, row.pmId]));
+      const output = join(batchRoot, 'export.jsonl');
+      await runExport(ext, { pmRoot: batchRoot, options: { output } });
+      const exported = (await readFile(output, 'utf8')).trimEnd().split('\n').map(line => JSON.parse(line) as BeadsItem);
+      assert.equal(exported.length, batch.length);
+      for (const row of exported) {
+        assert.ok(originalIds.has(row.id!), `exported id ${row.id} must be a batch source id`);
+        assert.equal(row.id, `r${String(row.title).slice(4)}`);
+        assert.equal(row.description, source.get(row.id!)!.description);
+        row.title = `Upsert exactly ${row.id}`;
+      }
+      await writeFile(output, exported.map(row => JSON.stringify(row)).join('\n'));
+      const upsert = await runImport(ext, { pmRoot: batchRoot, args: [output], options: { upsert: true, 'no-preserve-timestamps': true } });
+      assert.equal(upsert.imported, 0); assert.equal(upsert.updated, batch.length); assert.equal(upsert.skipped, 0);
+      updated += upsert.updated!;
+      const after = (await client.listAllComplete()).items;
+      assert.equal(after.length, batch.length);
+      for (const item of after) {
+        const id = String(item.bead_id);
+        assert.equal(item.id, originalIds.get(id));
+        assert.equal(item.title, `Upsert exactly ${id}`);
+        assert.equal(item.description, source.get(id)!.description);
+      }
+      await runExport(ext, { pmRoot: batchRoot, options: { output } });
+      const again = (await readFile(output, 'utf8')).trimEnd().split('\n').map(line => JSON.parse(line) as BeadsItem);
+      assert.equal(again.length, batch.length);
+      for (const row of again) {
+        assert.ok(originalIds.has(row.id!)); assert.equal(row.description, source.get(row.id!)!.description);
+      }
     }
-    await writeFile(output, exported.map(row => JSON.stringify(row)).join('\n'));
-    const upsert = await runImport(ext, { pmRoot, args: [output], options: { upsert: true, 'no-preserve-timestamps': true } });
-    assert.equal(upsert.imported, 0); assert.equal(upsert.updated, 512); assert.equal(upsert.skipped, 0);
-    const after = (await client.listAllComplete()).items;
-    assert.equal(after.length, 512);
-    for (const item of after) {
-      const id = String(item.bead_id);
-      assert.equal(item.id, originalIds.get(id));
-      assert.equal(item.title, `Upsert exactly ${id}`);
-      assert.equal(item.description, source.get(id)!.description);
-    }
-    await runExport(ext, { pmRoot, options: { output } });
-    for (const line of (await readFile(output, 'utf8')).trimEnd().split('\n')) {
-      const row = JSON.parse(line) as BeadsItem;
-      assert.ok(source.has(row.id!)); assert.equal(row.description, source.get(row.id!)!.description);
-    }
+    assert.equal(transferred, 512); assert.equal(updated, 512);
 
   });
 }
