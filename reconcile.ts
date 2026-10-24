@@ -9,6 +9,7 @@ import {
   type WorkspaceTransactionStep, type PmClientFullMutationOptions, type Dependency,
 } from "@unbrained/pm-cli/sdk";
 import type { ExtensionApi, CommandHandlerContext } from "@unbrained/pm-cli/sdk/authoring";
+import { beadsMutationAuthor, sourceCreateOptions, sourceDependency } from "./mutation.ts";
 import { CommandError, DIFF_FIELDS } from "./contracts.ts";
 import {
   normalizeDiffField, extractBlockerIds, stripBeadIdMarker,
@@ -318,7 +319,7 @@ export async function planBeadsReconciliation(pmRoot: string, source: string, in
   return reconcileBeadsSnapshots(base, incoming, await readLiveBeadsSnapshot(pmRoot, source, [...base.records, ...incoming], base.bindings));
 }
 /** Translate canonical field deltas into public SDK mutation options. */
-function mutationOptions(row: SnapshotRecord, fields: ReconcileField[], ids: Map<string, string>, currentDependencies: readonly Dependency[]): PmClientFullMutationOptions {
+function mutationOptions(row: SnapshotRecord, fields: ReconcileField[], ids: Map<string, string>, currentDependencies: readonly Dependency[], author: string): PmClientFullMutationOptions {
   const options: PmClientFullMutationOptions = {};
   for (const field of fields) {
     const value = row.fields[field];
@@ -329,7 +330,7 @@ function mutationOptions(row: SnapshotRecord, fields: ReconcileField[], ids: Map
       const current = new Set(currentDependencies.filter(edge => edge.kind.toLowerCase() === "blocked_by").map(edge => edge.id));
       const additions = [...incoming].filter(id => !current.has(id));
       const removals = [...current].filter(id => !incoming.has(id));
-      if (additions.length) options.dep = additions.map(id => `id=${JSON.stringify(id)},kind=blocked_by`);
+      if (additions.length) options.dep = additions.map(id => sourceDependency(id, author));
       if (removals.length) options.depRemove = removals.map(id => `id=${JSON.stringify(id)},kind=blocked_by`);
     }
     else if (field === "tags") options.tags = value;
@@ -374,7 +375,7 @@ export async function applyBeadsReconciliation(pmRoot: string, plan: BeadsReconc
   const ids = new Map([...Object.entries(base.bindings ?? {}), ...live.map(row => [row.id, row.pmId] as const)]);
   for (const change of plan.changes) if (change.kind === "create") ids.set(change.id, normalizeItemId(`beads-${digest([plan.source, change.id]).slice(0, 24)}`, settings.id_prefix));
   const rows = new Map(plan.incoming.map(row => [row.id, row]));
-  const client = new PmClient({ pmRoot, author });
+  const client = new PmClient({ pmRoot, author, noExtensions: true });
   // Create identities first, then update scalar fields, then link relationships.
   const operations = [
     ...plan.changes.filter(change => change.kind === "create").map(change => ({ ...change, fields: change.fields.filter(field => field !== "parent" && field !== "dependencies"), phase: "create" })),
@@ -407,12 +408,12 @@ export async function applyBeadsReconciliation(pmRoot: string, plan: BeadsReconc
         const fields: ReconcileField[] = change.fields;
         const current = fields.includes("dependencies") ? await client.get(id) : undefined;
         const dependencies = (current?.item.dependencies ?? []) as Dependency[];
-        const options: PmClientFullMutationOptions = { ...mutationOptions(rows.get(change.id)!, fields, ids, dependencies), message: marker };
+        const options: PmClientFullMutationOptions = { ...mutationOptions(rows.get(change.id)!, fields, ids, dependencies, author), message: marker, author };
         if (change.kind === "create") {
           // New identities always carry provenance even when the source has no description.
           options.description = encodeBeadId(rows.get(change.id)!.fields.description, change.id);
           delete options.unset;
-          await client.create({ ...options, id });
+          await client.create(sourceCreateOptions({ ...options, id }, author));
         } else await client.update(id, options);
         return id;
       },
@@ -420,8 +421,8 @@ export async function applyBeadsReconciliation(pmRoot: string, plan: BeadsReconc
         const history = await readHistorySnapshot(getHistoryPath(pmRoot, id), id);
         if (!history.entries.some(entry => historyMarker(entry.message) === marker)) refuse("invalid_snapshot", "Transaction history is missing; restore valid history and inspect recovery before retrying.");
         if (!history.entries.at(-1)?.message?.startsWith(`${transactionId}:`)) refuse("stale_tracker", "A later writer changed a transaction item; preserve that edit and replan recovery.");
-        if ((original || change.phase === "links") && typeof target === "string") await client.restore(id, target, { message: `${marker}:compensated` });
-        else await client.close(id, "Compensated interrupted Beads reconciliation", { message: `${marker}:compensated`, force: true });
+        if ((original || change.phase === "links") && typeof target === "string") await client.restore(id, target, { message: `${marker}:compensated`, author });
+        else await client.close(id, "Compensated interrupted Beads reconciliation", { message: `${marker}:compensated`, force: true, author });
       },
     };
   });
@@ -470,7 +471,7 @@ export function summarizeBeadsReconciliation(plan: BeadsReconcilePlan, limit = 2
 async function runReconcile(ctx: CommandHandlerContext) {
   const source = optionString(ctx.options, "source");
   if (!source) refuse("invalid_snapshot", "Pass --source with a stable external tracker name.");
-  const author = ctx.global.author ?? process.env.PM_AUTHOR ?? "pm-beads";
+  const author = beadsMutationAuthor(ctx.global.author);
   const applyFile = optionString(ctx.options, "apply-plan", "applyPlan");
   if (applyFile) {
     let plan: BeadsReconcilePlan;

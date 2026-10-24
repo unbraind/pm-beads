@@ -454,11 +454,82 @@ The typed SDK exports `captureBeadsExtensions`, `parseBeadsExtensionSidecar`,
 `BeadsSidecarRefusal` and the fixed limits. See the [complete example and refusal
 remedies](examples/unknown-field-sidecars.md) for bounds, privacy policy and SDK usage.
 
+## Dependency-closed resumable transfer
+
+`pm beads transfer` creates a bounded plan for selected Beads ids, including their
+transitive blockers and parents. Rows are ordered before their dependents, so a
+blocker appearing late in the input can arrive in an earlier chunk. The existing
+Beads parser still validates JSONL, aliases, duplicate ids and dependency cycles.
+A closure that exceeds its bounds is refused in full with measured `omission`
+fields (`dimension`, `required`, `limit`, `included: 0`) and a remedy.
+
+```sh
+pm beads transfer snapshot.jsonl --source team --select bd-root --chunk-size 25 --plan-out exchange.json
+pm beads transfer --apply-plan exchange.json --chunks 2 --json
+# Repeat the same command until complete is true.
+```
+
+This is a creation-only exchange into a receiving tracker. It preserves every
+existing record and later peer edit. Use `beads reconcile` for changes to an
+existing acknowledged source. The exact plan digest scopes deterministic core
+ids and SDK transaction checkpoints; a changed plan starts a separate exchange.
+Keep the original plan to resume interrupted work. The full plan contains the
+selected descriptions and supported Beads fields; protect and retain it like the
+source tracker. Unknown provider fields require the separate opted-in sidecar
+workflow; this command transfers the canonical reconciliation fields, rather
+than claiming a lossless copy of every provider field or original timestamp.
+
+Creation uses source fields and explicit source defaults (Task, open, priority 2,
+empty tags), with progressive create mode. A missing parent is explicitly unset,
+so a receiving tracker's active focus cannot become an imported relationship.
+Absent assignee and planning fields are also explicitly unset. Imports never
+select a receiver template; SDK clients and child mutations disable extension
+loading to exclude extension field defaults and mutation hooks. Scalar values,
+relationships and mutation authors come from the import invocation, including
+edge author provenance. Reconciliation updates retain unrelated local fields.
+Receiver validation and workflow transition policies still apply and may refuse
+an incompatible source; they do not substitute receiver defaults for source data.
+
+The public SDK exports `planBeadsTransfer`, `applyBeadsTransfer`,
+`summarizeBeadsTransfer`, `beadsTransferItemId`, their option/receipt types, and
+`BeadsTransferRefusal` with `code`, `remedy` and optional `omission`. Expected CLI
+refusals return those fields as TOON/JSON and exit 2. Plan and drain summaries
+include counts, at most 20 row identifiers, omission totals, and a resume remedy;
+record descriptions never appear in these summaries.
+
+Defaults are 1,000 closure rows, 4,000 edges (including parents), 4 MiB canonical
+closure data and 25 rows per chunk. `--max-rows`, `--max-edges`, `--max-bytes` and
+`--chunk-size` can raise these up to 10,000 rows, 40,000 edges, 16 MiB and 100 rows.
+Input JSONL is capped at 16 MiB and Beads ids at 128 characters. `--chunks` bounds
+new/resumed chunks per invocation; completed chunks replay without consuming that
+budget. A completed transfer can include skipped rows: inspect `skipped` and
+`rows[].reason`, not only `complete`.
+
+Each chunk uses the core SDK workspace writer lease and durable journal. Reads
+that select mutations occur inside that lease; the core releases it after
+journal persistence. Immutable create-history messages establish row ownership.
+Foreign ids, missing/corrupt foreign histories, and unavailable foreign blockers
+are skipped with reasons, including deleted ids reserved by retained history.
+The full recorded row receipts are the `results` maps in the receiving tracker's
+`transactions/sdk/beads-transfer-<digest>-<chunk>.json` journals (chunk numbers
+start at zero); inspect them when the summary reports omitted rows.
+No transfer recovery deletes, closes, restores or
+rewrites a record. Already created rows remain valid progress when a chunk fails,
+and the same plan resumes them without duplicating items. Competing drainers
+report the same recorded completion, including a peer's success. After an abrupt
+process death, retry after the SDK's abandoned lease expires (normally 30 seconds);
+`busy` tells callers to retry the original plan. Keep chunks small enough to
+finish within the host coordinator's lease lifetime.
+
+See [the SDK and CLI example](examples/dependency-closed-transfer.md).
+
 ## Without git
 
-Import, export, validate, diff, sidecar capture/restore and snapshot reconciliation work in a plain pm
-tracker directory. Reconciliation uses SDK reads, history and transactions and
-invokes no git subprocess. None of these workflows needs a git repository.
+Import, export, validate, diff, sidecar capture/restore, snapshot reconciliation
+and resumable transfer work in a plain pm tracker without a git executable.
+Reconciliation and transfer use SDK reads, history and transactions. Transfer
+checkpoints belong to the receiving tracker. GitHub synchronization and release
+tooling need their respective repository/service context.
 
 ## License
 
