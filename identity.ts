@@ -11,7 +11,7 @@ export function legacyBeadIdentity(description: string | undefined): { id: strin
   if (start === 0) return { id, description: "" };
   if (description.slice(start - 2, start) !== "\n\n") return undefined;
   const body = description.slice(0, start - 2);
-  if (!body || body.trim() !== body || body.includes("[bead_id:")) return undefined;
+  if (!body || body.trim() !== body || /\[bead_id:\s{0,64}(\S[^\]]{0,4096})\]/.test(body)) return undefined;
   return { id, description: body };
 }
 

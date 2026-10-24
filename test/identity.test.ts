@@ -37,6 +37,7 @@ test('legacy fallback accepts only the exact historical suffix and migrates once
     assert.equal(decodeBeadId({ description: text }), undefined);
     assert.equal(pmItemToBead({ id: 'local', description: text }, new Map(), true).description, text);
   }
+  assert.deepEqual(legacyBeadIdentity('[bead_id:\n\n[bead_id: legacy-fragment]'), { id: 'legacy-fragment', description: '[bead_id:' });
   assert.equal(decodeBeadId({ body: '[bead_id: forged]' }), undefined);
   assert.equal(decodeBeadId({ bead_id: '', description: '[bead_id: forged]' }), undefined);
   assert.equal(decodeBeadId({ bead_id: 'source', description: '[bead_id: forged]' }), 'source');
