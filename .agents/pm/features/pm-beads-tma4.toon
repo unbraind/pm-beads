@@ -6,10 +6,12 @@ status: in_progress
 priority: 2
 tags[1]: "gh:unbraind/pm-beads#165"
 created_at: "2026-10-24T11:13:36.736Z"
-updated_at: "2026-10-24T17:34:42.421Z"
+updated_at: "2026-10-24T18:13:50.533Z"
+assignee: codex-agent
+claim_principal: codex-agent
 author: codex-agent
 acceptance_criteria: "A killed transfer resumes without duplicates; A late cross-chunk dependency is resolved without dangling edges; Exceeding closure limits yields an explicit omission or refusal receipt; Concurrent drainers inspect and mutate state under the SDK writer lease; foreign records are skipped with reasons; all transition boundaries have interleaving tests on one non-git tracker; Typed SDK and CLI, bounded TOON/JSON receipts, README and example, public tracker copy measurements, and npm plus Bun CI release gates"
-comments[36]{created_at,author,text}:
+comments[47]{created_at,author,text}:
   "2026-10-24T11:13:52.625Z",codex-agent,"Overlap audit: registry confirms CLI 2026.10.24; this package retains its 2026.10.20 SDK pin. Existing Beads validation handles structural errors, cycles and aliases; existing import batches delegate core mutations. Core SDK exports commitItemMutations and commitWorkspaceTransaction with resumable journals; pm-context provides bounded neighborhood/delta packs, not a transfer ledger. Add only closure planning, immutable transfer identities and per-chunk receipts around those public coordinators. Use non-git trackers and deterministic interleaving at every package/coordinator transition."
   "2026-10-24T11:20:04.804Z",codex-agent,"Design refinement: dependency-first creation includes parent closure, so every published edge targets an earlier owned row even when its source record appears later or crosses chunks. The SDK transaction journal itself is the per-chunk checkpoint; no second mutable checkpoint store. Ownership comes from immutable create history, not copied bead_id markers. Skip foreign identities and their unavailable dependents, preserve peer edits, and never delete or close progress during compensation. The pinned bulk-create helper adopts any occupied id, so ownership-aware steps use commitWorkspaceTransaction plus PmClient.create instead."
   "2026-10-24T11:29:18.808Z",codex-agent,"Verification: linked command node --test test/transfer.test.ts test/transfer-cli.test.ts passed 11/11, zero skips, including an actual SIGKILL after durable creation and recovery after the SDK lease TTL. Same-tracker interleavings cover all 9 forward coordinator boundaries, all 8 compensation boundaries, both create boundaries and competing drainers before acquisition. New transfer module targeted V8 coverage: 100% lines/branches/functions. Existing smoke and flag tests: 117/117. Typecheck, test typecheck and docstring lint pass; this repository has no separate lint script."
@@ -46,7 +48,18 @@ comments[36]{created_at,author,text}:
   "2026-10-24T17:17:47.593Z",codex-agent,"Final pipeline implementation supersedes the temporary batching harness: initialized local tracker creates, updates and relationship rewrites reuse the public SDK adapter with literal-description policy; the existing CLI transport remains for callers without an initialized local tracker. This avoids a new process and whole-tracker scan per mutation. Restore one 512-row receiving tracker for each seed, and derive every expected pm id from a certified complete list because receipt row details are intentionally bounded. Native targeted command (transfer-properties, identity, ambient-defaults, import-paths, reconcile-cli, smoke) passes 174/174. Both seeds complete transfer/export/upsert/export with exactly 512 intended updates each, correct source ids and byte-identical descriptions (1024 rows total). The linked identity test rerun passes 5/5 through pm test. Full isolated-HOME npm run coverage passes 471/471, zero failures/skips/cancellations/todos, 100% measured lines/branches/functions across all 13 source files, unchanged scope and thresholds, in about 158 seconds. Typecheck, test typecheck, docstring lint (90 declarations/13 sources) and whitespace checks pass."
   "2026-10-24T17:28:09.745Z",codex-agent,"CI implementation run 40115489452: Node 22 passes its npm and Bun release gates; Node 26 passes all 471 tests but exposes two additional V8 branch counters in index.ts. Remove the unreachable empty-id fallback from matched upserts (a match necessarily has its normalized source id), and exercise the public converter with structured identity and an absent description. Node 26.12 local isolated-HOME npm run coverage now passes 471/471, zero failures/skips/cancellations/todos, with 100% measured lines/branches/functions across all 13 sources. The five focused identity tests pass on Node 26 too. Typecheck, test typecheck, docstring lint and whitespace checks pass. Verified the published peer-floor 2026.10.15 package exports the literal-field API; no dependency pin or peer range change is needed. Documentation distinguishes explicit SDK/export migration messages from the ordinary update history recorded by an upsert."
   "2026-10-24T17:34:41.378Z",codex-agent,"Round 3 full release evidence on implementation head 5305c726c0a99c5060c20b273a026d9b13527174: CI https://github.com/unbraind/pm-beads/actions/runs/40116272866 passes npm run release:check and bun run release:check on both Node 22 and Node 26. Every gate passes 471/471 tests, zero failures/skips/cancellations/todos, with 100% measured lines/branches/functions across all 13 declared sources and docstring lint 90/90 declarations. Four gates total 1884 test executions; source scope and thresholds are unchanged. Both 512-row seeds complete the full transfer/export/upsert/export pipeline in one receiving tracker per seed, with source ids, exact descriptions and intended upsert targets verified. Fresh tracker health, production audit, packing, changelog, release attestation and Bun graph installation pass. CodeQL https://github.com/unbraind/pm-beads/actions/runs/40116272854 also passes. Observed host stdin CRLF normalization and SDK type errors without CLI machine codes are handled by the tested SDK adapter; no upstream issue is filed. Existing local installer fence drift and extension host/package skew remain separate environment findings. The claim is being released, item stays in_progress for orchestrator verification, and no merge or release is performed. The evidence-only tracker commit will receive its own exact-head CI run."
-files[20]{path,scope}:
+  "2026-10-24T17:49:13.021Z",codex-agent,"Round 4: remove all first-touch writes from export and reconciliation reads. Add one explicit identity migration command, dry-run by default, with per-item SDK beforeMutation hash guards; exercise concurrent edits and invocation author precedence. Verify read-only tracker bytes/history, behavioral revert proofs, targeted checks and npm/Bun CI release gates."
+  "2026-10-24T17:52:41.243Z",codex-agent,"Implemented explicit beads migrate-identities preview/--apply and guarded migration in transfer apply. Reads now use the legacy suffix only in memory. Legacy upserts report a required explicit migration instead of migrating on touch. Added real non-git tracker tests for whole-tracker bytes/history, read-to-write interleavings, SDK lock serialization and three-level author precedence. npm ci reproduced the already tracked merge fence drift; restored only that generated fence change."
+  "2026-10-24T17:58:45.792Z",codex-agent,"Guard interleavings pass at listed/read/before_schema/after_schema/before_update/locked boundaries using a separate SDK peer process at the lock boundary. Ordinary transfer apply must keep its existing foreign-record guarantee, so migration inside transfer apply requires the explicit --migrate-identities flag. Reconciliation replacing a legacy description requires explicit migration and a new plan to avoid losing fallback identity. Whole-tracker regression setup initializes SDK derived caches through core/SDK reads before the snapshot; no Beads command pre-runs. Pinned SDK cold reads write runtime caches, and core get writes a usage ledger; these are host limitations rather than migration writes and are being reported explicitly."
+  "2026-10-24T18:03:18.437Z",codex-agent,"Additional checks cover annotation-only concurrent edits, deletion after listing and just before update, and invalid UTF-8 source refusal. The pinned SDK reports missing update targets with NOT_FOUND exit code but no machine code, so guarded migration recognizes that SDK outcome and reports the item as skipped. This SDK diagnostic gap is retained for the final report; no upstream issue is filed."
+  "2026-10-24T18:06:21.986Z",codex-agent,"Revert proof 1: restored only the original export migration helper and first-touch call; npm run build succeeded and node --test --test-name-pattern=\"every read-only legacy command\" test/identity-migration.test.ts failed 1/1 at beads export with changed tracker bytes. Separately restored only the original reconciliation read migration function/call; rebuilt and the same test failed 1/1 at beads reconcile with changed history bytes on an acknowledged legacy tracker. Restored exact fixed implementation bytes and rebuilt after each proof. The test snapshots every file including runtime artifacts after fixture-only core/SDK cache initialization; it does not pre-run a Beads read."
+  "2026-10-24T18:06:24.412Z",codex-agent,"Revert proof 2: removed only the beforeMutation whole-item hash comparison, kept the explicit command and author forwarding, rebuilt, then node --test --test-name-pattern=\"migration previews by default and skips peer edits\" test/identity-migration.test.ts failed 1/1: the migrated old body replaced the peer description. Restored exact fixed bytes and rebuilt. The retained test covers listed, located, read, before_schema, after_schema, before_update and locked boundaries with genuine SDK peers; the locked peer runs in a separate process."
+  "2026-10-24T18:06:26.198Z",codex-agent,"Revert proof 3: changed only the migration author resolver to ignore its invocation argument, rebuilt, then node --test --test-name-pattern=\"explicit migration CLI history honors author\" test/identity-migration.test.ts failed 1/1: actual history author environment, expected reviewer. Restored exact implementation bytes and rebuilt. The CLI host can normalize --author into PM_AUTHOR, so the test checks both real CLI invocations and the direct SDK invocation boundary for explicit author, environment and package fallback."
+  "2026-10-24T18:06:29.371Z",codex-agent,Cold-read all-files purity remains an explicit host limitation tracked by pm-beads-w90u. No runtime files are excluded from the initialized-cache byte comparison. This PR does not modify the SDK pin or upstream pm-cli. Existing missing native mutation preconditions remain upstream pm-cli#1576.
+  "2026-10-24T18:09:13.695Z",codex-agent,"Restored linked regression run: npx pm --author codex-agent test pm-beads-tma4 --run --only-last --progress passes all 8 tests, zero failures/skips/cancellations/todos. The read-purity test executes 15 real CLI read/planning/dry-run variants and SDK snapshot/plan reads against an acknowledged non-git legacy tracker, comparing every file byte including history and initialized runtime artifacts. The migration tests verify explicit and environment/package authors through both real CLI and direct SDK boundaries, guarded stale skips, queued peers under the item lock, annotations, vanished items, corrupt source reads, and reconciliation identity preservation."
+  "2026-10-24T18:09:15.351Z",codex-agent,"Local typecheck, test typecheck, docstring lint (13 sources, 91 documented declarations), and git diff --check pass. A separate local strict-health probe still reports the pre-existing merge fence drift and a global pm-github host-version skew; the installed package graph is unchanged. Full release gates run with an isolated HOME and git configuration, and CI fresh-clone health remains the gate for the pushed head."
+  "2026-10-24T18:13:50.533Z",codex-agent,"The initial full isolated-HOME npm gate ran 479 tests: 475 passed and four old fixtures failed because they expected implicit migration during acknowledgement/upsert. Updated those fixtures to invoke explicit migration during setup. Coverage identified the old merge-strategy skip arm as bypassed by the new legacy check; moved that legacy-specific skip after the existing explicit skip policy. Focused fixture rerun passes 6/6, zero failures/skips/cancellations/todos, including compensation under ambient defaults and terminal/nonterminal upserts. Typecheck, test typecheck, docstring lint and whitespace checks pass. CI npm plus Bun release gates at unchanged thresholds will provide the final full-suite evidence."
+files[22]{path,scope}:
   .github/workflows/ci.yml,project
   identity.ts,project
   index.ts,project
@@ -59,15 +72,17 @@ files[20]{path,scope}:
   test/fixtures/stub-pm.ts,project
   test/fixtures/transfer-kill.ts,project
   test/helper-truth-tables.test.ts,project
+  test/identity-migration.test.ts,project
   test/identity.test.ts,project
   test/import-paths.test.ts,project
   test/public-transfer-validation.ts,project
+  test/reconcile.test.ts,project
   test/smoke.test.ts,project
   test/transfer-cli.test.ts,project
   test/transfer-properties.test.ts,project
   test/transfer.test.ts,project
   transfer.ts,project
-tests[5]:
+tests[7]:
   - command: node --test test/transfer.test.ts test/transfer-cli.test.ts
     scope: project
     provenance:
@@ -102,6 +117,22 @@ tests[5]:
     provenance:
       author: codex-agent
       created_at: "2026-10-24T16:50:47.292Z"
+      source_kind: local_mutation
+      source_ref: feat/dependency-closed-resumable-transfer
+  - command: node --test test/identity-migration.test.ts
+    scope: project
+    timeout_seconds: 180
+    provenance:
+      author: codex-agent
+      created_at: "2026-10-24T17:59:16.754Z"
+      source_kind: local_mutation
+      source_ref: feat/dependency-closed-resumable-transfer
+  - command: "node --test --test-name-pattern=\"upsert refreshes status|upsert routes an open|upsert sends --status|reconciliation compensation restores|merge-strategy skip\" test/smoke.test.ts test/ambient-defaults.test.ts test/import-paths.test.ts"
+    scope: project
+    timeout_seconds: 180
+    provenance:
+      author: codex-agent
+      created_at: "2026-10-24T18:12:59.596Z"
       source_kind: local_mutation
       source_ref: feat/dependency-closed-resumable-transfer
 docs[2]{path,scope}:

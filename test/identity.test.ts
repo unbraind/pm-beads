@@ -4,10 +4,10 @@ import test from 'node:test';
 import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
 import { join, delimiter, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
-import { PmClient, readHistorySnapshot, getHistoryPath } from '@unbrained/pm-cli/sdk';
+import { PmClient, readHistorySnapshot, getHistoryPath, type PmClientFullMutationOptions } from '@unbrained/pm-cli/sdk';
 import { harness, runImport, runExport } from './helpers.ts';
 import { decodeBeadId, pmItemToBead } from '../index.ts';
-import { legacyBeadIdentity, ensureBeadIdentityField, migrateLegacyBeadIdentity } from '../identity.ts';
+import { legacyBeadIdentity, ensureBeadIdentityField, migrateBeadIdentities } from '../identity.ts';
 import { applyBeadsTransfer, planBeadsTransfer, snapshotBeadsTransferSettings } from '../transfer.ts';
 
 test('structured identity wins and descriptions are byte-for-byte user data through transfer and export', async t => {
@@ -47,22 +47,24 @@ test('legacy fallback accepts only the exact historical suffix and migrates once
   t.after(() => { console.error = original; });
   for (const description of ['[bead_id: legacy]', 'Original body\n\n[bead_id: legacy-body]']) {
     const item = (await client.create({ title: 'Legacy', description })).item;
-    assert.equal(await migrateLegacyBeadIdentity(client, item), true);
+    assert.ok((await migrateBeadIdentities(pmRoot, 'identity-test', { apply: true })).migrated.includes(item.id));
     const saved = (await client.get(item.id)).item;
     assert.equal(saved.bead_id, description.includes('Original') ? 'legacy-body' : 'legacy');
     assert.equal(saved.description, description.includes('Original') ? 'Original body' : '');
     const entries = (await readHistorySnapshot(getHistoryPath(pmRoot, item.id), item.id)).entries;
     assert.match(entries.at(-1)!.message!, /Migrate legacy Beads identity/);
-    assert.equal(await migrateLegacyBeadIdentity(client, saved), false);
+    assert.deepEqual((await migrateBeadIdentities(pmRoot, 'identity-test', { apply: true })).migrated, []);
   }
   await ensureBeadIdentityField(client);
-  assert.equal(await migrateLegacyBeadIdentity(client, { id: 'unused', bead_id: '', description: '[bead_id: forged]' }), false);
-  assert.equal(await migrateLegacyBeadIdentity(client, { id: 'unused', description: 'plain' }), false);
+  const empty: PmClientFullMutationOptions = { title: 'Empty identity', beadId: '', description: '[bead_id: forged]' };
+  await client.create(empty);
+  await client.create({ title: 'Plain', description: 'plain' });
+  assert.deepEqual((await migrateBeadIdentities(pmRoot)).pending, []);
   assert.equal(messages.length, 2); assert.ok(messages.every(message => /Migrated 1/.test(message)));
 });
 
 
-test('real import and export preserve NUL, whitespace and marker descriptions and report CLI migration', async t => {
+test('real import and export preserve NUL, whitespace and marker descriptions without implicit migration', async t => {
   const pmRoot = await mkdtemp(join(tmpdir(), 'beads-cli-identity-'));
   t.after(() => rm(pmRoot, { recursive: true, force: true }));
   const client = new PmClient({ pmRoot, noExtensions: true, author: 'identity-test' }); await client.init('sample');
@@ -87,17 +89,19 @@ test('real import and export preserve NUL, whitespace and marker descriptions an
   await runExport(ext, { pmRoot, options: { output, 'dry-run': true } });
   assert.equal((await client.get(legacy.id)).item.bead_id, undefined);
   await runExport(ext, { pmRoot, options: { output } });
-  assert.equal((await client.get(legacy.id)).item.bead_id, 'legacy');
-  assert.equal((await client.get(secondLegacy.id)).item.bead_id, 'second-legacy');
-  assert.equal((await client.get(legacy.id)).item.description, 'Original');
+  assert.equal((await client.get(legacy.id)).item.bead_id, undefined);
+  assert.equal((await client.get(secondLegacy.id)).item.bead_id, undefined);
+  assert.equal((await client.get(legacy.id)).item.description, 'Original\n\n[bead_id: legacy]');
   await runExport(ext, { pmRoot, options: { output } });
-  assert.equal(messages.filter(message => message.includes('Migrated')).length, 1);
+  assert.equal(messages.filter(message => message.includes('Migrated')).length, 0);
   const legacyUpsert = (await client.create({ title: 'Before', description: '[bead_id: legacy-upsert]' })).item;
   await writeFile(input, JSON.stringify({ id: 'legacy-upsert', title: 'After', description: '[bead_id: forged]' }));
+  assert.equal((await runImport(ext, { pmRoot, args: [input], options: { upsert: true, preserveTimestamps: false } })).skipped, 1);
+  await migrateBeadIdentities(pmRoot, 'identity-test', { apply: true });
   assert.equal((await runImport(ext, { pmRoot, args: [input], options: { upsert: true, preserveTimestamps: false } })).updated, 1);
   const saved = (await client.get(legacyUpsert.id)).item;
   assert.equal(saved.bead_id, 'legacy-upsert'); assert.equal(saved.description, '[bead_id: forged]'); assert.equal(saved.title, 'After');
-  assert.equal(messages.filter(message => message.includes('Migrated')).length, 2);
+  assert.equal(messages.filter(message => message.includes('Migrated')).length, 1);
 });
 
 

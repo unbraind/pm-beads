@@ -40,7 +40,7 @@ import { registerTransferCommands } from "./transfer.ts";
 export * from "./transfer.ts";
 import { PmClient, preserveMutationStdinTokenFields, suppressHostOutput, type PmClientFullMutationOptions } from "@unbrained/pm-cli/sdk";
 import { beadsMutationAuthor, sourceDependency } from "./mutation.ts";
-import { legacyBeadIdentity } from "./identity.ts";
+import { legacyBeadIdentity, reportLegacyBeadIdentities, registerIdentityMigrationCommand } from "./identity.ts";
 // Top-level SDK runtime import. This fleet once believed extensions could not
 // resolve `@unbrained/pm-cli` at runtime and hid SDK access behind inline
 // dynamic-import shims laundered through `any`; that premise was disproven (a
@@ -1023,6 +1023,7 @@ async function readWorkspaceBeadIds(pmRoot: string): Promise<Set<string> | undef
     // never told about.
     items = readPmItems(pmRoot);
   }
+  reportLegacyBeadIdentities(items);
   const ids = new Set<string>();
   for (const item of items) {
     const beadId = normalizeBeadKey(decodeBeadId(item));
@@ -1557,7 +1558,7 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
       if (opts.dryRun) {
         let action: string;
         if (matched) {
-          action = opts.mergeStrategy === "skip" ? "skip" : "update";
+          action = opts.mergeStrategy === "skip" || legacyItems.has(existingPmId) ? "skip" : "update";
         } else {
           action = "create";
         }
@@ -1583,8 +1584,15 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
         continue;
       }
 
+      if (existingPmId && legacyItems.has(existingPmId)) {
+        console.error("  skip: legacy identity needs pm beads migrate-identities --apply before upsert");
+        if (beadId) beadToPm.set(beadId, existingPmId);
+        skipped++;
+        continue;
+      }
+
       if (!identityFieldReady) {
-        registerBeadIdentityField(pmRoot);
+        registerBeadIdentityField(pmRoot, opts.author);
         identityFieldReady = true;
       }
       const description = baseDescription;
@@ -1635,7 +1643,6 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
             throw new Error(result.stderr?.trim() || result.error?.message || "pm update failed");
           }
           pmId = existingPmId;
-          if (beadId && legacyItems.delete(pmId)) console.error("Migrated 1 legacy Beads identity to bead_id.");
           // Apply the terminal `closed` transition via `pm close` (the only
           // sanctioned path under require_close_reason). Skip it when the
           // item is already closed so a re-import stays idempotent and does
@@ -2110,26 +2117,9 @@ export function spawnPmListAll(args: string[], maxBuffer: number): PmListAllSpaw
 }
 
 /** Persist the runtime field registration for child mutations that disable extension loading. */
-function registerBeadIdentityField(pmRoot: string): void {
-  const result = spawnSync("pm", ["--path", pmRoot, "--no-extensions", "schema", "add-field", "bead_id", "--type", "string", "--commands", "create,update", "--cli-flag", "bead-id"], { encoding: "utf8" });
+function registerBeadIdentityField(pmRoot: string, author: string): void {
+  const result = spawnSync("pm", ["--path", pmRoot, "--author", author, "--no-extensions", "schema", "add-field", "bead_id", "--type", "string", "--commands", "create,update", "--cli-flag", "bead-id"], { encoding: "utf8" });
   if (result.status !== 0) throw new CommandError(result.stderr || "Could not register Beads identity field.");
-}
-
-/** First-touch migration writes structured identity and removes only the exact old envelope. */
-async function migrateLegacyBeadItems(pmRoot: string, items: PmItem[]): Promise<void> {
-  let migrated = 0;
-  for (const item of items) {
-    if (!item.id || item.bead_id !== undefined) continue;
-    const legacy = legacyBeadIdentity(item.description);
-    if (!legacy) continue;
-    if (!migrated) registerBeadIdentityField(pmRoot);
-    const result = await mutateImportedItem(["--path", pmRoot, "--no-extensions", "update", item.id,
-      "--author", beadsMutationAuthor(undefined), "--bead-id", legacy.id, "--description", legacy.description,
-      "--message", "Migrate legacy Beads identity to bead_id"], pmRoot, legacy.description, beadsMutationAuthor(undefined));
-    if (result.status !== 0) throw new CommandError(result.stderr || "Could not migrate legacy Beads identity.");
-    item.bead_id = legacy.id; item.description = legacy.description; migrated++;
-  }
-  if (migrated) console.error(`Migrated ${migrated} legacy Beads identities to bead_id.`);
 }
 
 /**
@@ -2241,6 +2231,7 @@ export function buildBeadsFromWorkspace(
   spawn: PmListAllSpawn = spawnPmListAll,
 ): BeadsItem[] {
   const allItems = readPmItems(pmRoot, spawn);
+  reportLegacyBeadIdentities(allItems);
   const hasFilter = Boolean(opts.filter.statuses || opts.filter.types);
   const items = hasFilter ? allItems.filter((it) => pmItemPassesFilter(it, opts.filter)) : allItems;
 
@@ -2266,10 +2257,6 @@ export function buildBeadsFromWorkspace(
  * so an incomplete `list --all` answer refuses here before any bytes are written.
  */
 async function runExport(pmRoot: string, opts: { dryRun: boolean; preserveIds: boolean; output?: string; filter: RowFilter }) {
-  if (!opts.dryRun) {
-    const items = readPmItems(pmRoot).filter(item => pmItemPassesFilter(item, opts.filter));
-    await migrateLegacyBeadItems(pmRoot, items);
-  }
   const beads = buildBeadsFromWorkspace(pmRoot, { preserveIds: opts.preserveIds, filter: opts.filter });
   const jsonl = beads.map((b) => JSON.stringify(b)).join("\n") + (beads.length ? "\n" : "");
 
@@ -2863,6 +2850,7 @@ export default defineExtension({
   version: "2026.10.24",
 
   activate(api: ExtensionApi) {
+    registerIdentityMigrationCommand(api);
     registerReconcileCommands(api);
     registerSidecarCommands(api);
     registerTransferCommands(api);

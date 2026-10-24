@@ -439,7 +439,7 @@ test("diff treats absent raw args the same as empty ones", async () => {
 });
 
 
-test("legacy identity migration failures refuse export before serializing an unrecorded identity", async () => {
+test("legacy export never invokes migration even when tracker mutations would fail", async () => {
   const ext = await harness();
   try {
     for (const stderr of ["migration refused", ""]) {
@@ -447,8 +447,8 @@ test("legacy identity migration failures refuse export before serializing an unr
         { id: "legacy-item", title: "Legacy", description: "[bead_id: source]" },
       ]) });
       try {
-        await assert.rejects(runExport(ext, { pmRoot: scenario.dir, options: { output: scenario.jsonlPath("out.jsonl") } }),
-          new RegExp(stderr || "Could not migrate legacy Beads identity"));
+        await runExport(ext, { pmRoot: scenario.dir, options: { output: scenario.jsonlPath("out.jsonl") } });
+        assert.ok(scenario.logLines().every(args => args.includes("list")), "export invokes reads only");
       } finally { scenario.restorePath(); }
     }
   } finally { await ext.deactivate(); }

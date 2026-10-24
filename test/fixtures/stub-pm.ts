@@ -36,7 +36,7 @@ const scenario = JSON.parse(readFileSync(scenarioPath, "utf8"));
 
 /**
  * Resolve the subcommand: the first non-flag argv token after the global
- * flags, skipping the value of `--path`/`--pm-path` (the only value-taking
+ * flags, skipping the value of `--path`/`--pm-path`/`--author` (the only value-taking
  * globals this package's spawn surface uses). Dispatching on position rather
  * than on `args.includes(...)` keeps a title, tag or reason that happens to
  * equal a subcommand word from silently rerouting the stub.
@@ -44,7 +44,7 @@ const scenario = JSON.parse(readFileSync(scenarioPath, "utf8"));
 function resolveSubcommand(argv: readonly string[]): string | undefined {
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    if (arg === "--path" || arg === "--pm-path") {
+    if (arg === "--path" || arg === "--pm-path" || arg === "--author") {
       i++; // skip the flag's value
       continue;
     }

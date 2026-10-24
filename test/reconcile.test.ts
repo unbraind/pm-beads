@@ -12,6 +12,7 @@ import {
   planBeadsReconciliation, applyBeadsReconciliation, BeadsReconcileRefusal,
   type BeadsAcknowledgement, type LiveSnapshotRecord, type SnapshotRecord,
 } from "../reconcile.ts";
+import { migrateBeadIdentities } from "../identity.ts";
 import { encodeBeadId } from "../index.ts";
 import { harness, runCommand } from "./helpers.ts";
 
@@ -205,6 +206,7 @@ test("acknowledgement accepts matching SDK fields regardless of key insertion or
 test("real tracker creates new identities and applies field options and relationships", async t => {
   const { pmRoot, client } = await fixture(t);
   await seed(client);
+  await migrateBeadIdentities(pmRoot, "reconcile-test", { apply: true });
   const original = await readLiveBeadsSnapshot(pmRoot);
   await acknowledgeBeadsSnapshot(pmRoot, "team", original, "reconcile-test");
   const incoming = parseBeadsSnapshot([

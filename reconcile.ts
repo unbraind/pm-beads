@@ -10,7 +10,7 @@ import {
 } from "@unbrained/pm-cli/sdk";
 import type { ExtensionApi, CommandHandlerContext } from "@unbrained/pm-cli/sdk/authoring";
 import { beadsMutationAuthor, sourceCreateOptions, sourceDependency } from "./mutation.ts";
-import { ensureBeadIdentityField, migrateLegacyBeadIdentity } from "./identity.ts";
+import { ensureBeadIdentityField, reportLegacyBeadIdentities, legacyBeadIdentity } from "./identity.ts";
 import { CommandError, DIFF_FIELDS } from "./contracts.ts";
 import {
   normalizeDiffField, extractBlockerIds,
@@ -48,7 +48,7 @@ export interface BeadsReconcilePlan {
   unchanged: number; localOnly: number;
 }
 /** Stable refusal categories for callers that should re-read or resolve data. */
-export type BeadsReconcileRefusalCode = "invalid_snapshot" | "missing_base" | "base_exists" | "stale_base" | "stale_tracker" | "conflicts" | "invalid_plan" | "ack_mismatch" | "recovery_required";
+export type BeadsReconcileRefusalCode = "invalid_snapshot" | "missing_base" | "base_exists" | "stale_base" | "stale_tracker" | "conflicts" | "invalid_plan" | "ack_mismatch" | "recovery_required" | "identity_migration_required";
 /** Expected refusal with an actionable remedy and clean CLI exit code. */
 export class BeadsReconcileRefusal extends CommandError {
   /** Stable machine-readable reason. */
@@ -241,7 +241,7 @@ async function sourceIdentities(pmRoot: string, source: string, records: readonl
 export async function readLiveBeadsSnapshot(pmRoot: string, source?: string, records: readonly SnapshotRecord[] = [], bindings: Readonly<Record<string, string>> = {}, author?: string): Promise<LiveSnapshotRecord[]> {
   const client = new PmClient({ pmRoot, noExtensions: true, author: beadsMutationAuthor(author) });
   const { items } = await client.listAllComplete();
-  for (const item of items) await migrateLegacyBeadIdentity(client, item);
+  reportLegacyBeadIdentities(items);
   const translated = source === undefined
     ? new Map(items.map(item => [item.id, decodeBeadId(item as PmItem) ?? item.id]))
     : await sourceIdentities(pmRoot, source, records, bindings, items as PmItem[]);
@@ -378,6 +378,11 @@ export async function applyBeadsReconciliation(pmRoot: string, plan: BeadsReconc
   for (const change of plan.changes) if (change.kind === "create") ids.set(change.id, normalizeItemId(`beads-${digest([plan.source, change.id]).slice(0, 24)}`, settings.id_prefix));
   const rows = new Map(plan.incoming.map(row => [row.id, row]));
   const client = new PmClient({ pmRoot, author, noExtensions: true });
+  for (const change of plan.changes) {
+    if (change.kind !== "update" || !change.fields.includes("description")) continue;
+    const item = (await client.get(ids.get(change.id)!)).item;
+    if (item.bead_id === undefined && legacyBeadIdentity(item.description)) refuse("identity_migration_required", "Run pm beads migrate-identities --apply, then preview again before replacing a legacy description.");
+  }
   await ensureBeadIdentityField(client);
   // Create identities first, then update scalar fields, then link relationships.
   const operations = [

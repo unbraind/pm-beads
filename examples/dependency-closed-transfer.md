@@ -88,5 +88,7 @@ verbatim, including marker-like text, rather than stripping provenance again.
 
 Source Beads ids live in the registered `bead_id` metadata field. Descriptions
 remain verbatim, including marker-looking text. Legacy terminal envelopes are
-migrated only when metadata is absent, with tracked history and a stderr report;
+read in memory without writes. Preview `pm beads migrate-identities`, then use
+`--apply` to migrate unchanged revisions under their SDK item locks. Transfer apply
+can include guarded migration with `--migrate-identities`, with tracked history and a stderr report;
 present metadata always disables legacy decoding.

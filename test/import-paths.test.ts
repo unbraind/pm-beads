@@ -210,8 +210,8 @@ test("upsert update omits an unchanged status, routes closed through pm close, a
   const ext = await harness();
   const s = stubScenario({
     listEnvelope: envelope([
-      { ...EXISTING_MARKER_ITEM, status: "open" },
-      { id: "pm-existing-2", title: "Second", status: "closed", description: "[bead_id: bd-2]" },
+      { ...EXISTING_MARKER_ITEM, bead_id: "bd-1", status: "open" },
+      { id: "pm-existing-2", bead_id: "bd-2", title: "Second", status: "closed", description: "" },
     ]),
   });
   try {
@@ -243,7 +243,7 @@ test("upsert update omits an unchanged status, routes closed through pm close, a
 test("a strict-type rejection on update retries once without --type and preserves the canonical type", async () => {
   const ext = await harness();
   const s = stubScenario({
-    listEnvelope: envelope([EXISTING_MARKER_ITEM]),
+    listEnvelope: envelope([{ ...EXISTING_MARKER_ITEM, bead_id: "bd-1" }]),
     update: { invalidTypeTimes: 1 },
   });
   try {
@@ -555,7 +555,7 @@ test("a row filter excludes matching records from a real import and reports the 
 test("a failed dependency replace on an upserted item degrades to a warning", async () => {
   const ext = await harness();
   const s = stubScenario({
-    listEnvelope: envelope([{ ...EXISTING_MARKER_ITEM }]),
+    listEnvelope: envelope([{ ...EXISTING_MARKER_ITEM, bead_id: "bd-1" }]),
     depFail: true,
   });
   try {

@@ -10,6 +10,7 @@ import {
 } from "@unbrained/pm-cli/sdk";
 import { applyBeadsTransfer, beadsTransferItemId, planBeadsTransfer, snapshotBeadsTransferSettings } from "../transfer.ts";
 import { acknowledgeBeadsSnapshot, applyBeadsReconciliation, parseBeadsSnapshot, planBeadsReconciliation } from "../reconcile.ts";
+import { migrateBeadIdentities } from "../identity.ts";
 import { beadsMutationAuthor, sourceCreateOptions } from "../mutation.ts";
 import { harness, runCommand, runImport } from "./helpers.ts";
 
@@ -186,6 +187,7 @@ test("legacy importer and alias pin author for create, upsert, links and close u
 test("reconciliation compensation restores and closes with explicit author under ambient defaults", async t => {
   const { pmRoot, client } = await receiver(t);
   const a = (await client.create(sourceCreateOptions({ title: "A", description: "[bead_id: a]" }, "source-agent"))).item.id;
+  await migrateBeadIdentities(pmRoot, "source-agent", { apply: true });
   await acknowledgeBeadsSnapshot(pmRoot, "compensation", parseBeadsSnapshot('{"id":"a","title":"A"}'), "source-agent");
   const incoming = parseBeadsSnapshot('{"id":"a","title":"Changed"}\n{"id":"b","title":"B"}');
   const plan = await planBeadsReconciliation(pmRoot, "compensation", incoming);

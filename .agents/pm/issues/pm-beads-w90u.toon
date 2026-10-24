@@ -1,0 +1,18 @@
+id: pm-beads-w90u
+title: Support cold read-only SDK operations without runtime artifact writes
+description: "The pinned PM SDK initializes runtime metadata cache files on cold list/snapshot reads, and the core get command appends a context usage ledger. Beads identity reads can avoid item, schema and history mutations, but a literal all-files cold-read guarantee requires host support. Preserve the full-tracker initialized-cache regression and add cold-cache byte snapshots once the SDK exposes a non-persisting read contract. Do not suppress or exclude runtime files to claim success."
+type: Issue
+status: open
+priority: 2
+tags: []
+created_at: "2026-10-24T18:05:34.518Z"
+updated_at: "2026-10-24T18:11:33.621Z"
+author: codex-agent
+parent: pm-beads-tma4
+comments[1]{created_at,author,text}:
+  "2026-10-24T18:11:33.620Z",codex-agent,"Observed with a real initialized non-git tracker and the pinned SDK: the first core list adds or replaces runtime metadata-cache JSON files; core get appends runtime/context-usage.jsonl. Additional schema/extension read contexts use separate cache fingerprints. There is no public no-persist option in the pinned list cache contract. The current full-file byte regression initializes each core/SDK cache context during setup, includes all runtime files in its snapshot, and does not run a Beads command before the snapshot. A future cold-read regression must retain those files rather than exclude them."
+files[1]{path,scope}:
+  test/identity-migration.test.ts,project
+docs[1]{path,scope}:
+  README.md,project
+body: ""

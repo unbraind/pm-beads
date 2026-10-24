@@ -13,7 +13,7 @@ import { CommandError } from "./contracts.ts";
 import { optionString, resolveImportInputFile, type BeadsItem } from "./index.ts";
 import { parseBeadsSnapshot, type SnapshotRecord } from "./reconcile.ts";
 import { distinctOutput } from "./sidecar.ts";
-import { ensureBeadIdentityField } from "./identity.ts";
+import { ensureBeadIdentityField, migrateBeadIdentities, reportLegacyBeadIdentities } from "./identity.ts";
 import { beadsMutationAuthor, sourceCreateOptions, sourceDependency } from "./mutation.ts";
 
 /** Hard ceilings keep saved plans and individual coordinator attempts bounded. */
@@ -65,6 +65,8 @@ export interface BeadsTransferReceipt {
 /** Bounded drainer controls and the SDK's deterministic interruption observer. */
 export interface BeadsTransferApplyOptions {
   maxChunks?: number;
+  /** Explicitly include guarded legacy migration in this applying invocation. */
+  migrateIdentities?: boolean;
   lockWaitMs?: number;
   onTransition?: CommitWorkspaceTransactionOptions["onTransition"];
   /** Observe identity-ledger bootstrap independently of row chunk transitions. */
@@ -324,6 +326,7 @@ export async function applyBeadsTransfer(pmRoot: string, input: BeadsTransferPla
   const lockWaitMs = boundedInteger(options.lockWaitMs ?? 3000, 60_000);
   await checkSettings(pmRoot, plan, await readJournal(pmRoot, plan));
   const client = new PmClient({ pmRoot, author, noExtensions: true });
+  if (options.migrateIdentities) await migrateBeadIdentities(pmRoot, author, { apply: true });
   await ensureBeadIdentityField(client);
   // A distinct committed bootstrap prevents a missing identity ledger from being
   // silently regenerated on replay. The bootstrap and chunks use the same lease.
@@ -397,10 +400,13 @@ async function runTransfer(ctx: CommandHandlerContext) {
       catch { return refuse("invalid_plan", "Read an accessible JSON plan saved by --plan-out."); }
       return await applyBeadsTransfer(ctx.pm_root, plan, beadsMutationAuthor(ctx.global.author), {
         maxChunks: Number(optionString(ctx.options, "chunks") ?? 1),
+        migrateIdentities: ctx.options.migrateIdentities === true || ctx.options["migrate-identities"] === true,
       });
     }
     const file = resolveImportInputFile(ctx.args, ["--source", "--select", "--plan-out", "--apply-plan", "--chunks", "--max-rows", "--max-edges", "--max-bytes", "--chunk-size"]);
     if (!file) refuse("invalid_input", "Pass a Beads JSONL file with --select and --source, or resume with --apply-plan.");
+    const { items } = await new PmClient({ pmRoot: ctx.pm_root, noExtensions: true }).listAllComplete();
+    reportLegacyBeadIdentities(items);
     const bounds: Partial<BeadsTransferLimits> = {};
     for (const [key, flag] of [["maxRows", "max-rows"], ["maxEdges", "max-edges"], ["maxBytes", "max-bytes"], ["chunkSize", "chunk-size"]] as const) {
       const value = optionString(ctx.options, flag, key);
@@ -426,6 +432,7 @@ export function registerTransferCommands(api: ExtensionApi): void {
     name, description: "Plan a bounded dependency-closed Beads exchange and resume durable creation chunks.",
     arguments: [{ name: "file", required: false, description: "Complete Beads JSONL input." }],
     flags: [
+      { long: "--migrate-identities", description: "With --apply-plan, explicitly include guarded migration of legacy tracker identities." },
       ...[ ["--source", "Stable external exchange name."], ["--select", "Comma-separated exact Beads ids; include transitive blockers and parents."],
         ["--plan-out", "Save the full immutable plan; it contains selected descriptions and should use tracker access controls."],
         ["--apply-plan", "Resume the exact saved plan; existing foreign records are preserved and skipped."],

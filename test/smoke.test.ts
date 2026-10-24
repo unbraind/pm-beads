@@ -4,6 +4,7 @@ import test from "node:test";
 import { createExtensionTestHarness, type ExtensionTestHarness } from "@unbrained/pm-cli/sdk/testing";
 import { isHostOutputSuppressed, type GlobalOptions } from "@unbrained/pm-cli/sdk";
 
+import { migrateBeadIdentities } from "../identity.ts";
 import extension, {
   CommandError,
   EXIT_CODE,
@@ -1281,6 +1282,7 @@ test("upsert refreshes status index for repeated terminal-status rows", { skip: 
     JSON.stringify({ id: "bd-repeat", title: "Closed twice", status: "closed", type: "Task" }),
   ].join("\n") + "\n", "utf-8");
 
+  await migrateBeadIdentities(pmRoot, "smoke-test", { apply: true });
   const ext = await harness();
   const ir = await runImport(ext, {
     args: [file], options: { upsert: true }, pmRoot: pmRoot,
@@ -1400,6 +1402,7 @@ test("upsert routes an open-to-closed transition through pm close, not pm update
     "utf-8",
   );
 
+  await migrateBeadIdentities(pmRoot, "smoke-test", { apply: true });
   const ext = await harness();
   const ir = await runImport(ext, { args: [file], options: { upsert: true }, pmRoot: pmRoot });
   assert.strictEqual(ir.updated, 1);
@@ -1440,6 +1443,7 @@ test("upsert sends --status for a non-closed status change", { skip: !hasPmCli()
     "utf-8",
   );
 
+  await migrateBeadIdentities(pmRoot, "smoke-test", { apply: true });
   const ext = await harness();
   const ir = await runImport(ext, { args: [file], options: { upsert: true }, pmRoot: pmRoot });
   assert.strictEqual(ir.updated, 1);

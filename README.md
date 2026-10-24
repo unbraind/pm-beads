@@ -310,9 +310,19 @@ For legacy items only, an absent `bead_id` permits the exact historical envelope
 terminal marker. The id has exactly one space after the colon, no brackets or
 newlines, and no surrounding whitespace; the body contains no earlier marker.
 Embedded, nested, repeated, noncanonical or body-field markers remain user text.
-First modifying touch or export migrates the envelope into `bead_id`, removes
-only that envelope, records the metadata change in history and reports the migration on stderr.
-Dry-run and validation do not migrate. Present metadata, including an invalid or
+All reads (export, preview, plan, list, status and dry runs) use that fallback
+in memory without identity, item, schema or history mutations. The pinned PM host
+may initialize derived runtime caches on cold reads; core `get` also records usage.
+The whole-tracker byte regression initializes these SDK caches during fixture setup. Export and reconciliation report pending
+legacy items. Run `pm beads migrate-identities` to list them without writes;
+`pm --author reviewer beads migrate-identities --apply` explicitly migrates them.
+Transfer apply includes the same migration only with `--migrate-identities`;
+ordinary transfer apply preserves foreign legacy records. Each migration checks the whole item hash
+in the SDK `beforeMutation` hook under its item lock, skips and reports changed items,
+and removes only the historical envelope. History uses `--author`, then `PM_AUTHOR`,
+then `pm-beads`. Legacy upserts are skipped until explicit migration; they never
+implicitly migrate an old identity. Reconciliation apply requires migration and
+a fresh preview before replacing a legacy description. Present metadata, including an invalid or
 empty value, always disables the legacy fallback. Beads
 `dependencies` / `blocked_by` edges are mapped to pm `blocked_by` dependencies on
 import and translated back to current Beads `dependencies`
