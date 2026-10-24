@@ -479,6 +479,17 @@ source tracker. Unknown provider fields require the separate opted-in sidecar
 workflow; this command transfers the canonical reconciliation fields, rather
 than claiming a lossless copy of every provider field or original timestamp.
 
+Creation uses source fields and explicit source defaults (Task, open, priority 2,
+empty tags), with progressive create mode. A missing parent is explicitly unset,
+so a receiving tracker's active focus cannot become an imported relationship.
+Absent assignee and planning fields are also explicitly unset. Imports never
+select a receiver template; SDK clients and child mutations disable extension
+loading to exclude extension field defaults and mutation hooks. Scalar values,
+relationships and mutation authors come from the import invocation, including
+edge author provenance. Reconciliation updates retain unrelated local fields.
+Receiver validation and workflow transition policies still apply and may refuse
+an incompatible source; they do not substitute receiver defaults for source data.
+
 The public SDK exports `planBeadsTransfer`, `applyBeadsTransfer`,
 `summarizeBeadsTransfer`, `beadsTransferItemId`, their option/receipt types, and
 `BeadsTransferRefusal` with `code`, `remedy` and optional `omission`. Expected CLI

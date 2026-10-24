@@ -12,6 +12,7 @@ import { CommandError } from "./contracts.ts";
 import { encodeBeadId, optionString, resolveImportInputFile, type BeadsItem } from "./index.ts";
 import { parseBeadsSnapshot, type SnapshotRecord } from "./reconcile.ts";
 import { distinctOutput } from "./sidecar.ts";
+import { beadsMutationAuthor, sourceCreateOptions, sourceDependency } from "./mutation.ts";
 
 /** Hard ceilings keep saved plans and individual coordinator attempts bounded. */
 export const BEADS_TRANSFER_LIMITS = { maxRows: 1000, maxEdges: 4000, maxBytes: 4_194_304, chunkSize: 25 } as const;
@@ -156,24 +157,25 @@ async function ownership(pmRoot: string, plan: BeadsTransferPlan, id: string, pm
     const history = await readHistorySnapshot(getHistoryPath(pmRoot, pmId), pmId);
     if (!item) return history.entries.length ? "foreign" : "missing";
     const creation = history.entries.filter(entry => entry.op === "create").at(-1);
-    return creation?.message === ownershipMarker(plan, id) ? "owned" : "foreign";
+    // Explicit --unset records add an SDK audit suffix to the create message.
+    return creation?.message?.split(" | ", 1)[0] === ownershipMarker(plan, id) ? "owned" : "foreign";
   } catch { return "foreign"; }
 }
 /** Convert canonical fields to SDK lifecycle options; edges point only to earlier owned creations. */
-function createOptions(row: SnapshotRecord, plan: BeadsTransferPlan, ids: Map<string, string>): PmClientFullMutationOptions {
+function createOptions(row: SnapshotRecord, plan: BeadsTransferPlan, ids: Map<string, string>, author: string): PmClientFullMutationOptions {
   const f = row.fields;
   const options: PmClientFullMutationOptions = {
     title: f.title, type: f.type, status: f.status, description: encodeBeadId(f.description, row.id),
     message: ownershipMarker(plan, row.id), tags: f.tags,
-    dep: (JSON.parse(f.dependencies) as string[]).map(id => `id=${JSON.stringify(ids.get(id)!)},kind=blocked_by`),
+    dep: (JSON.parse(f.dependencies) as string[]).map(id => sourceDependency(ids.get(id)!, author)),
   };
   for (const field of ["priority", "assignee", "deadline", "sprint", "release"] as const) if (f[field]) options[field] = f[field];
   if (f.parent) options.parent = ids.get(f.parent)!;
   if (f.status === "closed") options.closeReason = "Closed in transferred Beads snapshot";
-  return options;
+  return sourceCreateOptions(options, author);
 }
 /** Build ownership-aware domain steps; the SDK owns leasing, journaling, interruption and replay. */
-function transferSteps(pmRoot: string, plan: BeadsTransferPlan, rows: SnapshotRecord[], ids: Map<string, string>, client: PmClient, options: BeadsTransferApplyOptions): WorkspaceTransactionStep[] {
+function transferSteps(pmRoot: string, plan: BeadsTransferPlan, rows: SnapshotRecord[], ids: Map<string, string>, client: PmClient, options: BeadsTransferApplyOptions, author: string): WorkspaceTransactionStep[] {
   return rows.map(row => {
     const pmId = ids.get(row.id)!;
     /** Read the state this step will modify while the coordinator holds its writer lease. */
@@ -193,7 +195,7 @@ function transferSteps(pmRoot: string, plan: BeadsTransferPlan, rows: SnapshotRe
           }
         }
         await options.onRowTransition?.({ phase: "before_create", id: row.id, pmId });
-        try { await client.create({ ...createOptions(row, plan, ids), id: pmId }); }
+        try { await client.create({ ...createOptions(row, plan, ids, author), id: pmId }); }
         catch (error) {
           const after = await inspect();
           if (after.state === "applied") return after.result;
@@ -215,7 +217,7 @@ export async function applyBeadsTransfer(pmRoot: string, input: BeadsTransferPla
   const lockWaitMs = boundedInteger(options.lockWaitMs ?? 3000, 60_000);
   const settings = await readSettings(pmRoot);
   const ids = new Map(plan.records.map(row => [row.id, beadsTransferItemId(plan, row.id, settings.id_prefix)]));
-  const client = new PmClient({ pmRoot, author });
+  const client = new PmClient({ pmRoot, author, noExtensions: true });
   const receipt: BeadsTransferReceipt = { digest: plan.digest, totalRows: plan.records.length,
     totalChunks: Math.ceil(plan.records.length / plan.limits.chunkSize), completedChunks: 0, replayedChunks: 0,
     transferred: 0, skipped: 0, complete: false, rows: [], omitted: 0, remedy: "Repeat --apply-plan with the same saved plan to resume; inspect skipped rows before starting a new exchange." };
@@ -227,7 +229,7 @@ export async function applyBeadsTransfer(pmRoot: string, input: BeadsTransferPla
     let result;
     try { result = await commitWorkspaceTransaction({ pmRoot, author,
       transactionId: `beads-transfer-${plan.digest}-${chunk}`,
-      steps: transferSteps(pmRoot, plan, rows, ids, client, options),
+      steps: transferSteps(pmRoot, plan, rows, ids, client, options, author),
       async onTransition(context) { worked = true; await options.onTransition?.(context); },
       lockWaitMs,
     }); } catch (error) {
@@ -265,7 +267,7 @@ async function runTransfer(ctx: CommandHandlerContext) {
       let plan: BeadsTransferPlan;
       try { plan = JSON.parse(await inputFile(applyFile)) as BeadsTransferPlan; }
       catch { return refuse("invalid_plan", "Read an accessible JSON plan saved by --plan-out."); }
-      return await applyBeadsTransfer(ctx.pm_root, plan, ctx.global.author ?? process.env.PM_AUTHOR ?? "pm-beads", {
+      return await applyBeadsTransfer(ctx.pm_root, plan, beadsMutationAuthor(ctx.global.author), {
         maxChunks: Number(optionString(ctx.options, "chunks") ?? 1),
       });
     }

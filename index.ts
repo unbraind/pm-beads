@@ -47,6 +47,7 @@ export * from "./sidecar.ts";
 import { registerTransferCommands } from "./transfer.ts";
 export * from "./transfer.ts";
 import { suppressHostOutput } from "@unbrained/pm-cli/sdk";
+import { beadsMutationAuthor, sourceDependency } from "./mutation.ts";
 // Top-level SDK runtime import. This fleet once believed extensions could not
 // resolve `@unbrained/pm-cli` at runtime and hid SDK access behind inline
 // dynamic-import shims laundered through `any`; that premise was disproven (a
@@ -670,6 +671,7 @@ function applyTimestamps(
   pmRoot: string,
   pmId: string,
   bead: BeadsItem,
+  author: string,
 ): boolean {
   const created_at = normalizeIsoTimestamp(bead.created_at);
   const updated_at = normalizeIsoTimestamp(bead.updated_at);
@@ -702,6 +704,8 @@ function applyTimestamps(
     [
       "--path", pmRoot,
       "history-repair", pmId,
+      "--no-extensions",
+      "--author", author,
       "--message", "pm-beads import: preserved source bead created_at/updated_at",
     ],
     { encoding: "utf-8" },
@@ -1204,6 +1208,7 @@ export type MergeStrategy = "update" | "skip" | "fail";
 export const MERGE_STRATEGIES: readonly MergeStrategy[] = ["update", "skip", "fail"];
 
 interface ImportOptions {
+  author: string;
   dryRun: boolean;
   validateOnly: boolean;
   preserveIds: boolean;
@@ -1298,11 +1303,14 @@ function closeImportedItem(
   pmId: string,
   bead: BeadsItem,
   beadId: string | undefined,
+  author: string,
 ): void {
   const closeArgs = [
     "--path", pmRoot,
     "--json",
     "close", pmId,
+    "--no-extensions",
+    "--author", author,
     "--reason", beadCloseReason(bead, beadId),
   ];
   const completedAt = normalizeIsoTimestamp(bead.closed_at ?? bead.completed_at);
@@ -1668,6 +1676,8 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
           // UPSERT: update the matched item in place.
           const updArgs = [
             "--path", pmRoot, "--json", "update", existingPmId,
+            "--no-extensions",
+            "--author", opts.author,
             "--title", title,
             "--type", type,
             "--description", description,
@@ -1709,7 +1719,7 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
           // item is already closed so a re-import stays idempotent and does
           // not append a second bogus close.
           if (routeCloseUpdate && existing?.status !== "closed") {
-            closeImportedItem(pmRoot, pmId, item, beadId);
+            closeImportedItem(pmRoot, pmId, item, beadId, opts.author);
           }
           updated++;
           if (key) existingIndex.set(key, { pmId, status });
@@ -1722,14 +1732,21 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
             "--path", pmRoot,
             "--json",
             "create",
+            "--no-extensions",
+            "--author", opts.author,
+            "--create-mode", "progressive",
+            // Source parents are linked in pass 2; never inherit the receiver's focus.
+            "--unset", "parent",
             "--title", title,
             "--type", type,
             "--status", routeCloseCreate ? "open" : status,
             "--description", description,
           ];
-          if (priority) spawnArgs.push("--priority", priority);
-          if (tags) spawnArgs.push("--tags", tags);
+          spawnArgs.push("--priority", priority ?? "2", "--tags", tags ?? "[]");
           appendPlanningArgs(spawnArgs, item);
+          for (const field of ["assignee", "deadline", "sprint", "release"]) {
+            if (!spawnArgs.includes(`--${field}`)) spawnArgs.push("--unset", field);
+          }
 
           const result = spawnSync("pm", spawnArgs, { encoding: "utf-8" });
           if (result.status !== 0) {
@@ -1739,7 +1756,7 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
           if (!created) throw new Error("could not determine created pm id");
           pmId = created;
           if (routeCloseCreate) {
-            closeImportedItem(pmRoot, pmId, item, beadId);
+            closeImportedItem(pmRoot, pmId, item, beadId, opts.author);
           }
           // Record so a later record in the same file can upsert onto it too.
           if (key) existingIndex.set(key, { pmId, status });
@@ -1777,8 +1794,8 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
 
       if (entry.upserted) {
         // Atomically replace deps so re-import is idempotent (no duplicates).
-        const depArgs = ["--path", pmRoot, "update", entry.pmId, "--replace-deps"];
-        for (const b of resolvedBlockers) depArgs.push("--dep", `id=${b.pm},kind=blocked_by`);
+        const depArgs = ["--path", pmRoot, "update", entry.pmId, "--no-extensions", "--author", opts.author, "--replace-deps"];
+        for (const b of resolvedBlockers) depArgs.push("--dep", sourceDependency(b.pm!, opts.author));
         // With no edges, --replace-deps + no --dep clears them; use --clear-deps.
         if (resolvedBlockers.length === 0) {
           depArgs.splice(depArgs.indexOf("--replace-deps"), 1, "--clear-deps");
@@ -1790,7 +1807,7 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
         for (const b of resolvedBlockers) {
           const dep = spawnSync(
             "pm",
-            ["--path", pmRoot, "update", entry.pmId, "--dep", `id=${b.pm},kind=blocked_by`],
+            ["--path", pmRoot, "update", entry.pmId, "--no-extensions", "--author", opts.author, "--dep", sourceDependency(b.pm!, opts.author)],
             { encoding: "utf-8" },
           );
           if (dep.status === 0) edges++;
@@ -1802,7 +1819,7 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
       if (parentId) {
         const parent = spawnSync(
           "pm",
-          ["--path", pmRoot, "update", entry.pmId, "--parent", parentId],
+          ["--path", pmRoot, "update", entry.pmId, "--no-extensions", "--author", opts.author, "--parent", parentId],
           { encoding: "utf-8" },
         );
         if (parent.status === 0) parents++;
@@ -1817,7 +1834,7 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
     // the round-trip stays lossless.
     if (opts.preserveTimestamps) {
       for (const entry of touched) {
-        if (applyTimestamps(pmRoot, entry.pmId, entry.bead)) timestamped++;
+        if (applyTimestamps(pmRoot, entry.pmId, entry.bead, opts.author)) timestamped++;
       }
     }
   }
@@ -2804,8 +2821,9 @@ export function parseExportOptions(options: Record<string, unknown>): ExportOpti
   };
 }
 
-function parseImportOptions(options: Record<string, unknown>): ImportOptions {
+function parseImportOptions(options: Record<string, unknown>, author: string): ImportOptions {
   return {
+    author,
     dryRun: readBoolOption(options, "dry-run", "dryRun"),
     validateOnly: readBoolOption(options, "validate-only", "validateOnly"),
     upsert: readBoolOption(options, "upsert"),
@@ -2922,7 +2940,7 @@ export default defineExtension({
       "beads",
       defineImporter(async (ctx: ImportExportContext) => {
         const file = resolveImportInputFile(ctx.args) ?? optionString(ctx.options, "file");
-        return runImport(file, ctx.pm_root, parseImportOptions(ctx.options));
+        return runImport(file, ctx.pm_root, parseImportOptions(ctx.options, beadsMutationAuthor(ctx.global.author)));
       }),
       {
         description:
@@ -3007,7 +3025,7 @@ export default defineExtension({
       flags: IMPORT_FLAGS,
       async run(ctx: CommandHandlerContext) {
         const file = resolveImportInputFile(ctx.args) ?? optionString(ctx.options, "file");
-        return runImport(file, ctx.pm_root, parseImportOptions(ctx.options));
+        return runImport(file, ctx.pm_root, parseImportOptions(ctx.options, beadsMutationAuthor(ctx.global.author)));
       },
     }));
 

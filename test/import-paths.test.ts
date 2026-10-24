@@ -165,7 +165,7 @@ test("a successful import wires blocker edges and parent links to the created id
     assert.equal(result.filtered, undefined);
     const updates = s.logLines().filter((argv) => argv.includes("update"));
     const childUpdate = updates.find((argv) => argv.includes("pm-stub-2"))!;
-    assert.ok(childUpdate.some((a) => a.startsWith("id=pm-stub-1")), "blocker edge resolves to the created parent id");
+    assert.ok(childUpdate.some((a) => a.startsWith('id="pm-stub-1",')), "blocker edge resolves to the created parent id");
     const parentUpdate = updates.find((argv) => argv.includes("--parent"))!;
     assert.ok(parentUpdate.includes("pm-stub-1"), "parent link resolves via beadToPm");
     const firstCreate = s.logLines().find((argv) => argv.includes("create"))!;
@@ -199,7 +199,7 @@ test("merge-strategy skip leaves matched items untouched but keeps their edges r
     assert.ok(!s.logLines().some((argv) => argv.includes("update") && !argv.includes("--dep")),
       "the matched item is never updated");
     const depArgs = s.logLines().find((argv) => argv.includes("--dep"))!;
-    assert.ok(depArgs.includes("id=pm-existing-1,kind=blocked_by"), "edges resolve to the skipped item's pm id");
+    assert.ok(depArgs.some(arg => arg.startsWith('id="pm-existing-1",kind=blocked_by,author=')), "edges resolve to the skipped item's pm id with explicit authorship");
   } finally {
     await ext.deactivate();
     s.restorePath();
@@ -233,7 +233,7 @@ test("upsert update omits an unchanged status, routes closed through pm close, a
     const firstUpdate = s.logLines().find((argv) => argv.includes("update") && argv.includes("pm-existing-1"))!;
     assert.ok(!firstUpdate.includes("--status"), "unchanged status is omitted");
     assert.ok(s.logLines().some((argv) => argv.includes("--replace-deps")), "upsert replaces deps atomically");
-    assert.ok(s.logLines().some((a) => a.some((x) => x.startsWith("id=pm-existing-1,"))), "edge resolves to existing item id");
+    assert.ok(s.logLines().some((a) => a.some((x) => x.startsWith('id="pm-existing-1",'))), "edge resolves to existing item id");
   } finally {
     await ext.deactivate();
     s.restorePath();
@@ -284,7 +284,7 @@ test("a failed update counts the record as skipped and still resolves other reco
     assert.equal(result.updated, 0);
     assert.equal(result.skipped, 1);
     const depArgs = s.logLines().find((argv) => argv.includes("--dep"))!;
-    assert.ok(depArgs.includes("id=pm-existing-1,kind=blocked_by"), "edge kept pointing at the existing item");
+    assert.ok(depArgs.some(arg => arg.startsWith('id="pm-existing-1",kind=blocked_by,author=')), "edge kept pointing at the existing item with explicit authorship");
   } finally {
     await ext.deactivate();
     s.restorePath();
