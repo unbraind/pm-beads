@@ -32,7 +32,8 @@ function completeEnvelope(overrides: Partial<ListAllEnvelope> = {}): ListAllEnve
     next_cursor: null,
     completeness: { status: "complete", unreadable_item_count: 0, unreadable_directory_count: 0 },
     omission_receipt: { has_omissions: false, omitted_field_group_count: 0, omitted_field_groups: [] },
-    projection: { mode: "full" },
+    projection: { mode: "full", fields: null },
+    filters: { status: "all", strict_read: true, no_truncate: true },
     read_output: {
       contract_version: 1,
       command: "list",
@@ -48,9 +49,8 @@ function completeEnvelope(overrides: Partial<ListAllEnvelope> = {}): ListAllEnve
 
 /**
  * Assert the mutated envelope is refused with the refusal signal EXPECTED for
- * this mutation. `assertListAllComplete` checks in a fixed order, so a mutated
- * field could otherwise trip an earlier, unrelated refusal and still pass;
- * the pattern pins which signal tripped.
+ * this mutation. SDK inspection reports independent finding codes; the pattern pins the
+ * finding belonging to this mutation without duplicating SDK predicates.
  */
 function refuses(name: string, mutate: (env: ListAllEnvelope) => void, expected: RegExp): void {
   test(`refuses an envelope whose ${name}`, () => {
@@ -72,115 +72,117 @@ test("accepts a fully complete envelope", () => {
 
 test("refuses a non-object answer outright (array or null)", () => {
   assert.throws(() => assertListAllComplete([completeEnvelope()]), IncompleteWorkspaceReadError);
-  assert.throws(() => assertListAllComplete(null), IncompleteWorkspaceReadError);
+  for (const value of [null, undefined, "invalid", 0]) {
+    assert.throws(() => assertListAllComplete(value), IncompleteWorkspaceReadError);
+  }
 });
 
 test("refuses a top-level array and a null answer outright", () => {
-  assert.throws(() => assertListAllComplete([completeEnvelope()]), /top-level object/);
-  assert.throws(() => assertListAllComplete(null), /top-level object/);
+  assert.throws(() => assertListAllComplete([completeEnvelope()]), /invalid_envelope/);
+  assert.throws(() => assertListAllComplete(null), /invalid_envelope/);
 });
 refuses("truncated flag is not exactly false", (env) => {
   env.truncated = true;
-}, /truncated=true/);
+}, /page_incomplete/);
 refuses("truncated flag is missing", (env) => {
   delete (env as Record<string, unknown>).truncated;
-}, /truncated=\(missing\)/);
+}, /page_incomplete/);
 refuses("has_more flag is not exactly false", (env) => {
   env.has_more = true;
-}, /has_more=true/);
+}, /page_incomplete/);
 refuses("has_more flag is missing", (env) => {
   delete (env as Record<string, unknown>).has_more;
-}, /has_more=\(missing\)/);
+}, /page_incomplete/);
 refuses("next_cursor is non-null", (env) => {
   env.next_cursor = "cursor-1";
-}, /next_cursor must be exactly null/);
+}, /page_incomplete/);
 refuses("next_cursor is missing", (env) => {
   delete (env as Record<string, unknown>).next_cursor;
-}, /next_cursor must be exactly null; received \(missing\)/);
+}, /page_incomplete/);
 refuses("completeness.status is not complete", (env) => {
   env.completeness = { status: "partial", unreadable_item_count: 2, unreadable_directory_count: 1 };
-}, /completeness\.status="partial"/);
+}, /source_incomplete/);
 refuses("completeness block is missing", (env) => {
   delete (env as Record<string, unknown>).completeness;
-}, /completeness\.status=\(missing\)/);
+}, /source_unchecked/);
 refuses("unreadable_item_count is nonzero", (env) => {
   if (env.completeness) env.completeness.unreadable_item_count = 3;
-}, /unreadable_item_count must be exactly 0/);
+}, /source_incomplete/);
 refuses("unreadable_directory_count is nonzero", (env) => {
   if (env.completeness) env.completeness.unreadable_directory_count = 1;
-}, /unreadable_directory_count must be exactly 0/);
+}, /source_incomplete/);
 refuses("omission_receipt is not an object", (env) => {
   env.omission_receipt = undefined;
-}, /omission_receipt must be an object/);
+}, /omission_receipt_missing/);
 refuses("omission_receipt reports omissions", (env) => {
   env.omission_receipt = { has_omissions: true, omitted_field_group_count: 1, omitted_field_groups: ["body"] };
-}, /has_omissions must be exactly false/);
+}, /field_omission/);
 refuses("omitted_field_group_count is nonzero", (env) => {
   if (env.omission_receipt) env.omission_receipt.omitted_field_group_count = 2;
-}, /omitted_field_group_count must be exactly 0/);
+}, /omission_receipt_invalid/);
 refuses("omitted_field_groups is not an empty array", (env) => {
   env.omission_receipt = { has_omissions: false, omitted_field_group_count: 0, omitted_field_groups: undefined };
-}, /omitted_field_groups must be an empty array/);
+}, /omission_receipt_invalid/);
 refuses("projection.mode is not full", (env) => {
   env.projection = { mode: "brief" };
-}, /projection\.mode must be exactly full; received "brief"/);
+}, /projection_incomplete/);
 refuses("read_output.contract_version is not 1", (env) => {
   if (env.read_output) env.read_output.contract_version = 2;
-}, /contract_version must be exactly 1/);
+}, /read_output_invalid/);
 refuses("read_output.command is not list", (env) => {
   if (env.read_output) env.read_output.command = "show";
-}, /read_output\.command must be exactly list/);
+}, /read_output_invalid/);
 refuses("read_output.within_budget is not true", (env) => {
   if (env.read_output) env.read_output.within_budget = false;
-}, /within_budget must be exactly true/);
+}, /read_output_invalid/);
 refuses("strings_compacted is true", (env) => {
   if (env.read_output) env.read_output.strings_compacted = true;
-}, /strings_compacted must be exactly false/);
+}, /budget_compaction/);
 refuses("rows_compacted is true", (env) => {
   if (env.read_output) env.read_output.rows_compacted = true;
-}, /rows_compacted must be exactly false/);
+}, /budget_compaction/);
 refuses("result_omitted is true", (env) => {
   if (env.read_output) env.read_output.result_omitted = true;
-}, /result_omitted must be exactly false/);
+}, /budget_omission/);
 refuses("requested_dimensions misses a required dimension", (env) => {
   if (env.read_output) env.read_output.requested_dimensions = ["include"];
-}, /requested_dimensions must include/);
+}, /read_output_dimensions_incomplete/);
 refuses("requested_dimensions is not an array", (env) => {
   if (env.read_output) env.read_output.requested_dimensions = "include";
-}, /requested_dimensions must include/);
+}, /read_output_dimensions_incomplete/);
 refuses("a budget truncation disclosure is present", (env) => {
   (env as Record<string, unknown>).output_budget_truncation = { note: "cut" };
-}, /budget truncation or omission disclosure/);
+}, /budget_(compaction|omission)/);
 refuses("a budget omission disclosure is present", (env) => {
   (env as Record<string, unknown>).output_budget_exceeded = { note: "cut" };
 }, /budget truncation or omission disclosure/);
 refuses("count is negative", (env) => {
   env.count = -1;
-}, /count must be a non-negative safe integer/);
+}, /count_mismatch/);
 refuses("count is not a safe integer", (env) => {
   env.count = Number.NaN;
-}, /count must be a non-negative safe integer/);
+}, /count_mismatch/);
 refuses("total is negative", (env) => {
   env.total = -5;
-}, /total must be a non-negative safe integer/);
+}, /count_mismatch/);
 refuses("total is missing", (env) => {
   delete (env as Record<string, unknown>).total;
-}, /total must be a non-negative safe integer/);
+}, /count_mismatch/);
 refuses("items is not an array", (env) => {
   env.items = undefined;
-}, /`items` is not an array/);
+}, /invalid_envelope/);
 refuses("count disagrees with total", (env) => {
   env.total = 7;
-}, /count 1 must equal total 7/);
+}, /count_mismatch/);
 refuses("items.length disagrees with count", (env) => {
   env.items = [];
-}, /items\.length 0 must equal count 1/);
+}, /count_mismatch/);
 refuses("an item row is not an object", (env) => {
   env.items = ["nope"];
-}, /item 0 must be an object/);
+}, /invalid_item_id/);
 refuses("an item row has an empty id", (env) => {
   env.items = [{ id: "   " }];
-}, /item 0 must have a non-empty id/);
+}, /invalid_item_id/);
 refuses("two item rows share one id", (env) => {
   env.items = [
     { id: "pm-1", title: "One" },
@@ -188,7 +190,30 @@ refuses("two item rows share one id", (env) => {
   ];
   env.count = 2;
   env.total = 2;
-}, /duplicate item id pm-1/);
+}, /duplicate_item_id/);
+
+// These previously accepted receipts must now fail SDK whole-corpus inspection.
+refuses("filters omit all-status scope", env => { env.filters = {}; }, /filtered_corpus/);
+refuses("filters exclude terminal work", env => { env.filters!.exclude_terminal = true; }, /terminal_items_excluded/);
+refuses("filters omit strict-read proof", env => { delete env.filters!.strict_read; }, /strict_read_unproven/);
+refuses("filters omit no-truncate proof", env => { delete env.filters!.no_truncate; }, /page_incomplete/);
+refuses("filters contain runtime narrowing", env => { env.filters!.runtime_filters = { tags: ["subset"] }; }, /filtered_corpus/);
+refuses("filters contain an unrecognized narrowing key", env => { env.filters!.assignee = "subset"; }, /filtered_corpus/);
+refuses("projection selects fields", env => { env.projection!.fields = ["title"]; }, /projection_incomplete/);
+refuses("projection omits the fields receipt", env => { delete env.projection!.fields; }, /projection_incomplete/);
+refuses("applied_limit is present", env => { (env as Record<string, unknown>).applied_limit = 1; }, /page_incomplete/);
+refuses("read_session is present", env => { (env as Record<string, unknown>).read_session = {}; }, /session_projection/);
+refuses("identities differ only by surrounding whitespace", env => {
+  env.items = [{ id: "pm-1" }, { id: " pm-1 " }]; env.count = 2; env.total = 2;
+}, /duplicate_item_id/);
+
+test("preserves refusal of informational, null and undefined budget disclosures", () => {
+  for (const field of ["output_budget_truncation", "output_budget_exceeded"]) {
+    for (const value of [undefined, null, { omitted_result: false }]) {
+      assert.throws(() => assertListAllComplete({ ...completeEnvelope(), [field]: value }), /budget truncation or omission disclosure/);
+    }
+  }
+});
 
 test("the refusal message carries the count/total figures for pagination signals", () => {
   const env = completeEnvelope({ truncated: true, total: 9 });
@@ -202,7 +227,7 @@ test("the refusal message carries the count/total figures for pagination signals
 
 // --- The injected spawn seam over the whole workspace read -----------------
 
-const PM_ROOT = "/tmp/not-a-real-workspace";
+const PM_ROOT = "missing-tracker";
 
 /** Wrap a spawn double so it also records the maxBuffer it was handed. */
 function spawnRecordingMaxBuffer(
@@ -228,6 +253,7 @@ test("buildBeadsFromWorkspace requests the unbounded full projection and forward
   assert.strictEqual(beads.length, 1);
   assert.strictEqual(calls.length, 1);
   assert.ok(calls[0].args.includes("--output-budget"));
+  for (const flag of ["--all", "--strict-read", "--no-truncate"]) assert.ok(calls[0].args.includes(flag), flag);
   assert.deepStrictEqual(
     calls[0].args.filter((a) => ["unbounded"].includes(a)).length,
     2,
