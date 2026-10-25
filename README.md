@@ -574,10 +574,37 @@ finish within the host coordinator's lease lifetime.
 
 See [the SDK and CLI example](examples/dependency-closed-transfer.md).
 
+## Acknowledged outgoing deltas
+
+`pm beads outgoing --base base.json --target target.json --json` emits only
+changed fields between two saved acknowledgements, plus source/base/target
+identity receipts. `--target target.json` without a base emits a full snapshot.
+`pm beads outgoing --base base.json --replay delta.json --json` reconstructs and
+verifies the target; exact replay returns `unchanged: true`. The default output
+is TOON and `beads-outgoing` is the equivalent alias.
+
+The typed SDK exports `generateBeadsOutgoingDelta`, `replayBeadsOutgoingDelta`,
+`BeadsOutgoingDelta`, `BeadsOutgoingOperation`, `BeadsOutgoingRefusal` and
+`BEADS_OUTGOING_LIMITS`. Existing acknowledgement APIs supply the inputs. Explicit
+`set`, `unset`, `add` and `remove` operations preserve optional-field clears and
+source omissions. Two changed fields among 1,000 records emit exactly two
+operations; unchanged bindings are inherited from the verified base. A wrong
+base refuses without writes and instructs the caller to request a full snapshot.
+No tracker mutation or durable outbox is introduced. Reconstructed records feed
+the existing reviewed reconciliation workflow; omissions remain deletion proposals.
+
+A single strict boundary schema enforces dense arrays, unique identities,
+canonical receipt ordering, documented string/record limits, and finite domains.
+Typed refusals carry a code, remedy and exit status 2. Status names remain opaque
+transport data; lifecycle decisions belong to the SDK registry. See the
+[worked SDK/CLI example, protocol limits and recovery remedies](examples/acknowledged-outgoing-deltas.md).
+
 ## Without git
 
 Import, export, validate, diff, sidecar capture/restore, snapshot reconciliation
 and resumable transfer work in a plain pm tracker without a git executable.
+Acknowledged outgoing delta generation and replay also work without git and do
+not initialize or mutate a tracker.
 Reconciliation and transfer use SDK reads, history and transactions. Transfer
 checkpoints belong to the receiving tracker. GitHub synchronization and release
 tooling need their respective repository/service context.

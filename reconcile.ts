@@ -169,6 +169,10 @@ export function reconcileBeadsSnapshots(base: BeadsAcknowledgement, incoming: Sn
   plan.digest = digest({ ...plan, digest: "" });
   return plan;
 }
+/** Compute the existing acknowledgement receipt using its exact persisted field order. */
+export function beadsAcknowledgementDigest(state: Omit<BeadsAcknowledgement, "schema" | "revision">): string {
+  return digest({ source: state.source, previous: state.previous, records: state.records, ...(state.bindings ? { bindings: state.bindings } : {}) });
+}
 /** Resolve one source-owned state file without interpolating external ids into paths. */
 function statePath(pmRoot: string, source: string): string {
   if (!source.trim()) refuse("invalid_snapshot", "Choose a nonempty source name and reuse it for the same external tracker.");
@@ -190,7 +194,7 @@ export async function readBeadsAcknowledgement(pmRoot: string, source: string): 
   try { state = JSON.parse(raw) as BeadsAcknowledgement; }
   catch { return refuse("invalid_snapshot", "Restore a valid acknowledged base; do not silently reset source history."); }
   if (!state || state.schema !== 1 || state.source !== source ||
-      state.revision !== digest({ source, previous: state.previous, records: state.records, ...(state.bindings ? { bindings: state.bindings } : {}) })) {
+      state.revision !== beadsAcknowledgementDigest(state)) {
     refuse("invalid_snapshot", "Restore a valid acknowledged base; its revision or source does not match.");
   }
   assertRecords(state.records);
@@ -261,7 +265,7 @@ export async function readLiveBeadsSnapshot(pmRoot: string, source?: string, rec
 }
 /** Persist a source base atomically; omitted records stay pending until separately resolved. */
 async function saveBase(pmRoot: string, source: string, previous: string | null, records: SnapshotRecord[], bindings: Record<string, string>): Promise<BeadsAcknowledgement> {
-  const state: BeadsAcknowledgement = { schema: 1, source, previous, records, bindings, revision: digest({ source, previous, records, bindings }) };
+  const state: BeadsAcknowledgement = { schema: 1, source, previous, records, bindings, revision: beadsAcknowledgementDigest({ source, previous, records, bindings }) };
   await mkdir(join(pmRoot, "beads"), { recursive: true });
   await writeFileAtomic(statePath(pmRoot, source), JSON.stringify(state) + "\n");
   return state;

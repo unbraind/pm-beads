@@ -32,6 +32,8 @@ import type {
   Importer,
   SchemaFieldDefinition,
 } from "@unbrained/pm-cli/sdk/authoring";
+import { registerOutgoingCommands } from "./outgoing.ts";
+export * from "./outgoing.ts";
 import { registerReconcileCommands } from "./reconcile.ts";
 export * from "./reconcile.ts";
 import { registerSidecarCommands } from "./sidecar.ts";
@@ -2565,6 +2567,7 @@ export default defineExtension({
   activate(api: ExtensionApi) {
     registerIdentityMigrationCommand(api);
     registerReconcileCommands(api);
+    registerOutgoingCommands(api);
     registerSidecarCommands(api);
     registerTransferCommands(api);
     // -----------------------------------------------------------------------

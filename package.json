@@ -99,7 +99,8 @@
       "README.md",
       "examples/snapshot-reconciliation.md",
       "examples/unknown-field-sidecars.md",
-      "examples/dependency-closed-transfer.md"
+      "examples/dependency-closed-transfer.md",
+      "examples/acknowledged-outgoing-deltas.md"
     ]
   },
   "publishConfig": {
