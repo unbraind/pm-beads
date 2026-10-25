@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { PmClient, PmCliError, getHistoryPath, locateItem, runWithReproducibleProcessEnvironment } from "@unbrained/pm-cli/sdk";
 import { allocateBeadsItemId, readBeadsItemDocument, readBeadsItemHistory } from "../item-access.ts";
 import { harness, runExport } from "./helpers.ts";
+import { CommandError } from "../index.ts";
 
 /** Create a disposable non-git tracker for real history operations. */
 async function fixture(t: test.TestContext) {
@@ -71,4 +72,6 @@ test("SDK workspace export preserves a non-directory tracker error before CLI fa
   const ext = await harness(); t.after(() => ext.deactivate());
   await assert.rejects(runExport(ext, { pmRoot, options: { "dry-run": true } }),
     (error: unknown) => error instanceof PmCliError && error.code === "tracker_root_not_directory" && error.exitCode === 2);
+  await assert.rejects(runExport(ext, { pmRoot: join(dir, "missing-tracker"), options: { "dry-run": true } }),
+    (error: unknown) => error instanceof CommandError && error.exitCode === 1);
 });
