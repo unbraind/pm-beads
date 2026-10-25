@@ -176,6 +176,24 @@ count-inconsistent, identity-less, or duplicate-ID envelopes before import,
 export, or workspace diff consumes any row.
 Pass `--no-workspace` to restrict the check to the file alone.
 
+Whole-workspace export and reconciliation reads use `PmClient.listAllComplete`.
+The synchronous `buildBeadsFromWorkspace` API and legacy subprocess fallback
+use the same SDK policy through `inspectCompleteListResult`; the request adds
+`--strict-read` and `--no-truncate` to its full, unbounded projection. Invalid
+answers still throw `IncompleteWorkspaceReadError` (a `CommandError`) with the
+command and count/total context. Diagnostics now report SDK finding codes and
+all detected violations instead of the first package-owned predicate.
+
+SDK certification also refuses missing all-status scope, runtime or unknown
+filters, terminal exclusion, missing strict-read or no-truncate proof, an
+applied row limit, selected or unproven projection fields, read-session
+suppression, and IDs duplicated after trimming whitespace. These receipts
+could pass the previous local validator. The package still refuses any budget
+truncation or omission disclosure, including informational receipts. That small
+compatibility rule remains because the SDK has no option requiring disclosure
+keys to be absent; the SDK otherwise owns all completeness predicates.
+See [the differential evidence](examples/sdk-adoption-validation.md).
+
 ```bash
 pm beads validate items.jsonl
 pm beads validate items.jsonl --json          # structured report on stdout

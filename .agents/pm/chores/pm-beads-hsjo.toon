@@ -1,0 +1,39 @@
+id: pm-beads-hsjo
+title: Use SDK certification for complete Beads workspace reads
+description: "2026-10-25 SDK adoption audit: replace assertListAllComplete duplication with inspectCompleteListResult while retaining package error classification; verify the audited locator is already replaced by locateItem plus resolveItemTypeRegistry in item-access.ts on main. Related SDK adoption: pm-beads-8wev; remaining host API gaps: pm-beads-z4k0. Prove public tracker differential parity and each intentional SDK contract difference, behavioral revert, unchanged full coverage and npm/Bun release gates."
+type: Chore
+status: in_progress
+priority: 2
+tags[1]: sdk-adoption
+created_at: "2026-10-25T16:12:09.136Z"
+updated_at: "2026-10-25T16:28:03.962Z"
+assignee: codex-agent
+claim_principal: codex-agent
+author: codex-agent
+parent: pm-beads-8wev
+comments[8]{created_at,author,text}:
+  "2026-10-25T16:12:19.191Z",codex-agent,"Baseline origin/main 5563525 already deletes locateItemFile: item-access.ts delegates lookup to locateItem with settings.id_prefix, settings.item_format and resolveItemTypeRegistry(settings).type_to_folder, and SDK history verification. No timestamp patching or history repair will be introduced. Remaining replacement: inspectCompleteListResult with package IncompleteWorkspaceReadError presentation. Keep pinned SDK 2026.10.20 unchanged (published host checked: 2026.10.25). Differential validation will build the immutable baseline, copy public GitHub tracker trees into non-git scratch directories, compare export/diff/validation and verified item reads, and fingerprint inputs before/after."
+  "2026-10-25T16:16:57.494Z",codex-agent,"Replacement implemented: 189 lines removed from index.ts and a small SDK inspection adapter added; synchronous compatibility calls now request strict-read/no-truncate while initialized async workflows already use PmClient.listAllComplete. README documents SDK scope/projection/session/identity strictness and SDK diagnostics, plus informational non-omitting budget receipt semantics. Focused command node --test test/list-all-refusals.test.ts test/smoke.test.ts test/export-diff-paths.test.ts test/import-paths.test.ts test/tracker-configurations.test.ts test/item-access.test.ts passes 242/242, zero skipped. npm run typecheck, npm run build:test and npm run docstring pass; no lint script exists, docstring is the configured source lint gate."
+  "2026-10-25T16:16:59.081Z",codex-agent,"Behavioral revert proof for the complete-list replacement: restored only assertListAllComplete from immutable main 5563525, leaving new regression cases and request flags unchanged. Command: node --test --test-name-pattern=\"filters |projection selects|projection omits|applied_limit|read_session|identities differ\" test/list-all-refusals.test.ts. Result: 11/11 selected tests FAIL, all missing expected refusal. Restoring the SDK adapter makes node --test test/list-all-refusals.test.ts pass 57/57. No tracker history or item document was reverted. The locator finding has no new replacement to revert: it was already adopted on baseline main in #165; current configuration matrix passes 20/20 and item-access tests 4/4."
+  "2026-10-25T16:17:38.946Z",codex-agent,"Line-count correction: git diff --numstat reports index.ts +17/-172 (155 net lines removed), rather than the 189 changed-line total quoted earlier. Audit predicates and their presentation branches are deleted; the remaining adapter delegates every admission decision to the SDK."
+  "2026-10-25T16:19:28.008Z",codex-agent,"Public differential PASS on immutable pm-beads main 556352541cf8a9e01c9813534f9f5896d3ba4235 (tracker tree 7e3fa14a5dc838480739053fc19f8c0519ea54bd, 102 items) and pm-changelog main fa8a8a1d0af97797e6a34a78bdd6b9b30242378e (tracker tree e7733dfe89c9e72355fce4d8df0087a398754ab7, 197 items). Commands: node test/public-sdk-differential.ts; node test/public-sdk-differential.ts <public-package-checkout> unbraind/pm-changelog. Both build immutable baseline main and compare six read output groups on read-only non-git copies with git absent from PATH: full serialization, filtered serialization, every verified document/history, export, workspace diff, validation. Zero successful-output differences across 299 items. Fifteen receipt cases per corpus list eleven stricter cases and one informational budget acceptance difference; all are documented in examples/sdk-adoption-validation.md. Both tracker digests and source trees remain unchanged. Derived SDK caches are warmed before the read-only snapshot (known pm-beads-w90u). Linked pm test run also passes 242/242."
+  "2026-10-25T16:19:31.410Z",codex-agent,"Strict tracker health passes with a fresh home and system/global git config disabled, matching CI isolation. Ordinary host home discovers a global pm-github extension requiring host 2026.10.25 while this package pins 2026.10.20; that ambient extension skew is absent in isolated health. No package pin, extension policy, telemetry setting or existing history was changed."
+  "2026-10-25T16:26:02.334Z",codex-agent,"Final compatibility correction from differential review: preserve the original refusal of ANY output_budget_truncation/output_budget_exceeded key, including null, undefined and informational non-omitting values. The SDK inspectCompleteListResult API lacks an option requiring disclosure keys to be absent (needed capability: strict-disclosure-presence policy, e.g. rejectBudgetDisclosures). This one package compatibility presence predicate remains; every source/scope/page/projection/count/identity certification predicate is replaced by the SDK. The orchestrator can report the named SDK option gap upstream. There is no admission relaxation in the final design. Updated source delta: +23/-172, 149 net lines removed from index.ts. Added explicit compatibility regressions; current receipt/seam suite passes 58/58. Prior full-gate run was superseded before completion and will be rerun on this final design."
+  "2026-10-25T16:28:03.962Z",codex-agent,"Final-design differential rerun passes both public corpora (299 items, six identical successful output groups each). All 15 receipt cases per corpus now have only 11 stricter admission differences; informational budget receipts keep their original refusal. No admission relaxation remains. Behavioral revert rerun on final adapter again fails all 11 selected strictness regressions, restoring it passes 58/58 receipt/seam cases. Typecheck and test typecheck pass. The full npm then Bun release gates are running on this frozen code; the review PR will expose CI release-gate results."
+files[7]{path,scope}:
+  index.ts,project
+  item-access.ts,project
+  test/fixtures/sdk-differential-read.ts,project
+  test/helpers.ts,project
+  test/list-all-refusals.test.ts,project
+  test/public-sdk-differential.ts,project
+  test/smoke.test.ts,project
+tests[4]{command,scope,timeout_seconds,provenance{author,created_at,source_kind,source_ref}}:
+  node --test test/list-all-refusals.test.ts test/smoke.test.ts test/export-diff-paths.test.ts test/import-paths.test.ts test/tracker-configurations.test.ts test/item-access.test.ts,project,300,codex-agent,"2026-10-25T16:17:11.452Z",local_mutation,refactor/sdk-adoption-1025
+  node test/public-sdk-differential.ts,project,300,codex-agent,"2026-10-25T16:19:34.843Z",local_mutation,refactor/sdk-adoption-1025
+  "npm run release:check",project,600,codex-agent,"2026-10-25T16:19:38.030Z",local_mutation,refactor/sdk-adoption-1025
+  "bun run release:check",project,600,codex-agent,"2026-10-25T16:19:41.059Z",local_mutation,refactor/sdk-adoption-1025
+docs[2]{path,scope}:
+  examples/sdk-adoption-validation.md,project
+  README.md,project
+body: ""

@@ -1676,7 +1676,7 @@ function realEnvelope(): EnvelopeFixture {
   // production read path would have parsed.
   const read = spawnSync(
     "pm",
-    ["--path", pmRoot, "list", "--all", "--json", "--output-budget", "unbounded", "--output-limit", "unbounded", "--output-include", "full"],
+    ["--path", pmRoot, "list", "--all", "--json", "--strict-read", "--no-truncate", "--output-budget", "unbounded", "--output-limit", "unbounded", "--output-include", "full"],
     { encoding: "utf-8" },
   );
   assert.strictEqual(read.status, 0, `pm list --all failed: ${read.stderr}`);
@@ -1747,7 +1747,7 @@ test("export refuses a list-all envelope with truncated=true", { skip: !hasPmCli
     () => buildBeadsFromWorkspace(pmRoot, { preserveIds: false, filter: NO_FILTER }, seamFor(stdout)),
     (err: unknown) => {
       assert.ok(err instanceof CommandError);
-      assert.match(err.message, /truncated=true/, "message must name the tripped signal");
+      assert.match(err.message, /page_incomplete/, "message must name the tripped signal");
       assert.match(err.message, /count 3 of total 3/, "message must name the counts");
       return true;
     },
@@ -1761,7 +1761,7 @@ test("export refuses a list-all envelope with has_more=true", { skip: !hasPmCli(
     () => buildBeadsFromWorkspace(pmRoot, { preserveIds: false, filter: NO_FILTER }, seamFor(stdout)),
     (err: unknown) => {
       assert.ok(err instanceof CommandError);
-      assert.match(err.message, /has_more=true/, "message must name the tripped signal");
+      assert.match(err.message, /page_incomplete/, "message must name the tripped signal");
       assert.match(err.message, /count 3 of total 3/, "message must name the counts");
       return true;
     },
@@ -1777,7 +1777,7 @@ test("export refuses a list-all envelope with completeness.status partial", { sk
     () => buildBeadsFromWorkspace(pmRoot, { preserveIds: false, filter: NO_FILTER }, seamFor(stdout)),
     (err: unknown) => {
       assert.ok(err instanceof CommandError);
-      assert.match(err.message, /completeness\.status="partial"/, "message must name the tripped signal");
+      assert.match(err.message, /source_incomplete/, "message must name the tripped signal");
       assert.match(err.message, /count 3 of total 3/, "message must name the counts");
       return true;
     },
@@ -1787,10 +1787,6 @@ test("export refuses a list-all envelope with completeness.status partial", { sk
 test("export refuses a list-all envelope with omission_receipt.has_omissions=true", { skip: !hasPmCli() }, () => {
   const { pmRoot } = realEnvelope();
   const stdout = mutatedEnvelope((env) => {
-    // The baseline accepts an absent `omission_receipt`, so the mutation has to
-    // create the receipt rather than assume one: assigning through `undefined`
-    // would throw a TypeError here, outside the `assert.throws` below, and the
-    // test would report that instead of the refusal it exists to prove.
     const receipt = (env.omission_receipt ?? {}) as Record<string, unknown>;
     receipt.has_omissions = true;
     env.omission_receipt = receipt;
@@ -1799,7 +1795,7 @@ test("export refuses a list-all envelope with omission_receipt.has_omissions=tru
     () => buildBeadsFromWorkspace(pmRoot, { preserveIds: false, filter: NO_FILTER }, seamFor(stdout)),
     (err: unknown) => {
       assert.ok(err instanceof CommandError);
-      assert.match(err.message, /omission_receipt\.has_omissions.*received true/, "message must name the tripped signal");
+      assert.match(err.message, /field_omission/, "message must name the tripped signal");
       assert.match(err.message, /count 3 of total 3/, "message must name the counts");
       return true;
     },
@@ -1831,13 +1827,13 @@ test("assertListAllComplete rejects an envelope with no completeness receipt", (
     () => assertListAllComplete({ items: [], count: 0, total: 0, truncated: false, has_more: false, next_cursor: null }),
     (err: unknown) => {
       assert.ok(err instanceof CommandError);
-      assert.match(err.message, /completeness\.status=\(missing\)/);
+      assert.match(err.message, /source_unchecked/);
       return true;
     },
   );
 });
 
-test("assertListAllComplete names listed omitted field groups", () => {
+test("assertListAllComplete reports the SDK field omission finding", () => {
   assert.throws(
     () => assertListAllComplete({
       items: [],
@@ -1851,7 +1847,7 @@ test("assertListAllComplete names listed omitted field groups", () => {
     }),
     (err: unknown) => {
       assert.ok(err instanceof CommandError);
-      assert.match(err.message, /omitted_field_groups: body/);
+      assert.match(err.message, /field_omission/);
       return true;
     },
   );
@@ -1865,50 +1861,51 @@ test("assertListAllComplete rejects missing count and total receipts", () => {
     next_cursor: null,
     completeness: { status: "complete", unreadable_item_count: 0, unreadable_directory_count: 0 },
     omission_receipt: { has_omissions: false, omitted_field_group_count: 0, omitted_field_groups: [] },
-    projection: { mode: "full" },
+    projection: { mode: "full", fields: null },
+    filters: { status: "all", strict_read: true, no_truncate: true },
     read_output: { contract_version: 1, command: "list", requested_dimensions: ["include", "amount", "cost"], within_budget: true, strings_compacted: false, rows_compacted: false, result_omitted: false },
-  }), /count.*non-negative safe integer/);
+  }), /count_mismatch/);
 });
 
 test("assertListAllComplete rejects unreadable, paginated, projected, or compacted receipts", () => {
   const baseline = realEnvelope().envelope;
   const cases: ReadonlyArray<readonly [string, (value: Record<string, unknown>) => void, RegExp]> = [
-    ["cursor", (value) => { value.next_cursor = "next"; }, /next_cursor.*exactly null/],
+    ["cursor", (value) => { value.next_cursor = "next"; }, /page_incomplete/],
     ["unreadable item", (value) => {
       (value.completeness as Record<string, unknown>).unreadable_item_count = 1;
-    }, /unreadable_item_count.*exactly 0/],
+    }, /source_incomplete/],
     ["unreadable directory", (value) => {
       (value.completeness as Record<string, unknown>).unreadable_directory_count = 1;
-    }, /unreadable_directory_count.*exactly 0/],
-    ["brief projection", (value) => { value.projection = { mode: "brief" }; }, /projection\.mode.*exactly full/],
-    ["missing output receipt", (value) => { delete value.read_output; }, /contract_version.*exactly 1/],
+    }, /source_incomplete/],
+    ["brief projection", (value) => { value.projection = { mode: "brief" }; }, /projection_incomplete/],
+    ["missing output receipt", (value) => { delete value.read_output; }, /read_output_(missing|invalid)/],
     ["future contract", (value) => {
       (value.read_output as Record<string, unknown>).contract_version = 2;
-    }, /contract_version.*exactly 1/],
+    }, /read_output_(missing|invalid)/],
     ["wrong command", (value) => {
       (value.read_output as Record<string, unknown>).command = "context";
-    }, /read_output\.command.*exactly list/],
+    }, /read_output_invalid/],
     ["over budget", (value) => {
       (value.read_output as Record<string, unknown>).within_budget = false;
-    }, /within_budget.*exactly true/],
+    }, /read_output_invalid/],
     ["strings compacted", (value) => {
       (value.read_output as Record<string, unknown>).strings_compacted = true;
-    }, /strings_compacted.*exactly false/],
+    }, /budget_compaction/],
     ["rows compacted", (value) => {
       (value.read_output as Record<string, unknown>).rows_compacted = true;
-    }, /rows_compacted.*exactly false/],
+    }, /budget_compaction/],
     ["result omitted", (value) => {
       (value.read_output as Record<string, unknown>).result_omitted = true;
-    }, /result_omitted.*exactly false/],
+    }, /budget_omission/],
     ["missing cost proof", (value) => {
       (value.read_output as Record<string, unknown>).requested_dimensions = ["include", "amount"];
-    }, /requested_dimensions.*include, amount, and cost/],
+    }, /read_output_dimensions_incomplete/],
     ["budget truncation", (value) => {
       value.output_budget_truncation = { reason: "output_budget_reached" };
-    }, /budget truncation or omission disclosure/],
+    }, /budget_(compaction|omission)/],
     ["budget omission", (value) => {
       value.output_budget_exceeded = { omitted_result: true };
-    }, /budget truncation or omission disclosure/],
+    }, /budget_(compaction|omission)/],
   ];
   for (const [name, mutate, pattern] of cases) {
     const value = JSON.parse(JSON.stringify(baseline)) as Record<string, unknown>;
@@ -1925,11 +1922,11 @@ test("assertListAllComplete rejects absent or malformed omission receipts", () =
   assert.throws(() => assertListAllComplete(complete), /omission_receipt/);
   assert.throws(
     () => assertListAllComplete({ ...complete, omission_receipt: { has_omissions: "false" } }),
-    /has_omissions.*exactly false/,
+    /omission_receipt_invalid/,
   );
   assert.throws(
     () => assertListAllComplete({ ...complete, omission_receipt: { has_omissions: false, omitted_field_group_count: 1, omitted_field_groups: [] } }),
-    /omitted_field_group_count.*exactly 0/,
+    /omission_receipt_invalid/,
   );
 });
 
@@ -1938,13 +1935,14 @@ test("assertListAllComplete rejects count disagreement and unusable identities",
     items: [{ id: "x" }], count: 1, total: 1, truncated: false, has_more: false, next_cursor: null,
     completeness: { status: "complete", unreadable_item_count: 0, unreadable_directory_count: 0 },
     omission_receipt: { has_omissions: false, omitted_field_group_count: 0, omitted_field_groups: [] },
-    projection: { mode: "full" },
+    projection: { mode: "full", fields: null },
+    filters: { status: "all", strict_read: true, no_truncate: true },
     read_output: { contract_version: 1, command: "list", requested_dimensions: ["include", "amount", "cost"], within_budget: true, strings_compacted: false, rows_compacted: false, result_omitted: false },
   };
-  assert.throws(() => assertListAllComplete({ ...complete, total: 2 }), /count 1 must equal total 2/);
-  assert.throws(() => assertListAllComplete({ ...complete, count: 2, total: 2 }), /items.length 1 must equal count 2/);
-  assert.throws(() => assertListAllComplete({ ...complete, items: [{ id: " " }] }), /non-empty id/);
-  assert.throws(() => assertListAllComplete({ ...complete, items: [{ id: "x" }, { id: "x" }], count: 2, total: 2 }), /duplicate item id x/);
+  assert.throws(() => assertListAllComplete({ ...complete, total: 2 }), /count_mismatch/);
+  assert.throws(() => assertListAllComplete({ ...complete, count: 2, total: 2 }), /count_mismatch/);
+  assert.throws(() => assertListAllComplete({ ...complete, items: [{ id: " " }] }), /invalid_item_id/);
+  assert.throws(() => assertListAllComplete({ ...complete, items: [{ id: "x" }, { id: "x" }], count: 2, total: 2 }), /duplicate_item_id/);
 });
 
 test("readPmItems surfaces child failures through the seam", () => {
@@ -1990,7 +1988,7 @@ test("export refuses a complete-receipt envelope whose items is not an array", {
     () => buildBeadsFromWorkspace(pmRoot, { preserveIds: false, filter: NO_FILTER }, seamFor(stdout)),
     (err: unknown) => {
       assert.ok(err instanceof CommandError);
-      assert.match(err.message, /items` is not an array/);
+      assert.match(err.message, /invalid_envelope/);
       return true;
     },
   );
@@ -2030,7 +2028,7 @@ test("a completeness refusal is a distinguishable subtype, not a bare CommandErr
     (err: unknown) => {
       assert.ok(err instanceof IncompleteWorkspaceReadError, "must be the narrow type");
       assert.ok(err instanceof CommandError, "and still a CommandError for existing handlers");
-      assert.match((err as Error).message, /truncated=true/);
+      assert.match((err as Error).message, /page_incomplete/);
       return true;
     },
   );
@@ -2051,7 +2049,7 @@ test("readPmItems asks pm for the canonical complete unbounded workspace", { ski
   buildBeadsFromWorkspace(pmRoot, { preserveIds: false, filter: NO_FILTER }, capturing.seam);
   assert.deepStrictEqual(
     capturing.args,
-    ["--path", pmRoot, "list", "--all", "--json", "--output-budget", "unbounded", "--output-limit", "unbounded", "--output-include", "full"],
+    ["--path", pmRoot, "list", "--all", "--json", "--strict-read", "--no-truncate", "--output-budget", "unbounded", "--output-limit", "unbounded", "--output-include", "full"],
     "the whole argv, so an added flag that changes what the CLI returns must be considered here",
   );
   assert.ok(

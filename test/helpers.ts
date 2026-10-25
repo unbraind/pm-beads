@@ -88,7 +88,8 @@ export function envelope(items: Array<Record<string, unknown>>): ListAllEnvelope
     next_cursor: null,
     completeness: { status: "complete", unreadable_item_count: 0, unreadable_directory_count: 0 },
     omission_receipt: { has_omissions: false, omitted_field_group_count: 0, omitted_field_groups: [] },
-    projection: { mode: "full" },
+    projection: { mode: "full", fields: null },
+    filters: { status: "all", strict_read: true, no_truncate: true },
     read_output: {
       contract_version: 1,
       command: "list",
