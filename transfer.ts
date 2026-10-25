@@ -3,18 +3,19 @@ import { createHash } from "node:crypto";
 import { readFile, readdir, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import {
-  PmClient, preserveMutationStdinTokenFields, commitWorkspaceTransaction, getHistoryPath, readHistorySnapshot,
-  locateItem, readLocatedItem, verifyHistoryEntries, normalizeItemId, readSettings, writeFileAtomic,
+  PmClient, preserveMutationStdinTokenFields, commitWorkspaceTransaction,
+  readSettings, writeFileAtomic,
   type CommitWorkspaceTransactionOptions, type PmClientFullMutationOptions,
   type WorkspaceTransactionStep,
 } from "@unbrained/pm-cli/sdk";
 import type { CommandHandlerContext, ExtensionApi } from "@unbrained/pm-cli/sdk/authoring";
+import { allocateBeadsItemId, readBeadsItemDocument, readBeadsItemHistory } from "./item-access.ts";
 import { CommandError } from "./contracts.ts";
 import { optionString, resolveImportInputFile, type BeadsItem } from "./index.ts";
 import { parseBeadsSnapshot, type SnapshotRecord } from "./reconcile.ts";
 import { distinctOutput } from "./sidecar.ts";
 import { ensureBeadIdentityField, migrateBeadIdentities, reportLegacyBeadIdentities } from "./identity.ts";
-import { beadsMutationAuthor, sourceCreateOptions, sourceDependency } from "./mutation.ts";
+import { beadsMutationAuthor, sourceCreateOptions, sourceDependency, preserveBeadsProgress } from "./mutation.ts";
 
 /** Hard ceilings keep saved plans and individual coordinator attempts bounded. */
 export const BEADS_TRANSFER_LIMITS = { maxRows: 1000, maxEdges: 4000, maxBytes: 4_194_304, chunkSize: 25 } as const;
@@ -30,7 +31,7 @@ export interface BeadsTransferSettings {
   idPrefix: string; configuration: string; templates: string; focus: string;
 }
 /** Exact identity intent and immutable creation hash retained independently of chunk completion. */
-interface TransferIdentity { pmId: string; itemHash: string | null }
+interface TransferIdentity { pmId: string; itemHash: string | null; hashKind?: "sdk" }
 /** One durable exchange ledger; the SDK writer lease protects all reads and writes during mutation. */
 interface TransferJournal { schema: 1; digest: string; rows: Record<string, TransferIdentity> }
 /** Categories callers can handle without parsing prose. */
@@ -166,10 +167,6 @@ export function validateBeadsTransferPlan(value: BeadsTransferPlan): BeadsTransf
     return fresh;
   } catch { return refuse("invalid_plan", "Generate a fresh plan with --plan-out; preserve the original plan to resume its existing checkpoints."); }
 }
-/** Bind deterministic core ids to an exact source/selection/payload, without trusting description markers. */
-export function beadsTransferItemId(plan: BeadsTransferPlan, id: string, prefix: string): string {
-  return normalizeItemId(`beads-transfer-${hash([plan.digest, id]).slice(0, 32)}`, prefix);
-}
 /** A create-history message proves ownership; mutable Beads provenance alone never does. */
 function ownershipMarker(plan: BeadsTransferPlan, id: string): string { return `beads-transfer:${plan.digest}:${hash(id)}`; }
 /** Canonicalize configuration keys without changing user text or array order. */
@@ -213,7 +210,8 @@ async function readJournal(pmRoot: string, plan: BeadsTransferPlan): Promise<Tra
     const journal = JSON.parse(text) as TransferJournal;
     if (journal.schema !== 1 || journal.digest !== plan.digest || Object.keys(journal.rows).length !== plan.records.length ||
         plan.records.some(row => { const pin = journal.rows[row.id]; return !pin || typeof pin.pmId !== "string" || !pin.pmId ||
-          !(pin.itemHash === null || typeof pin.itemHash === "string" && /^[a-f0-9]{64}$/.test(pin.itemHash)); }) ||
+          !(pin.itemHash === null || typeof pin.itemHash === "string" && /^[a-f0-9]{64}$/.test(pin.itemHash)) ||
+          !(pin.hashKind === undefined || pin.hashKind === "sdk"); }) ||
         new Set(Object.values(journal.rows).map(pin => pin.pmId)).size !== plan.records.length) throw new Error("identity");
     return journal;
   } catch { return refuse("invalid_journal", "Restore the original transfer identity journal from a trusted backup; do not retry with a new identity or discard progress."); }
@@ -233,19 +231,25 @@ async function checkSettings(pmRoot: string, plan: BeadsTransferPlan, journal: T
 /** Inspect only a recorded identity, requiring both provenance and the pinned current item hash. */
 async function ownership(pmRoot: string, plan: BeadsTransferPlan, id: string, pin: TransferIdentity): Promise<"missing" | "owned" | "foreign" | "changed"> {
   try {
-    const item = await locateItem(pmRoot, pin.pmId, plan.settings.idPrefix);
-    const history = await readHistorySnapshot(getHistoryPath(pmRoot, pin.pmId), pin.pmId);
-    if (!item) return pin.itemHash ? "changed" : history.entries.length ? "foreign" : "missing";
+    const history = await readBeadsItemHistory(pmRoot, pin.pmId);
+    if (!history.verification?.current_item_hash) {
+      if (pin.itemHash) return "changed";
+      return history.entries.length ? "foreign" : "missing";
+    }
     const creation = history.entries.filter(entry => entry.op === "create").at(-1);
     if (creation?.message?.split(" | ", 1)[0] !== ownershipMarker(plan, id)) return "foreign";
-    const document = (await readLocatedItem(item)).document;
-    if (!verifyHistoryEntries(history.entries, document).ok) return "changed";
-    const itemHash = hash(document);
-    if (pin.itemHash && pin.itemHash !== itemHash) return "changed";
+    if (!history.verification?.ok) return "changed";
+    const itemHash = history.verification.current_item_hash;
+    if (pin.itemHash) {
+      // Older ledgers hashed the serialized canonical document. Verify that pin
+      // once before upgrading it to the SDK's own verified document digest.
+      const expected = pin.hashKind === "sdk" ? itemHash : hash(await readBeadsItemDocument(pmRoot, pin.pmId, history));
+      if (pin.itemHash !== expected) return "changed";
+    }
     // An intent written before create recovers the narrow create-to-ledger crash gap.
     // Only an unchanged initial creation can complete that intent.
     if (!pin.itemHash && history.entries.length !== 1) return "changed";
-    pin.itemHash = itemHash;
+    pin.itemHash = itemHash; pin.hashKind = "sdk";
     return "owned";
   } catch { return "foreign"; }
 }
@@ -262,8 +266,6 @@ function createOptions(row: SnapshotRecord, plan: BeadsTransferPlan, ids: Map<st
   if (f.status === "closed") options.closeReason = "Closed in transferred Beads snapshot";
   return sourceCreateOptions(options, author);
 }
-/** Compensation preserves durable items and pins for an explicit retry. */
-async function preserveCreations(): Promise<void> {}
 /** Build ownership-aware domain steps; the SDK owns leasing, journaling, interruption and replay. */
 function transferSteps(pmRoot: string, plan: BeadsTransferPlan, rows: SnapshotRecord[], client: PmClient, options: BeadsTransferApplyOptions, author: string): WorkspaceTransactionStep[] {
   let journal: TransferJournal;
@@ -310,7 +312,7 @@ function transferSteps(pmRoot: string, plan: BeadsTransferPlan, rows: SnapshotRe
         return (await inspect()).result;
       },
       /** Preserve durable creations and their pins through ordinary compensation. */
-      compensate: preserveCreations,
+      compensate: preserveBeadsProgress,
     };
   });
 }
@@ -336,9 +338,11 @@ export async function applyBeadsTransfer(pmRoot: string, input: BeadsTransferPla
         return { state: await readJournal(pmRoot, plan) ? "applied" : "pending" };
       }, async apply() {
         await checkSettings(pmRoot, plan, undefined);
-        await saveJournal(pmRoot, plan, { schema: 1, digest: plan.digest, rows: Object.fromEntries(plan.records.map(row =>
-          [row.id, { pmId: beadsTransferItemId(plan, row.id, plan.settings.idPrefix), itemHash: null }])) });
-      }, compensate: preserveCreations }],
+        const reserved = new Set<string>();
+        const rows: [string, TransferIdentity][] = [];
+        for (const row of plan.records) rows.push([row.id, { pmId: await allocateBeadsItemId(pmRoot, reserved), itemHash: null }]);
+        await saveJournal(pmRoot, plan, { schema: 1, digest: plan.digest, rows: Object.fromEntries(rows) });
+      }, compensate: preserveBeadsProgress }],
       onTransition: options.onIdentityTransition,
     });
   } catch (error) { return transactionFailure(error); }

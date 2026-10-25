@@ -3,13 +3,14 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFile, mkdir, rm, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import {
-  PmClient, preserveMutationStdinTokenFields, commitWorkspaceTransaction, getHistoryPath, readHistorySnapshot,
-  writeFileAtomic, normalizeItemId, readSettings, parseTags, resolveTypeSynonym,
+  PmClient, preserveMutationStdinTokenFields, commitWorkspaceTransaction,
+  writeFileAtomic, parseTags, resolveTypeSynonym,
   type CommitWorkspaceTransactionOptions,
   type WorkspaceTransactionStep, type PmClientFullMutationOptions, type Dependency,
 } from "@unbrained/pm-cli/sdk";
 import type { ExtensionApi, CommandHandlerContext } from "@unbrained/pm-cli/sdk/authoring";
-import { beadsMutationAuthor, sourceCreateOptions, sourceDependency } from "./mutation.ts";
+import { allocateBeadsItemId, readBeadsItemHistory } from "./item-access.ts";
+import { beadsMutationAuthor, sourceCreateOptions, sourceDependency, preserveBeadsProgress } from "./mutation.ts";
 import { ensureBeadIdentityField, reportLegacyBeadIdentities, legacyBeadIdentity } from "./identity.ts";
 import { CommandError, DIFF_FIELDS } from "./contracts.ts";
 import {
@@ -247,7 +248,7 @@ export async function readLiveBeadsSnapshot(pmRoot: string, source?: string, rec
     : await sourceIdentities(pmRoot, source, records, bindings, items as PmItem[]);
   const live: LiveSnapshotRecord[] = [];
   for (const item of items) {
-    const history = await readHistorySnapshot(getHistoryPath(pmRoot, item.id), item.id);
+    const history = await readBeadsItemHistory(pmRoot, item.id);
     const version = history.entries.at(-1)?.after_hash;
     if (typeof version !== "string") refuse("invalid_snapshot", "Repair missing core history versions before reconciling this tracker.");
     const bead = pmItemToBead(item as PmItem, translated, true);
@@ -362,7 +363,7 @@ export async function applyBeadsReconciliation(pmRoot: string, plan: BeadsReconc
   // journal markers permit replay; unrelated edits still invalidate the plan.
   const comparable: LiveSnapshotRecord[] = [];
   for (const record of currentLive) {
-    const history = await readHistorySnapshot(getHistoryPath(pmRoot, record.pmId), record.pmId);
+    const history = await readBeadsItemHistory(pmRoot, record.pmId);
     const message = historyMarker(history.entries.at(-1)?.message);
     if (plan.changes.some(change => change.id === record.id) &&
         message.startsWith(`${transactionId}:`) && /^\d+$/.test(message.slice(transactionId.length + 1))) {
@@ -373,9 +374,38 @@ export async function applyBeadsReconciliation(pmRoot: string, plan: BeadsReconc
   if (digest(comparable) !== plan.trackerRevision) refuse("stale_tracker", "The tracker changed since preview; generate a fresh reconciliation plan.");
   const fresh = reconcileBeadsSnapshots(base, plan.incoming, live);
   if (fresh.digest !== plan.digest) refuse("invalid_plan", "Generate a fresh plan from the original incoming snapshot.");
-  const settings = await readSettings(pmRoot);
   const ids = new Map([...Object.entries(base.bindings ?? {}), ...live.map(row => [row.id, row.pmId] as const)]);
-  for (const change of plan.changes) if (change.kind === "create") ids.set(change.id, normalizeItemId(`beads-${digest([plan.source, change.id]).slice(0, 24)}`, settings.id_prefix));
+  // A separate SDK transaction durably pins generated identities before any row
+  // mutation. Its ledger is package state, never a tracker item storage path.
+  const identityPath = join(pmRoot, "beads", `${plan.digest}.identities.json`);
+  const creates = plan.changes.filter(change => change.kind === "create");
+  /** Validate retained reservations on fresh and committed-bootstrap replay alike. */
+  const readReserved = async (): Promise<Record<string, string>> => {
+    const saved = JSON.parse(await readFile(identityPath, "utf8")) as Record<string, string>;
+    if (!saved || typeof saved !== "object" || Array.isArray(saved) || Object.keys(saved).length !== creates.length ||
+        creates.some(change => typeof saved[change.id] !== "string" || !saved[change.id]) ||
+        new Set(Object.values(saved)).size !== creates.length) refuse("invalid_snapshot", "Restore the reconciliation identity ledger before resuming.");
+    return saved;
+  };
+  await commitWorkspaceTransaction({ pmRoot, author, transactionId: `${transactionId}-identity`, steps: [{
+    id: "identities", async inspect() {
+      try { await readReserved(); return { state: "applied" }; }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        return { state: "pending" };
+      }
+    }, async apply() {
+      const saved: Record<string, string> = Object.create(null) as Record<string, string>;
+      const allocated = new Set<string>();
+      for (const change of plan.changes) if (change.kind === "create") {
+        saved[change.id] = await allocateBeadsItemId(pmRoot, allocated); ids.set(change.id, saved[change.id]);
+      }
+      await mkdir(join(pmRoot, "beads"), { recursive: true });
+      await writeFileAtomic(identityPath, JSON.stringify(saved) + "\n");
+    }, compensate: preserveBeadsProgress,
+  }] });
+  const reserved = await readReserved();
+  for (const change of plan.changes) if (change.kind === "create") ids.set(change.id, reserved[change.id]);
   const rows = new Map(plan.incoming.map(row => [row.id, row]));
   const client = new PmClient({ pmRoot, author, noExtensions: true });
   for (const change of plan.changes) {
@@ -397,7 +427,7 @@ export async function applyBeadsReconciliation(pmRoot: string, plan: BeadsReconc
     return {
       id: `item-${index}`,
       async inspect() {
-        const history = await readHistorySnapshot(getHistoryPath(pmRoot, id), id);
+        const history = await readBeadsItemHistory(pmRoot, id);
         const last = history.entries.at(-1);
         if (historyMarker(history.entries.filter(entry => historyMarker(entry.message) === marker || historyMarker(entry.message) === `${marker}:compensated`).at(-1)?.message) === marker) return { state: "applied" };
         if ((last?.after_hash ?? null) !== (original?.version ?? null) &&
@@ -405,7 +435,7 @@ export async function applyBeadsReconciliation(pmRoot: string, plan: BeadsReconc
         return { state: "pending" };
       },
       async prepareCompensation() {
-        const history = await readHistorySnapshot(getHistoryPath(pmRoot, id), id);
+        const history = await readBeadsItemHistory(pmRoot, id);
         const last = history.entries.at(-1);
         if (!last) return undefined;
         const snapshot = await client.get(id, { at: last.ts });
@@ -427,7 +457,7 @@ export async function applyBeadsReconciliation(pmRoot: string, plan: BeadsReconc
         return id;
       },
       async compensate(target) {
-        const history = await readHistorySnapshot(getHistoryPath(pmRoot, id), id);
+        const history = await readBeadsItemHistory(pmRoot, id);
         if (!history.entries.some(entry => historyMarker(entry.message) === marker)) refuse("invalid_snapshot", "Transaction history is missing; restore valid history and inspect recovery before retrying.");
         if (!history.entries.at(-1)?.message?.startsWith(`${transactionId}:`)) refuse("stale_tracker", "A later writer changed a transaction item; preserve that edit and replan recovery.");
         if ((original || change.phase === "links") && typeof target === "string") await client.restore(id, target, { message: `${marker}:compensated`, author });

@@ -385,133 +385,29 @@ function scenarioWithItem(itemBody: string): ReturnType<typeof stubScenario> {
   );
 }
 
-test("preserve-timestamps patches the persisted item and re-anchors history", async () => {
+test("source timestamps are explicitly skipped without item or history writes", async () => {
   const ext = await harness();
-  const s = scenarioWithItem('id: pm-stub-1\ntitle: T\ncreated_at: "2000-01-01T00:00:00.000Z"\nupdated_at: "2000-01-01T00:00:00.000Z"\n');
+  const original = 'id: pm-stub-1\ntitle: T\ncreated_at: "2000-01-01T00:00:00.000Z"\n';
+  const s = scenarioWithItem(original);
   try {
     const file = s.jsonlPath("in.jsonl");
     writeFileSync(file, jsonl([{ id: "bd-1", title: "Timed", created_at: ISO, updated_at: ISO }]), "utf-8");
     const result = await runImport(ext, { args: [file], options: {}, pmRoot: s.dir });
-    assert.equal(result.timestamped, 1);
-    const patched = readFileSync(join(s.dir, "tasks", "pm-stub-1.toon"), "utf-8");
-    assert.ok(patched.includes(`created_at: "${ISO}"`));
-    assert.ok(s.logLines().some((argv) => argv.includes("history-repair")), "history is re-anchored after the raw patch");
-  } finally {
-    await ext.deactivate();
-    s.restorePath();
-  }
+    assert.equal(result.timestamped ?? 0, 0);
+    assert.equal(readFileSync(join(s.dir, "tasks", "pm-stub-1.toon"), "utf-8"), original);
+    assert.ok(!s.logLines().some(argv => argv.includes("history-repair")));
+  } finally { await ext.deactivate(); s.restorePath(); }
 });
 
-test("records without timestamps skip the timestamp pass entirely", async () => {
+test("records without valid timestamps skip the timestamp pass", async () => {
   const ext = await harness();
   const s = scenarioWithItem("id: pm-stub-1\ntitle: T\n");
   try {
     const file = s.jsonlPath("in.jsonl");
-    writeFileSync(file, jsonl([{ id: "bd-1", title: "Untimed" }]), "utf-8");
+    writeFileSync(file, jsonl([{ id: "bd-1", title: "Untimed" }, { id: "bd-2", title: "Invalid time", created_at: "bad" }]), "utf-8");
     const result = await runImport(ext, { args: [file], options: {}, pmRoot: s.dir });
     assert.equal(result.timestamped ?? 0, 0);
-    assert.ok(!s.logLines().some((argv) => argv.includes("history-repair")));
-  } finally {
-    await ext.deactivate();
-    s.restorePath();
-  }
-});
-
-test("timestamps whose item file cannot be located are skipped with a warning", async () => {
-  const ext = await harness();
-  const s = stubScenario({ listEnvelope: envelope([]) }); // no item file on disk
-  try {
-    const file = s.jsonlPath("in.jsonl");
-    writeFileSync(file, jsonl([{ id: "bd-1", title: "Unlocatable", created_at: ISO }]), "utf-8");
-    const result = await runImport(ext, { args: [file], options: {}, pmRoot: join(s.dir, "nowhere") });
-    assert.equal(result.timestamped ?? 0, 0);
-  } finally {
-    await ext.deactivate();
-    s.restorePath();
-  }
-});
-
-test("an unreadable item file skips its timestamp instead of failing the import", async () => {
-  const ext = await harness();
-  const s = stubScenario({ listEnvelope: envelope([]) });
-  try {
-    // A directory where the item file should be: statSync finds it, readFileSync throws EISDIR.
-    mkdirSync(join(s.dir, "tasks", "pm-stub-1.toon"), { recursive: true });
-    const file = s.jsonlPath("in.jsonl");
-    writeFileSync(file, jsonl([{ id: "bd-1", title: "Undrinkable", created_at: ISO }]), "utf-8");
-    const result = await runImport(ext, { args: [file], options: {}, pmRoot: s.dir });
-    assert.equal(result.timestamped ?? 0, 0);
-  } finally {
-    await ext.deactivate();
-    s.restorePath();
-  }
-});
-
-test("valid timestamps on an item file without timestamp lines leave nothing to patch", async () => {
-  const ext = await harness();
-  const s = scenarioWithItem("id: pm-stub-1\ntitle: T\nbody: no front-matter dates here\n");
-  try {
-    const file = s.jsonlPath("in.jsonl");
-    writeFileSync(file, jsonl([{ id: "bd-1", title: "Patchless", created_at: ISO }]), "utf-8");
-    const result = await runImport(ext, { args: [file], options: {}, pmRoot: s.dir });
-    assert.equal(result.timestamped ?? 0, 0);
-    assert.ok(!s.logLines().some((argv) => argv.includes("history-repair")), "no patch means no repair");
-  } finally {
-    await ext.deactivate();
-    s.restorePath();
-  }
-});
-
-test("an unwritable item file skips its timestamp instead of failing the import", async () => {
-  const ext = await harness();
-  const s = scenarioWithItem('id: pm-stub-1\ntitle: T\ncreated_at: "2000-01-01T00:00:00.000Z"\n');
-  try {
-    chmodSync(join(s.dir, "tasks", "pm-stub-1.toon"), 0o444);
-    const file = s.jsonlPath("in.jsonl");
-    writeFileSync(file, jsonl([{ id: "bd-1", title: "Frozen", created_at: ISO }]), "utf-8");
-    const result = await runImport(ext, { args: [file], options: {}, pmRoot: s.dir });
-    assert.equal(result.timestamped ?? 0, 0);
-  } finally {
-    chmodSync(join(s.dir, "tasks", "pm-stub-1.toon"), 0o644); // so cleanup can remove the tree
-    await ext.deactivate();
-    s.restorePath();
-  }
-});
-
-test("a failed history-repair reverts the patch so no drift is left behind", async () => {
-  const ext = await harness();
-  const s = stubScenario(
-    { listEnvelope: envelope([]), historyRepair: { fail: true } },
-    { "tasks/pm-stub-1.toon": 'id: pm-stub-1\ntitle: T\ncreated_at: "2000-01-01T00:00:00.000Z"\n' },
-  );
-  try {
-    const file = s.jsonlPath("in.jsonl");
-    writeFileSync(file, jsonl([{ id: "bd-1", title: "Reverting", created_at: ISO }]), "utf-8");
-    const result = await runImport(ext, { args: [file], options: {}, pmRoot: s.dir });
-    assert.equal(result.timestamped ?? 0, 0);
-    assert.ok(readFileSync(join(s.dir, "tasks", "pm-stub-1.toon"), "utf-8").includes("2000-01-01"), "original value restored");
-  } finally {
-    await ext.deactivate();
-    s.restorePath();
-  }
-});
-
-test("a failed history-repair that also blocks the revert tells the operator to repair manually", async () => {
-  const ext = await harness();
-  const s = stubScenario(
-    { listEnvelope: envelope([]), historyRepair: { fail: true, chmodItemReadonly: true } },
-    { "tasks/pm-stub-1.toon": 'id: pm-stub-1\ntitle: T\ncreated_at: "2000-01-01T00:00:00.000Z"\n' },
-  );
-  try {
-    const file = s.jsonlPath("in.jsonl");
-    writeFileSync(file, jsonl([{ id: "bd-1", title: "Stuck", created_at: ISO }]), "utf-8");
-    const result = await runImport(ext, { args: [file], options: {}, pmRoot: s.dir });
-    assert.equal(result.imported, 1, "the import itself still succeeds");
-  } finally {
-    chmodSync(join(s.dir, "tasks", "pm-stub-1.toon"), 0o644); // undo the stub's chmod for cleanup
-    await ext.deactivate();
-    s.restorePath();
-  }
+  } finally { await ext.deactivate(); s.restorePath(); }
 });
 
 // --- Directly-driven defensive helpers -------------------------------------

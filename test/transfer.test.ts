@@ -1,11 +1,13 @@
 /** Dependency closure and crash/concurrency behavior against real non-git SDK trackers. */
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { readBeadsItemDocument } from '../item-access.ts';
 import test from 'node:test';
 import { mkdtemp, readFile, writeFile, rm, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { PmClient, WorkspaceTransactionInterruptedError, getHistoryPath, readSettings, type WorkspaceTransactionTransitionContext } from '@unbrained/pm-cli/sdk';
-import { planBeadsTransfer as buildTransfer, snapshotBeadsTransferSettings, applyBeadsTransfer, summarizeBeadsTransfer, beadsTransferItemId, BeadsTransferRefusal, type BeadsTransferPlan, type BeadsTransferLimits } from '../transfer.ts';
+import { planBeadsTransfer as buildTransfer, snapshotBeadsTransferSettings, applyBeadsTransfer, summarizeBeadsTransfer, BeadsTransferRefusal, type BeadsTransferPlan, type BeadsTransferLimits } from '../transfer.ts';
 import { harness, runCommand } from './helpers.ts';
 
 // The synchronous planner consumes an explicit snapshot from a real default receiver.
@@ -36,6 +38,14 @@ async function fixture(t: test.TestContext) {
   await client.init('sample');
   t.after(() => rm(dir, { recursive: true, force: true }));
   return { dir, pmRoot, client };
+}
+/** Stop after durable SDK allocation so collision tests can occupy an exact reserved identity. */
+async function reservedIdentity(pmRoot: string, p: BeadsTransferPlan, id: string): Promise<string> {
+  await assert.rejects(applyBeadsTransfer(pmRoot, p, 'test', { onIdentityTransition(c) {
+    if (c.transition === 'step_applied') throw new WorkspaceTransactionInterruptedError('identity allocation only');
+  } }), WorkspaceTransactionInterruptedError);
+  const journal = JSON.parse(await readFile(join(pmRoot, 'transactions', 'beads-transfer', `${p.digest}.json`), 'utf8')) as { rows: Record<string, { pmId: string }> };
+  return journal.rows[id].pmId;
 }
 /** Deterministic transition identity used for exhaustive boundary injection. */
 function boundary(c: WorkspaceTransactionTransitionContext): string { return `${c.transition}:${c.stepId ?? ''}`; }
@@ -120,9 +130,10 @@ test('every coordinator boundary is interrupted and competed on the SAME non-git
 });
 
 test('foreign records and missing or corrupt foreign histories are skipped with reasons and never mutated', async t => {
-  const { pmRoot, client } = await fixture(t); const { id_prefix } = await readSettings(pmRoot);
+  const { pmRoot, client } = await fixture(t);
   for (const variant of ['normal', 'missing', 'corrupt']) {
-    const p = plan(`foreign-${variant}`, 3), id = beadsTransferItemId(p, 'b', id_prefix);
+    const p = plan(`foreign-${variant}`, 3);
+    const id = await reservedIdentity(pmRoot, p, 'b');
     await client.create({ id, title: 'Foreign occupied identity', description: '[bead_id: b]' });
     const history = getHistoryPath(pmRoot, id);
     if (variant === 'missing') await rm(history);
@@ -239,8 +250,7 @@ test('disappearing creations are reported as skipped and command handler propaga
 test('foreign tombstoned identities remain reserved and skip without attempting to recreate them', async t => {
   const { pmRoot, client } = await fixture(t);
   const p = plan('foreign-reserved', 3);
-  const { id_prefix } = await readSettings(pmRoot);
-  const pmId = beadsTransferItemId(p, 'b', id_prefix);
+  const pmId = await reservedIdentity(pmRoot, p, 'b');
   await client.create({ id: pmId, title: 'Foreign original' });
   await client.delete(pmId, { force: true });
   const history = await readFile(getHistoryPath(pmRoot, pmId), 'utf8');
@@ -251,4 +261,23 @@ test('foreign tombstoned identities remain reserved and skip without attempting 
   assert.equal(await readFile(getHistoryPath(pmRoot, pmId), 'utf8'), history);
   const replay = await applyBeadsTransfer(pmRoot, p, 'peer');
   assert.equal(replay.skipped, 2);
+});
+
+
+test('SDK hash pins retain legacy document-hash ledgers and reject invalid hash kinds', async t => {
+  const { pmRoot } = await fixture(t);
+  const p = planBeadsTransfer('{"id":"a","title":"Legacy pin"}', ['a'], 'legacy-pins');
+  const first = await applyBeadsTransfer(pmRoot, p, 'test');
+  const file = join(pmRoot, 'transactions', 'beads-transfer', `${p.digest}.json`);
+  const ledger = JSON.parse(await readFile(file, 'utf8')) as { rows: Record<string, { pmId: string; itemHash: string; hashKind?: string }> };
+  ledger.rows.a.itemHash = createHash('sha256').update(JSON.stringify(await readBeadsItemDocument(pmRoot, first.rows[0].pmId))).digest('hex');
+  delete ledger.rows.a.hashKind;
+  await writeFile(file, JSON.stringify(ledger));
+  assert.equal((await applyBeadsTransfer(pmRoot, p, 'test')).transferred, 1);
+  ledger.rows.a.itemHash = '0'.repeat(64);
+  await writeFile(file, JSON.stringify(ledger));
+  assert.equal((await applyBeadsTransfer(pmRoot, p, 'test')).skipped, 1);
+  ledger.rows.a.hashKind = 'unknown';
+  await writeFile(file, JSON.stringify(ledger));
+  await assert.rejects(applyBeadsTransfer(pmRoot, p, 'test'), refusal('invalid_journal'));
 });

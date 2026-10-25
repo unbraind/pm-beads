@@ -79,7 +79,8 @@ original settings before resuming. Fully created exchanges can replay after
 settings change because every item is already pinned. Keep the identity ledger
 at `transactions/beads-transfer/<digest>.json` alongside the plan and SDK journals.
 Each source row records `pmId` before create and `itemHash` immediately afterward;
-resume never recomputes it from live settings. Missing or corrupt ledgers refuse
+resume never recomputes it from live settings. New hashes use the SDK verification
+digest; legacy document hashes are checked before an SDK hash can replace them. Missing or corrupt ledgers refuse
 with `invalid_journal`. Edited or deleted pinned items report `item_changed` skips,
 including on completed-chunk replay, and are never recreated. An interrupted
 create-to-ledger gap can recover only an unchanged, history-verified creation at
@@ -92,3 +93,24 @@ read in memory without writes. Preview `pm beads migrate-identities`, then use
 `--apply` to migrate unchanged revisions under their SDK item locks. Transfer apply
 can include guarded migration with `--migrate-identities`, with tracked history and a stderr report;
 present metadata always disables legacy decoding.
+
+Item lookup, verified history, canonical document reads and ID generation
+are delegated to the pm SDK. Custom type folders, custom types and configured ID
+prefixes/token lengths do not change this workflow. Core IDs are generated once
+and retained in the exchange ledger. Read core identities from `receipt.rows[].pmId`;
+the former `beadsTransferItemId` precomputation helper is removed. SDK-generated
+IDs are checked against unpublished batch reservations with bounded retries; the package never derives them from Beads
+IDs or constructs tracker item/history paths.
+
+The pinned SDK still requires a filesystem tracker for ID allocation, workspace
+transactions, settings/template snapshots and package-owned durable state. A
+backend-neutral reservation and extension-state API is needed before this workflow
+can claim remote/Postgres/MCP backend support. Source timestamp import/update is
+also unavailable; the legacy importer reports that limitation instead of patching
+item files or repairing history.
+
+SDK item lookup receives the full configured type registry and preferred format.
+The SDK resolves every item/history location and performs every item/history read.
+Its high-level get/history APIs currently re-prefix saved canonical IDs after
+prefix changes, so literal SDK store lookup is required to preserve stable IDs.
+A backend-neutral literal-ID read/history API remains an upstream requirement.

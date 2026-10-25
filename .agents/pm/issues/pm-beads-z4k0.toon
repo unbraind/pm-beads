@@ -1,0 +1,16 @@
+id: pm-beads-z4k0
+title: Track SDK APIs needed for backend-neutral Beads transfers and source timestamps
+description: "Round 5 removed package item paths and ID derivation. Remaining host gaps: backend-neutral identity reservation that honors the active backend and ID scheme without caller-supplied storage configuration; durable extension state and workspace transaction APIs for non-filesystem backends; pure complete item-history reads with verification that never initialize missing streams; canonical source timestamp import/update through governed item mutation. Keep the pinned SDK unchanged. The orchestrator will report the exact API gaps upstream. Remote/Postgres/MCP backend support and source timestamp preservation remain unclaimed."
+type: Issue
+status: open
+priority: 2
+tags: []
+created_at: "2026-10-24T23:25:41.965Z"
+updated_at: "2026-10-24T23:58:05.978Z"
+author: codex-agent
+parent: pm-beads-tma4
+comments[3]{created_at,author,text}:
+  "2026-10-24T23:27:52.524Z",codex-agent,"Pinned SDK 2026.10.20 exposes generateItemId only as a tracker-root helper requiring settings/registry inputs; no backend-neutral durable ID reservation API was found. PmClient.run(history, verify) may initialize an absent stream; readBeadsItemHistory first uses pure getItemAt. Package-owned ledgers and template/focus snapshots still require filesystem state and commitWorkspaceTransaction is filesystem scoped. No public governed canonical source timestamp import/update API was found. Follow-up remains open for orchestrator upstream reporting; dependency pins unchanged."
+  "2026-10-24T23:49:57.118Z",codex-agent,"A real SDK deterministic-seed reproduction confirms generateItemId may return the same unpublished ID twice when no item/history exists yet. The package now keeps batch reservations and retries only SDK-generated candidates, refusing after 32 collisions. A backend-neutral atomic batch reservation API would remove this caller-side coordination requirement. No core ID values, prefixes, tokens or folders are constructed by the package."
+  "2026-10-24T23:58:05.977Z",codex-agent,"Confirmed literal-ID API gap: high-level getItemAt/history re-prefix a saved canonical item ID after id_prefix changes and report no history; the SDK literal locateItem resolves that same ID correctly with the current settings, format and full type registry. Final package item-access uses SDK locateItem/readLocatedItem plus SDK getHistoryPath/readHistorySnapshot/verifyHistoryEntries, with no package item/history path construction or filesystem reads. These SDK store APIs are filesystem-based; backend-neutral literal-ID current/historical reads and verified history remain required upstream. The adapter also avoids missing-stream initialization and preserves stable IDs during resume."
+body: ""

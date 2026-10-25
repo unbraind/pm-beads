@@ -17,7 +17,6 @@ import extension, {
   encodeBeadId,
   extractBlockerIds,
   extractCreatedId,
-  locateItemFile,
   normalizeBeadKey,
   normalizeIsoTimestamp,
   parseRowFilter,
@@ -28,7 +27,6 @@ import extension, {
   parseExportOptions,
   readAndValidateBeads,
   MERGE_STRATEGIES,
-  patchTimestampLines,
   pmItemPassesFilter,
   pmItemToBead,
   resolveImportInputFile,
@@ -552,43 +550,6 @@ test("normalizeIsoTimestamp accepts valid ISO and rejects garbage", () => {
   assert.strictEqual(normalizeIsoTimestamp(""), undefined);
   assert.strictEqual(normalizeIsoTimestamp(undefined), undefined);
   assert.strictEqual(normalizeIsoTimestamp(12345 as unknown), undefined);
-});
-
-test("patchTimestampLines rewrites existing front-matter lines only", () => {
-  const toon = [
-    'id: pm-x',
-    'title: T',
-    'created_at: "2026-06-03T23:00:00.000Z"',
-    'updated_at: "2026-06-03T23:00:00.000Z"',
-    'body: ""',
-  ].join("\n");
-  const out = patchTimestampLines(toon, {
-    created_at: "2025-01-01T00:00:00.000Z",
-    updated_at: "2025-02-02T00:00:00.000Z",
-  });
-  assert.ok(out);
-  assert.match(out!, /created_at: "2025-01-01T00:00:00.000Z"/);
-  assert.match(out!, /updated_at: "2025-02-02T00:00:00.000Z"/);
-  assert.match(out!, /title: T/); // untouched
-  // No matching key -> no change.
-  assert.strictEqual(patchTimestampLines("title: T\n", { created_at: "2025-01-01T00:00:00.000Z" }), null);
-});
-
-test("patchTimestampLines round-trips a created_at through normalize+patch losslessly", () => {
-  const iso = normalizeIsoTimestamp("2024-12-25T08:30:00Z")!;
-  const file = `created_at: "2026-06-03T23:00:00.000Z"\nupdated_at: "2026-06-03T23:00:00.000Z"\n`;
-  const out = patchTimestampLines(file, { created_at: iso, updated_at: iso })!;
-  assert.ok(out.includes(`created_at: "${iso}"`), `expected created_at: "${iso}" in output`);
-});
-
-test("locateItemFile finds the per-type item file and skips sidecars", () => {
-  const root = mkdtempSync(join(tmpdir(), "pmbeads-loc-"));
-  mkdirSync(join(root, "tasks"), { recursive: true });
-  mkdirSync(join(root, "history"), { recursive: true });
-  writeFileSync(join(root, "tasks", "pm-abc.toon"), "id: pm-abc\n");
-  writeFileSync(join(root, "history", "pm-abc.jsonl"), "{}\n"); // must be ignored
-  assert.strictEqual(locateItemFile(root, "pm-abc"), join(root, "tasks", "pm-abc.toon"));
-  assert.strictEqual(locateItemFile(root, "pm-missing"), undefined);
 });
 
 test("resolvePreserveTimestamps defaults on and honors negation", () => {

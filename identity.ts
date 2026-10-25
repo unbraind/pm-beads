@@ -1,10 +1,10 @@
 /** Structured Beads provenance and the narrowly scoped historical envelope reader. */
 import {
-  PmClient, preserveMutationStdinTokenFields, hashDocument, locateItem, readLocatedItem,
-  readSettings, resolveItemTypeRegistry, runWithActiveExtensions, setActiveExtensionHooks, update,
+  PmClient, preserveMutationStdinTokenFields, hashDocument, runWithActiveExtensions, setActiveExtensionHooks, update,
   PmCliError, EXIT_CODE, type PmClientFullMutationOptions, type ItemDocument,
 } from "@unbrained/pm-cli/sdk";
 import type { ExtensionApi } from "@unbrained/pm-cli/sdk/authoring";
+import { readBeadsItemDocument } from "./item-access.ts";
 import { beadsMutationAuthor } from "./mutation.ts";
 
 /** Decode only the exact suffix emitted by the former encoder, never embedded or body markers. */
@@ -53,17 +53,13 @@ export async function migrateBeadIdentities(pmRoot: string, author?: string, opt
   const client = new PmClient({ pmRoot, noExtensions: true, author });
   const { items } = await client.listAllComplete();
   const receipt: BeadsIdentityMigrationReceipt = { dryRun: !options.apply, pending: [], migrated: [], skipped: [] };
-  const settings = await readSettings(pmRoot);
-  const types = resolveItemTypeRegistry(settings).type_to_folder;
   for (const item of items) {
     await options.onTransition?.("listed", item.id);
-    const located = await locateItem(pmRoot, item.id, settings.id_prefix, settings.item_format, types);
-    if (!located) { receipt.skipped.push(item.id); continue; }
-    await options.onTransition?.("located", item.id);
     let document: ItemDocument;
-    try { ({ document } = await readLocatedItem(located, { schema: settings.schema })); }
-    catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    try {
+      document = await readBeadsItemDocument(pmRoot, item.id, undefined, () => options.onTransition?.("located", item.id));
+    } catch (error) {
+      if (!(error instanceof PmCliError) || error.exitCode !== EXIT_CODE.NOT_FOUND) throw error;
       receipt.skipped.push(item.id); continue;
     }
     const legacy = document.metadata.bead_id === undefined ? legacyBeadIdentity(document.metadata.description) : undefined;

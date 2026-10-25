@@ -26,3 +26,6 @@ export function sourceCreateOptions(options: PmClientFullMutationOptions, author
     unset: ["parent", "assignee", "deadline", "sprint", "release"].filter(field => options[field] === undefined),
   };
 }
+
+/** Compensation preserves durable items and identity reservations for an explicit retry. */
+export async function preserveBeadsProgress(): Promise<void> {}

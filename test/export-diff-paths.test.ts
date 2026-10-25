@@ -16,7 +16,6 @@ import {
   EXIT_CODE,
   indexBeadsById,
   isInvalidTypeValueError,
-  locateItemFile,
   normalizeDiffField,
   pmItemPassesFilter,
   pmItemToBead,
@@ -328,25 +327,6 @@ test("pmItemToBead carries optional fields and translates dependencies back to b
   assert.equal("labels" in bead, false, "empty/absent tags emit no labels field");
 });
 
-// --- locateItemFile edge arms ----------------------------------------------
-
-test("locateItemFile degrades on an unreadable root and skips entries that vanish mid-scan", async () => {
-  assert.equal(locateItemFile("/nonexistent/pm-root-xyz", "pm-1"), undefined);
-  const dir = mkdtempSync(join(tmpdir(), "beads-locate-"));
-  try {
-    mkdirSync(join(dir, "tasks"), { recursive: true });
-    mkdirSync(join(dir, "features"), { recursive: true });
-    symlinkSync(join(dir, "gone-target"), join(dir, "tasks", "dangling-link-dir"));
-    writeFileSync(join(dir, "features", "pm-2.md"), "id: pm-2\n");
-    assert.match(locateItemFile(dir, "pm-2") ?? "", /features[/\\]pm-2\.md$/);
-    assert.equal(locateItemFile(dir, "pm-missing"), undefined);
-  } finally {
-    // Synchronous and already imported at the top: the temp tree cannot
-    // outlive the test the way the old fire-and-forget dynamic import let it.
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
 test("diff with no usable file argument is a usage error naming both forms", async () => {
   const ext = await harness();
   const s = await twoFileSetup();
@@ -379,36 +359,6 @@ test("the legacy beads-export alias command runs the same export core", async ()
 });
 
 const ISO = "2026-01-02T03:04:05.000Z";
-
-test("an unreadable item file is reported as a read failure, not a locate failure", { skip: CHMOD_ROOT_SKIP }, async () => {
-  const ext = await harness();
-  const s = stubScenario({ listEnvelope: envelope([]) });
-  try {
-    const itemFile = join(s.dir, "tasks", "pm-stub-1.toon");
-    mkdirSync(join(s.dir, "tasks"), { recursive: true });
-    writeFileSync(itemFile, 'id: pm-stub-1\ntitle: T\ncreated_at: "2000-01-01T00:00:00.000Z"\n', "utf-8");
-    chmodSync(itemFile, 0o000); // stat succeeds, read fails
-    const file = s.jsonlPath("in.jsonl");
-    writeFileSync(file, jsonl([{ id: "bd-1", title: "Dark", created_at: ISO }]), "utf-8");
-    const result = await runImport(ext, { args: [file], options: {}, pmRoot: s.dir });
-    assert.equal(result.timestamped ?? 0, 0);
-  } finally {
-    chmodSync(join(s.dir, "tasks", "pm-stub-1.toon"), 0o644);
-    await ext.deactivate();
-    s.restorePath();
-  }
-});
-
-test("locateItemFile keeps scanning past an entry that vanishes between listing and stat", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "beads-vanish-"));
-  try {
-    symlinkSync(join(dir, "gone"), join(dir, "dangling-dir"));
-    assert.equal(locateItemFile(dir, "pm-none"), undefined,
-      "the dangling entry is skipped without aborting the scan");
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
 
 test("diff ignores empty-string tokens among the raw args", async () => {
   const ext = await harness();

@@ -38,7 +38,7 @@ import { registerSidecarCommands } from "./sidecar.ts";
 export * from "./sidecar.ts";
 import { registerTransferCommands } from "./transfer.ts";
 export * from "./transfer.ts";
-import { PmClient, preserveMutationStdinTokenFields, suppressHostOutput, type PmClientFullMutationOptions } from "@unbrained/pm-cli/sdk";
+import { PmClient, preserveMutationStdinTokenFields, suppressHostOutput, assertInitializedTracker, PmCliError, type PmClientFullMutationOptions } from "@unbrained/pm-cli/sdk";
 import { beadsMutationAuthor, sourceDependency } from "./mutation.ts";
 import { legacyBeadIdentity, reportLegacyBeadIdentities, registerIdentityMigrationCommand } from "./identity.ts";
 // Top-level SDK runtime import. This fleet once believed extensions could not
@@ -46,9 +46,8 @@ import { legacyBeadIdentity, reportLegacyBeadIdentities, registerIdentityMigrati
 // dynamic-import shims laundered through `any`; that premise was disproven (a
 // populated node_modules is the only requirement), so the store read below
 // imports its binding the same way every other fleet package does.
-import { listAllItemMetadata } from "@unbrained/pm-cli/sdk/runtime";
-import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from "node:fs";
-import { resolve, join } from "node:path";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
 
@@ -450,21 +449,8 @@ function beadAssignee(item: BeadsItem): string | undefined {
 // Timestamp fidelity — preserve bead created_at/updated_at on import
 // ---------------------------------------------------------------------------
 
-// pm's `create`/`update` expose no flag to set the canonical `created_at` /
-// `updated_at` front-matter fields (they are managed by the runtime). To make
-// the import side symmetric with the exporter — which already re-emits both
-// timestamps — we patch the persisted item file in place after create/update.
-// This is additive and degrades gracefully: an unparseable timestamp or an
-// item file we cannot locate is skipped with a warning, never a hard failure.
-//
-// History consistency: a raw file patch desynchronizes the item's history
-// chain (`pm health` flags it as history_drift / hash_mismatches → ok:false).
-// After every successful patch we therefore run the CLI's own sanctioned
-// re-anchor, `pm history-repair <id>`, which recomputes the hashes and records
-// an audit marker so the store stays history-consistent. If the repair cannot
-// run (e.g. an older CLI without `history-repair`), the patch is REVERTED and
-// the timestamp is skipped with a warning — keeping `pm health` green is the
-// default behavior; raw drift is never left behind.
+// The SDK owns canonical timestamps. Source timestamp writes require a public
+// import/update API; do not patch item files or rewrite history to emulate it.
 
 /**
  * Validate and normalize an ISO-8601 timestamp.
@@ -484,148 +470,11 @@ export function normalizeIsoTimestamp(raw: unknown): string | undefined {
   return new Date(t).toISOString();
 }
 
-/**
- * Rewrite top-level `created_at`/`updated_at` lines in a stored item file.
- *
- * Works for both `toon` and `json_markdown` formats, which each store a field as
- * one `key: "<iso>"` line. Only the first matching line for an existing key is
- * rewritten, so no fields are invented and the body is left undisturbed.
- *
- * @param text - The raw item file contents.
- * @param values - Timestamps to write (only set keys are applied).
- * @returns The patched text, or `null` when nothing changed.
- */
-export function patchTimestampLines(
-  text: string,
-  values: { created_at?: string; updated_at?: string },
-): string | null {
-  let changed = false;
-  let out = text;
-  for (const key of ["created_at", "updated_at"] as const) {
-    const value = values[key];
-    if (!value) continue;
-    // Anchor at line start; tolerate quoted or bare existing values.
-    const re = new RegExp(`^(\\s*${key}\\s*:\\s*).*$`, "m");
-    if (re.test(out)) {
-      out = out.replace(re, `$1"${value}"`);
-      changed = true;
-    }
-  }
-  return changed ? out : null;
-}
-
-/**
- * Locate the on-disk file for a pm item id under the pm root.
- *
- * Items live in per-type folders as `<id>.<ext>`; this scans one level of type
- * folders for `<id>.toon` / `<id>.md`, skipping the `history`/`locks`/`search`
- * sidecars. Returns `undefined` when the item file cannot be found or the root
- * is unreadable.
- *
- * @param pmRoot - The pm data directory.
- * @param pmId - The pm item id to locate.
- * @returns Absolute path to the item file, or `undefined`.
- */
-export function locateItemFile(pmRoot: string, pmId: string): string | undefined {
-  const exts = [".toon", ".md"];
-  let entries: string[];
-  try {
-    entries = readdirSync(pmRoot);
-  } catch {
-    return undefined;
-  }
-  for (const entry of entries) {
-    if (entry === "history" || entry === "locks" || entry === "search") continue;
-    const dir = join(pmRoot, entry);
-    let isDir = false;
-    try {
-      isDir = statSync(dir).isDirectory();
-    } catch {
-      continue;
-    }
-    if (!isDir) continue;
-    for (const ext of exts) {
-      const candidate = join(dir, `${pmId}${ext}`);
-      try {
-        if (statSync(candidate).isFile()) return candidate;
-      } catch {
-        /* not here */
-      }
-    }
-  }
-  return undefined;
-}
-
-/**
- * Apply preserved bead timestamps to the persisted pm item file.
- *
- * Patches the on-disk `created_at`/`updated_at` lines then re-anchors the item's
- * history chain with `pm history-repair` so the raw patch does not surface as
- * `history_drift` in `pm health`. On a repair failure the patch is reverted so a
- * missing timestamp stays recoverable. Returns `true` only when a timestamp was
- * written and history stayed consistent.
- */
-function applyTimestamps(
-  pmRoot: string,
-  pmId: string,
-  bead: BeadsItem,
-  author: string,
-): boolean {
-  const created_at = normalizeIsoTimestamp(bead.created_at);
-  const updated_at = normalizeIsoTimestamp(bead.updated_at);
-  if (!created_at && !updated_at) return false;
-  const file = locateItemFile(pmRoot, pmId);
-  if (!file) {
-    console.error(`  timestamp skipped: could not locate item file for ${pmId}`);
-    return false;
-  }
-  let text: string;
-  try {
-    text = readFileSync(file, "utf-8");
-  } catch (err: unknown) {
-    console.error(`  timestamp skipped: cannot read ${file}: ${errorMessage(err)}`);
-    return false;
-  }
-  const patched = patchTimestampLines(text, { created_at, updated_at });
-  if (patched === null) return false;
-  try {
-    writeFileSync(file, patched, "utf-8");
-  } catch (err: unknown) {
-    console.error(`  timestamp skipped: cannot write ${file}: ${errorMessage(err)}`);
-    return false;
-  }
-  // Re-anchor the item's history chain so the raw patch does not surface as
-  // history_drift in `pm health`. On failure, revert the patch entirely — a
-  // missing timestamp is recoverable, a drifted history chain is not.
-  const repair = spawnSync(
-    "pm",
-    [
-      "--path", pmRoot,
-      "history-repair", pmId,
-      "--no-extensions",
-      "--author", author,
-      "--message", "pm-beads import: preserved source bead created_at/updated_at",
-    ],
-    { encoding: "utf-8" },
-  );
-  if (repair.error || repair.status !== 0) {
-    const why = describeRepairFailure(repair);
-    try {
-      writeFileSync(file, text, "utf-8");
-      console.error(
-        `  timestamp skipped: pm history-repair failed for ${pmId} (${why}); ` +
-          `patch reverted to keep pm health history-consistent`,
-      );
-    } catch (revertErr: unknown) {
-      console.error(
-        `  timestamp warning: pm history-repair failed for ${pmId} (${why}) and the patch could not be ` +
-          `reverted (${errorMessage(revertErr)}); ` +
-          `run \`pm history-repair ${pmId}\` manually`,
-      );
-    }
-    return false;
-  }
-  return true;
+/** Report unsupported timestamp preservation without touching canonical items or history. */
+function applyTimestamps(bead: BeadsItem): boolean {
+  if (!normalizeIsoTimestamp(bead.created_at) && !normalizeIsoTimestamp(bead.updated_at)) return false;
+  console.error("  timestamp skipped: the pm SDK has no canonical source timestamp import/update API.");
+  return false;
 }
 
 /**
@@ -1002,7 +851,7 @@ export function describeRepairFailure(repair: {
 async function readWorkspaceBeadIds(pmRoot: string): Promise<Set<string> | undefined> {
   let items: PmItem[] | undefined;
   try {
-    items = metadataToPmItems(await listAllItemMetadata(pmRoot));
+    items = metadataToPmItems((await new PmClient({ pmRoot, noExtensions: true }).listAllComplete()).items);
   } catch {
     /* SDK store read failed — fall back to the CLI read path below. */
   }
@@ -1327,7 +1176,11 @@ export async function assertBeadsImportable(filePath: string, pmRoot?: string): 
 
 /** Reuse local SDK mutations; retain the CLI transport when no initialized local tracker is available. */
 async function mutateImportedItem(args: string[], pmRoot: string, description: string | undefined, author: string) {
-  if (!existsSync(join(pmRoot, "settings.json"))) return spawnSync("pm", args, { encoding: "utf-8" });
+  try { await assertInitializedTracker(pmRoot); }
+  catch (error) {
+    if (!(error instanceof PmCliError) || error.exitCode !== EXIT_CODE.NOT_FOUND) throw error;
+    return spawnSync("pm", args, { encoding: "utf-8" });
+  }
   const start = args.findIndex(token => token === "create" || token === "update");
   const command = args[start] === "create" ? "create" : "update";
   const options: PmClientFullMutationOptions = description === undefined ? {} : { description };
@@ -1422,7 +1275,7 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
   // With --upsert, look up existing items so a matching bead id updates the
   // prior item instead of creating a duplicate. Built once, up front (also in
   // dry-run, so the preview reports create vs. update accurately).
-  const existingItems = opts.upsert ? readPmItems(pmRoot) : [];
+  const existingItems = opts.upsert ? await readWorkspaceItems(pmRoot) : [];
   const existingIndex = opts.upsert
     ? buildBeadIndex(existingItems)
     : new Map<string, ExistingBeadItem>();
@@ -1762,7 +1615,7 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
     // the round-trip stays lossless.
     if (opts.preserveTimestamps) {
       for (const entry of touched) {
-        if (applyTimestamps(pmRoot, entry.pmId, entry.bead, opts.author)) timestamped++;
+        if (applyTimestamps(entry.bead)) timestamped++;
       }
     }
   }
@@ -2230,7 +2083,21 @@ export function buildBeadsFromWorkspace(
   opts: { preserveIds: boolean; filter: RowFilter },
   spawn: PmListAllSpawn = spawnPmListAll,
 ): BeadsItem[] {
-  const allItems = readPmItems(pmRoot, spawn);
+  return buildBeadsFromItems(readPmItems(pmRoot, spawn), opts);
+}
+
+/** Read certified full rows through the SDK; retain CLI compatibility for legacy uninitialized hosts. */
+async function readWorkspaceItems(pmRoot: string): Promise<PmItem[]> {
+  try { await assertInitializedTracker(pmRoot); }
+  catch (error) {
+    if (!(error instanceof PmCliError) || error.exitCode !== EXIT_CODE.NOT_FOUND) throw error;
+    return readPmItems(pmRoot);
+  }
+  return (await new PmClient({ pmRoot, noExtensions: true }).listAllComplete()).items as PmItem[];
+}
+
+/** Translate certified rows without making assumptions about their addressing or storage. */
+function buildBeadsFromItems(allItems: PmItem[], opts: { preserveIds: boolean; filter: RowFilter }): BeadsItem[] {
   reportLegacyBeadIdentities(allItems);
   const hasFilter = Boolean(opts.filter.statuses || opts.filter.types);
   const items = hasFilter ? allItems.filter((it) => pmItemPassesFilter(it, opts.filter)) : allItems;
@@ -2257,7 +2124,7 @@ export function buildBeadsFromWorkspace(
  * so an incomplete `list --all` answer refuses here before any bytes are written.
  */
 async function runExport(pmRoot: string, opts: { dryRun: boolean; preserveIds: boolean; output?: string; filter: RowFilter }) {
-  const beads = buildBeadsFromWorkspace(pmRoot, { preserveIds: opts.preserveIds, filter: opts.filter });
+  const beads = buildBeadsFromItems(await readWorkspaceItems(pmRoot), { preserveIds: opts.preserveIds, filter: opts.filter });
   const jsonl = beads.map((b) => JSON.stringify(b)).join("\n") + (beads.length ? "\n" : "");
 
   // --dry-run: serialize the workspace to Beads in memory (so the filter and
@@ -2489,7 +2356,7 @@ function printDiffSummary(diff: BeadsDiff, labelA: string, labelB: string): void
 //     (serialized to beads in memory via the shared export core).
 // Pure read-only — never mutates the workspace or any file. Exits nonzero only
 // under --strict when drift is found; otherwise always exits 0.
-function runDiff(args: string[], opts: DiffOptions) {
+async function runDiff(args: string[], opts: DiffOptions) {
   // ctx.args can carry flag tokens (e.g. boolean flags like --against-workspace)
   // alongside the positional file paths, so extract the positionals explicitly
   // rather than indexing raw args — mirrors resolveImportInputFile.
@@ -2518,7 +2385,7 @@ function runDiff(args: string[], opts: DiffOptions) {
       throw new CommandError("Cannot resolve the pm workspace root for --against-workspace.", EXIT_CODE.GENERIC_FAILURE);
     }
     beadsA = parseBeadsFileForDiff(fileA);
-    beadsB = buildBeadsFromWorkspace(opts.pmRoot, { preserveIds: opts.preserveIds, filter: opts.filter });
+    beadsB = buildBeadsFromItems(await readWorkspaceItems(opts.pmRoot), { preserveIds: opts.preserveIds, filter: opts.filter });
     labelA = resolve(fileA);
     labelB = "workspace";
   } else {
@@ -2572,7 +2439,7 @@ const IMPORT_FLAGS: FlagDefinition[] = [
   { long: "--batch-size", value_name: "n", value_type: "string", description: "Process the create/update pass in batches of n records (progress reporting)" },
   { long: "--filter", value_name: "expr", value_type: "string", description: "Combined row filter, e.g. `type:Bug,Feature;status:open,in_progress` (merged with --filter-status/--filter-type)" },
   { long: "--no-preserve-ids", value_type: "boolean", description: "Do not persist the original Beads id (default: preserve)" },
-  { long: "--no-preserve-timestamps", value_type: "boolean", description: "Do not carry over bead created_at/updated_at (default: preserve)" },
+  { long: "--no-preserve-timestamps", value_type: "boolean", description: "Suppress unsupported source timestamp preservation warnings" },
   { long: "--type", value_name: "type", value_type: "string", description: "Override item type for all imported items" },
   { long: "--priority", value_name: "n", value_type: "string", description: "Override priority (0-4) for all items" },
   { long: "--tags", value_name: "tags", value_type: "string", description: "Comma-separated tags to add to all items" },

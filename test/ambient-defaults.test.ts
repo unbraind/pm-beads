@@ -8,7 +8,7 @@ import {
   PmClient, getHistoryPath, loadCreateTemplateOptions, locateItem, readLocatedItem,
   readSettings, runTemplatesSave, type ItemDocument,
 } from "@unbrained/pm-cli/sdk";
-import { applyBeadsTransfer, beadsTransferItemId, planBeadsTransfer, snapshotBeadsTransferSettings } from "../transfer.ts";
+import { applyBeadsTransfer, planBeadsTransfer, snapshotBeadsTransferSettings } from "../transfer.ts";
 import { acknowledgeBeadsSnapshot, applyBeadsReconciliation, parseBeadsSnapshot, planBeadsReconciliation } from "../reconcile.ts";
 import { migrateBeadIdentities } from "../identity.ts";
 import { beadsMutationAuthor, sourceCreateOptions } from "../mutation.ts";
@@ -116,7 +116,7 @@ test("transfer ignores active focus, template tags/assignee and workflow default
   const plan = planBeadsTransfer(text, ["a", "b", "c"], "ambient-transfer", await snapshotBeadsTransferSettings(pmRoot));
   const result = await applyBeadsTransfer(pmRoot, plan, "source-agent");
   assert.equal(result.complete, true); assert.equal(result.transferred, 3); assert.equal(result.skipped, 0);
-  const ids = Object.fromEntries(["a", "b", "c"].map(id => [id, beadsTransferItemId(plan, id, prefix)]));
+  const ids = Object.fromEntries(result.rows.map(row => [row.id, row.pmId]));
   assert.deepEqual(stable(await document(pmRoot, ids.a)), expected(ids.a, "a", "A"));
   assert.deepEqual(stable(await document(pmRoot, ids.b)), expected(ids.b, "b", "B", {
     type: "Feature", status: "blocked", priority: 0, tags: ["source-tag"], assignee: "source-assignee",

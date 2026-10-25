@@ -86,7 +86,7 @@ pm beads import data.jsonl --no-preserve-timestamps
 | `--batch-size <n>` | number | Process the create/update pass in batches of n records (progress reporting) |
 | `--filter <expr>` | string | Combined row filter, e.g. `type:Bug,Feature;status:open,in_progress` (merged with `--filter-status`/`--filter-type`) |
 | `--no-preserve-ids` | boolean | Do not persist the original Beads id (default: preserve) |
-| `--no-preserve-timestamps` | boolean | Do not carry over the bead `created_at`/`updated_at` (default: preserve) |
+| `--no-preserve-timestamps` | boolean | Suppress the unsupported source timestamp preservation pass |
 | `--type <type>` | string | Override item type for all imported items |
 | `--priority <n>` | number | Override priority (0–4) for all items |
 | `--tags <tags>` | string | Comma-separated tags to add to all items |
@@ -124,9 +124,8 @@ to an existing pm item:
 
 Import runs in three passes: every item is created (or updated) first, then
 dependency/blocker edges are wired up so a record can depend on another record
-defined later in the same file, and finally — unless `--no-preserve-timestamps`
-is given — the bead's original `created_at`/`updated_at` are written back onto
-the persisted item (the dependency pass would otherwise re-stamp `updated_at`).
+defined later in the same file. Source timestamp preservation is reported as
+unsupported by the pinned SDK; `--no-preserve-timestamps` suppresses that pass.
 
 ### Planning-field fidelity
 
@@ -138,14 +137,11 @@ Beads id from the same file.
 
 ### Timestamp fidelity
 
-`pm create`/`update` expose no flag for the canonical `created_at`/`updated_at`
-front-matter fields, so on import they are stamped by the runtime. To keep the
-import side symmetric with the exporter (which already re-emits both
-timestamps), the importer patches the persisted item file in place after
-create/update, making the round-trip lossless for timestamps. Only well-formed
-ISO instants are written; an unparseable value or an item file that cannot be
-located is skipped with a warning (never a hard failure). Opt out with
-`--no-preserve-timestamps`.
+Canonical `created_at`/`updated_at` values are owned by the pm runtime. The pinned
+SDK has no source timestamp import/update API, so requested preservation reports
+an explicit warning and leaves the runtime timestamps intact. Export still emits
+those canonical timestamps. `--no-preserve-timestamps` suppresses this pass.
+The importer never patches item files or re-anchors history.
 
 ### Idempotent re-import (`--upsert`)
 
@@ -492,8 +488,9 @@ pm beads transfer --apply-plan exchange.json --chunks 2 --json
 
 This is a creation-only exchange into a receiving tracker. It preserves every
 existing record and later peer edit. Use `beads reconcile` for changes to an
-existing acknowledged source. The exact plan digest scopes deterministic core
-ids and SDK transaction checkpoints; a changed plan starts a separate exchange.
+existing acknowledged source. The SDK allocates core IDs using the receiver
+configuration. The exact plan digest scopes the durable identity ledger and
+transaction checkpoints; a changed plan starts a separate exchange.
 Keep the original plan to resume interrupted work. The full plan contains the
 selected descriptions and supported Beads fields; protect and retain it like the
 source tracker. Unknown provider fields require the separate opted-in sidecar

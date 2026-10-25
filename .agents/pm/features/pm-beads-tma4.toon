@@ -6,10 +6,10 @@ status: in_progress
 priority: 2
 tags[1]: "gh:unbraind/pm-beads#165"
 created_at: "2026-10-24T11:13:36.736Z"
-updated_at: "2026-10-24T18:25:49.875Z"
+updated_at: "2026-10-25T00:00:11.983Z"
 author: codex-agent
 acceptance_criteria: "A killed transfer resumes without duplicates; A late cross-chunk dependency is resolved without dangling edges; Exceeding closure limits yields an explicit omission or refusal receipt; Concurrent drainers inspect and mutate state under the SDK writer lease; foreign records are skipped with reasons; all transition boundaries have interleaving tests on one non-git tracker; Typed SDK and CLI, bounded TOON/JSON receipts, README and example, public tracker copy measurements, and npm plus Bun CI release gates"
-comments[50]{created_at,author,text}:
+comments[57]{created_at,author,text}:
   "2026-10-24T11:13:52.625Z",codex-agent,"Overlap audit: registry confirms CLI 2026.10.24; this package retains its 2026.10.20 SDK pin. Existing Beads validation handles structural errors, cycles and aliases; existing import batches delegate core mutations. Core SDK exports commitItemMutations and commitWorkspaceTransaction with resumable journals; pm-context provides bounded neighborhood/delta packs, not a transfer ledger. Add only closure planning, immutable transfer identities and per-chunk receipts around those public coordinators. Use non-git trackers and deterministic interleaving at every package/coordinator transition."
   "2026-10-24T11:20:04.804Z",codex-agent,"Design refinement: dependency-first creation includes parent closure, so every published edge targets an earlier owned row even when its source record appears later or crosses chunks. The SDK transaction journal itself is the per-chunk checkpoint; no second mutable checkpoint store. Ownership comes from immutable create history, not copied bead_id markers. Skip foreign identities and their unavailable dependents, preserve peer edits, and never delete or close progress during compensation. The pinned bulk-create helper adopts any occupied id, so ownership-aware steps use commitWorkspaceTransaction plus PmClient.create instead."
   "2026-10-24T11:29:18.808Z",codex-agent,"Verification: linked command node --test test/transfer.test.ts test/transfer-cli.test.ts passed 11/11, zero skips, including an actual SIGKILL after durable creation and recovery after the SDK lease TTL. Same-tracker interleavings cover all 9 forward coordinator boundaries, all 8 compensation boundaries, both create boundaries and competing drainers before acquisition. New transfer module targeted V8 coverage: 100% lines/branches/functions. Existing smoke and flag tests: 117/117. Typecheck, test typecheck and docstring lint pass; this repository has no separate lint script."
@@ -60,10 +60,18 @@ comments[50]{created_at,author,text}:
   "2026-10-24T18:20:23.755Z",codex-agent,"Code head 28fe0c1e8c76823c98d04ef5ecc5dbdec410161d is fully green in CI https://github.com/unbraind/pm-beads/actions/runs/40119767864 . Verified the completed job logs: Node 22 npm 479/479 and Bun 479/479; Node 26 npm 479/479 and Bun 479/479. Every gate reports zero failures, skips, cancellations and todos, with 100% measured lines, branches and functions across all 13 intended source files at unchanged thresholds. Both fresh-clone strict tracker-health checks and Bun package-graph installations pass. Local linked migration and fixture regressions passed 8/8 and 6/6. All per-point behavioral revert receipts are retained above. This final metadata-only commit records the evidence and releases the claim; source code is unchanged and its CI will be checked before reporting the pushed head. No merge, release, upstream issue, mentions or thread replies were performed."
   "2026-10-24T18:24:38.280Z",codex-agent,"Final metadata-head CI run 40120263213 passed all 479 tests on Node 26, but correctly refused the npm release gate because an existing mutation-error branch was uncovered (99.97% lines, 99.95% branches). The old failed-update fixture still used a legacy identity, so it passed by taking the new migration-required skip rather than attempting the injected transport failure. Updated that fixture to an already structured identity and added a positive assertion that the failing update transport actually ran. Source implementation and all thresholds remain unchanged; this removes dependence on another test incidentally reaching that error path. The earlier full code-head CI evidence remains genuine, but it does not override this final-head coverage failure."
   "2026-10-24T18:25:48.753Z",codex-agent,"The deterministic transport regression now passes 1/1 through npx pm test pm-beads-tma4 --run --only-last --progress. It asserts an update with the intended title reached the transport before accepting the skipped-result/edge-resolution behavior. Typecheck, test typecheck, docstring lint and whitespace checks pass. This commit changes only that fixture/assertion plus PM evidence; the identity/read/migration implementation remains byte-identical to code head 28fe0c1, whose earlier npm/Bun matrix passed 479/479 in each gate. Release the claim with this commit, and verify the new head in all four CI gates before the final report; the newer missing-coverage run is not counted as approval."
-files[22]{path,scope}:
+  "2026-10-24T23:18:20.389Z",codex-agent,"Round 5: auditing every tracker item lookup, file read, history read, type mapping and identity allocation. Replace package storage assumptions with pinned SDK operations; add real non-git tracker configuration matrix and behavioral revert proof. Remote PR head is current and already includes main."
+  "2026-10-24T23:24:36.421Z",codex-agent,"Round 5 implementation: item-access.ts delegates identity generation to generateItemId with SDK-resolved configuration and registry, history to PmClient.run(history), and canonical documents to getItemAt. Transfer ownership and migration no longer locate files; reconciliation no longer resolves history paths or hashes source IDs into core IDs. Export, workspace diff and upsert use listAllComplete. Removed raw timestamp patching/history-repair; pinned SDK lacks source timestamp import/update. Found history command initializes missing streams, so a pure point-in-time read guards it. Testing 20 real non-git configuration/workflow matrix cases plus existing crash, peer-edit and history guards."
+  "2026-10-24T23:28:39.967Z",codex-agent,"Revert proof: restored only the previous ownership function and its SDK imports; all new tests and all other fixes stayed unchanged. Ran node --test --test-name-pattern=\"SDK tracker matrix: custom type folders\" test/tracker-configurations.test.ts. Exit 1: 2 passed, 3 failed, 0 skipped. Apply, interrupt+resume and export fail with invalid_journal for Task configured in work. Restored the fixed ownership function immediately afterward. The original combined matrix and targeted run passed 79/79, and the pm-linked full matrix passed 20/20."
+  "2026-10-24T23:30:26.090Z",codex-agent,"Restored proof result: the exact same custom-folder matrix command passes 5/5, 0 skipped. Added SDK item-access regressions for absent foreign history (no initialized stream), compacted durable versions and unrecorded item drift: 2/2 pass. Reconciliation reservation-ledger replay regression passes 1/1. Typecheck, test typecheck, docstring lint and whitespace checks pass. npm release gate is running with isolated HOME and git identity. Local strict health separately reports existing global extension host-version skew and merge-fence drift tracked by pm-beads-v9r1; no history was repaired and the committed extension fence remains unchanged."
+  "2026-10-24T23:47:16.644Z",codex-agent,"Full local npm release gate reached the unchanged 15-minute timeout; this is missing full-gate evidence, not a pass. One 512-row transfer/export/upsert seed passed before timeout. Review found and reproduced unpublished SDK ID reservation collisions using runWithReproducibleProcessEnvironment. Allocation now retries SDK-generated IDs against the batch reservation set, bounded at 32 attempts. Ownership uses SDK light metadata only for existence and SDK verification digests for new pins, with guarded legacy JSON-document-hash compatibility, avoiding repeated full-corpus body reads. Final targeted checks and final-head CI will verify these changes."
+  "2026-10-25T00:00:05.983Z",codex-agent,"Final SDK boundary: readSettings and resolveItemTypeRegistry supply the complete context to SDK locateItem; readLocatedItem, getHistoryPath, readHistorySnapshot and verifyHistoryEntries perform every item/history resolution and read. No package item paths, folders, extensions or core ID formulas remain. SDK generateItemId supplies IDs with bounded unpublished-reservation collision retries. SDK verification digests pin current documents, retaining guarded compatibility with earlier JSON-document hashes. Export/diff/upsert use listAllComplete. Generic high-level canonical-ID reads fail after prefix drift, so the final adapter uses literal SDK store APIs. Non-filesystem state/reservation and literal-ID API gaps remain in pm-beads-z4k0."
+  "2026-10-25T00:00:09.233Z",codex-agent,"Final local evidence: configuration matrix 20/20; settings and resume regressions 9/9; migration plus SDK item-access checks 11/11, no skips. Typecheck, test typecheck, docstring lint and whitespace checks pass. Final behavioral ownership revert restored only the previous ownership function and SDK imports: node --test --test-name-pattern=\"SDK tracker matrix: custom type folders\" test/tracker-configurations.test.ts fails 3/5 with invalid_journal; restored fix passes 5/5. Reverting only the allocator collision guard fails node --test --test-name-pattern=\"SDK identity allocation retries\" test/item-access.test.ts (0/1); restored item-access tests pass 3/3. Final source bytes were restored. Initial full local npm gate timed out at the unchanged 15-minute limit; it is not passing evidence. Final full npm and Bun gates will run in CI on the pushed head: https://github.com/unbraind/pm-beads/pull/165/checks . No coverage thresholds or timeouts changed."
+files[25]{path,scope}:
   .github/workflows/ci.yml,project
   identity.ts,project
   index.ts,project
+  item-access.ts,project
   mutation.ts,project
   package.json,project
   reconcile.ts,project
@@ -76,14 +84,16 @@ files[22]{path,scope}:
   test/identity-migration.test.ts,project
   test/identity.test.ts,project
   test/import-paths.test.ts,project
+  test/item-access.test.ts,project
   test/public-transfer-validation.ts,project
   test/reconcile.test.ts,project
   test/smoke.test.ts,project
+  test/tracker-configurations.test.ts,project
   test/transfer-cli.test.ts,project
   test/transfer-properties.test.ts,project
   test/transfer.test.ts,project
   transfer.ts,project
-tests[8]:
+tests[10]:
   - command: node --test test/transfer.test.ts test/transfer-cli.test.ts
     scope: project
     provenance:
@@ -142,6 +152,22 @@ tests[8]:
     provenance:
       author: codex-agent
       created_at: "2026-10-24T18:24:39.374Z"
+      source_kind: local_mutation
+      source_ref: feat/dependency-closed-resumable-transfer
+  - command: node --test test/tracker-configurations.test.ts
+    scope: project
+    timeout_seconds: 180
+    provenance:
+      author: codex-agent
+      created_at: "2026-10-24T23:26:25.334Z"
+      source_kind: local_mutation
+      source_ref: feat/dependency-closed-resumable-transfer
+  - command: node --test test/item-access.test.ts
+    scope: project
+    timeout_seconds: 60
+    provenance:
+      author: codex-agent
+      created_at: "2026-10-24T23:55:18.389Z"
       source_kind: local_mutation
       source_ref: feat/dependency-closed-resumable-transfer
 docs[2]{path,scope}:
