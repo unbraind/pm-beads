@@ -86,7 +86,7 @@ pm beads import data.jsonl --no-preserve-timestamps
 | `--batch-size <n>` | number | Process the create/update pass in batches of n records (progress reporting) |
 | `--filter <expr>` | string | Combined row filter, e.g. `type:Bug,Feature;status:open,in_progress` (merged with `--filter-status`/`--filter-type`) |
 | `--no-preserve-ids` | boolean | Do not persist the original Beads id (default: preserve) |
-| `--no-preserve-timestamps` | boolean | Do not carry over the bead `created_at`/`updated_at` (default: preserve) |
+| `--no-preserve-timestamps` | boolean | Suppress the unsupported source timestamp preservation pass |
 | `--type <type>` | string | Override item type for all imported items |
 | `--priority <n>` | number | Override priority (0–4) for all items |
 | `--tags <tags>` | string | Comma-separated tags to add to all items |
@@ -124,9 +124,8 @@ to an existing pm item:
 
 Import runs in three passes: every item is created (or updated) first, then
 dependency/blocker edges are wired up so a record can depend on another record
-defined later in the same file, and finally — unless `--no-preserve-timestamps`
-is given — the bead's original `created_at`/`updated_at` are written back onto
-the persisted item (the dependency pass would otherwise re-stamp `updated_at`).
+defined later in the same file. Source timestamp preservation is reported as
+unsupported by the pinned SDK; `--no-preserve-timestamps` suppresses that pass.
 
 ### Planning-field fidelity
 
@@ -138,22 +137,17 @@ Beads id from the same file.
 
 ### Timestamp fidelity
 
-`pm create`/`update` expose no flag for the canonical `created_at`/`updated_at`
-front-matter fields, so on import they are stamped by the runtime. To keep the
-import side symmetric with the exporter (which already re-emits both
-timestamps), the importer patches the persisted item file in place after
-create/update, making the round-trip lossless for timestamps. Only well-formed
-ISO instants are written; an unparseable value or an item file that cannot be
-located is skipped with a warning (never a hard failure). Opt out with
-`--no-preserve-timestamps`.
+Canonical `created_at`/`updated_at` values are owned by the pm runtime. The pinned
+SDK has no source timestamp import/update API, so requested preservation reports
+an explicit warning and leaves the runtime timestamps intact. Export still emits
+those canonical timestamps. `--no-preserve-timestamps` suppresses this pass.
+The importer never patches item files or re-anchors history.
 
 ### Idempotent re-import (`--upsert`)
 
 Re-importing the same Beads file with `--upsert` updates the previously imported
 items instead of creating duplicates. Matching is keyed on the original Beads
-`id` — recovered from the `[bead_id: <id>]` provenance marker that round-trip
-already maintains (**not** on tags, which pm case-folds on storage, which would
-mangle mixed-case ids). On upsert, dependency edges are replaced atomically
+`id`, stored in the registered `bead_id` metadata field with its original case. On upsert, dependency edges are replaced atomically
 (`--replace-deps`) so repeated imports never accumulate duplicate edges, and a
 status that is already terminal (e.g. `closed`) is not re-sent (which would
 otherwise demand `--force`). Items imported with `--no-preserve-ids` have no
@@ -171,7 +165,7 @@ zero exit.
 
 By default the dangling-dependency check also cross-references the **current pm
 workspace**: a dependency that is not defined in the file but already exists in
-the workspace (from a prior import, matched on its `[bead_id]` provenance) is
+the workspace (from a prior import, matched on its `bead_id` metadata) is
 downgraded from an error to a `cross_workspace_dependency` warning, since it
 will resolve at import time. A dependency present in neither the file nor the
 workspace stays a hard error. The workspace is read via the SDK item-store
@@ -299,10 +293,33 @@ Beads diff: /abs/before.jsonl (A) → workspace (B)
 
 ## Round-trip: ids and dependencies
 
-`pm create` exposes no generic custom-field setter to standalone extensions, so
-on import the original Beads `id` is persisted in the item description behind a
-parseable marker (`[bead_id: <id>]`). On export the marker is read back and the
-native Beads id is re-emitted (and stripped from the description). Beads
+Imports, transfers and reconciliation persist the original Beads `id` in the
+registered `bead_id` string field using the pm SDK schema registry. Descriptions
+are stored and exported byte-for-byte, including whitespace and marker-like text.
+The field supplies export ids and upsert keys independently of descriptions.
+Identity opt-out and id-less imports persist an empty field to disable legacy
+fallback for new user text. Initialized local imports use public SDK mutations with the literal-field policy,
+preserving NUL, literal dashes and CRLF without stdin newline normalization.
+
+For legacy items only, an absent `bead_id` permits the exact historical envelope:
+`[bead_id: ID]` alone or a trimmed body followed by two LF newlines and that
+terminal marker. The id has exactly one space after the colon, no brackets or
+newlines, and no surrounding whitespace; the body contains no earlier marker.
+Embedded, nested, repeated, noncanonical or body-field markers remain user text.
+All reads (export, preview, plan, list, status and dry runs) use that fallback
+in memory without identity, item, schema or history mutations. The pinned PM host
+may initialize derived runtime caches on cold reads; core `get` also records usage.
+The whole-tracker byte regression initializes these SDK caches during fixture setup. Export and reconciliation report pending
+legacy items. Run `pm beads migrate-identities` to list them without writes;
+`pm --author reviewer beads migrate-identities --apply` explicitly migrates them.
+Transfer apply includes the same migration only with `--migrate-identities`;
+ordinary transfer apply preserves foreign legacy records. Each migration checks the whole item hash
+in the SDK `beforeMutation` hook under its item lock, skips and reports changed items,
+and removes only the historical envelope. History uses `--author`, then `PM_AUTHOR`,
+then `pm-beads`. Legacy upserts are skipped until explicit migration; they never
+implicitly migrate an old identity. Reconciliation apply requires migration and
+a fresh preview before replacing a legacy description. Present metadata, including an invalid or
+empty value, always disables the legacy fallback. Beads
 `dependencies` / `blocked_by` edges are mapped to pm `blocked_by` dependencies on
 import and translated back to current Beads `dependencies`
 (`issue_id` / `depends_on_id`, `type: "blocks"`) on export, with upstream ids
@@ -347,7 +364,7 @@ pm beads reconcile --source team --apply-plan review.json --json
 
 Acknowledge once, after the baseline matches live items. When bootstrapping with
 an import, export the live tracker and acknowledge that export: import fills a
-missing or empty description with the title and normalizes defaults. A snapshot
+missing description with the title and normalizes defaults. A snapshot
 that already matches every supported live field can be acknowledged directly.
 Reuse the same source name for the same external tracker. The source
 owns a durable base under the tracker’s `beads/` directory; retain that directory
@@ -454,11 +471,98 @@ The typed SDK exports `captureBeadsExtensions`, `parseBeadsExtensionSidecar`,
 `BeadsSidecarRefusal` and the fixed limits. See the [complete example and refusal
 remedies](examples/unknown-field-sidecars.md) for bounds, privacy policy and SDK usage.
 
+## Dependency-closed resumable transfer
+
+`pm beads transfer` creates a bounded plan for selected Beads ids, including their
+transitive blockers and parents. Rows are ordered before their dependents, so a
+blocker appearing late in the input can arrive in an earlier chunk. The existing
+Beads parser still validates JSONL, aliases, duplicate ids and dependency cycles.
+A closure that exceeds its bounds is refused in full with measured `omission`
+fields (`dimension`, `required`, `limit`, `included: 0`) and a remedy.
+
+```sh
+pm beads transfer snapshot.jsonl --source team --select bd-root --chunk-size 25 --plan-out exchange.json
+pm beads transfer --apply-plan exchange.json --chunks 2 --json
+# Repeat the same command until complete is true.
+```
+
+This is a creation-only exchange into a receiving tracker. It preserves every
+existing record and later peer edit. Use `beads reconcile` for changes to an
+existing acknowledged source. The SDK allocates core IDs using the receiver
+configuration. The exact plan digest scopes the durable identity ledger and
+transaction checkpoints; a changed plan starts a separate exchange.
+Keep the original plan to resume interrupted work. The full plan contains the
+selected descriptions and supported Beads fields; protect and retain it like the
+source tracker. Unknown provider fields require the separate opted-in sidecar
+workflow; this command transfers the canonical reconciliation fields, rather
+than claiming a lossless copy of every provider field or original timestamp.
+
+Creation uses source fields and explicit source defaults (Task, open, priority 2,
+empty tags), with progressive create mode. A missing parent is explicitly unset,
+so a receiving tracker's active focus cannot become an imported relationship.
+Absent assignee and planning fields are also explicitly unset. Imports never
+select a receiver template; SDK clients and child mutations disable extension
+loading to exclude extension field defaults and mutation hooks. Scalar values,
+relationships and mutation authors come from the import invocation, including
+edge author provenance. Reconciliation updates retain unrelated local fields.
+Receiver validation and workflow transition policies still apply and may refuse
+an incompatible source; they do not substitute receiver defaults for source data.
+
+The public SDK exports `snapshotBeadsTransferSettings`, `planBeadsTransfer`,
+`validateBeadsTransferPlan`, `applyBeadsTransfer`,
+`summarizeBeadsTransfer`, `beadsTransferItemId`, their option/receipt types, and
+`BeadsTransferRefusal` with `code`, `remedy` and optional `omission`. Expected CLI
+refusals return those fields as TOON/JSON and exit 2. Plan and drain summaries
+include counts, at most 20 row identifiers, omission totals, and a resume remedy;
+record descriptions never appear in these summaries.
+
+Defaults are 1,000 closure rows, 4,000 edges (including parents), 4 MiB canonical
+closure data and 25 rows per chunk. `--max-rows`, `--max-edges`, `--max-bytes` and
+`--chunk-size` can raise these up to 10,000 rows, 40,000 edges, 16 MiB and 100 rows.
+Input JSONL is capped at 16 MiB and Beads ids at 128 characters. `--chunks` bounds
+new/resumed chunks per invocation; completed chunks replay without consuming that
+budget. A completed transfer can include skipped rows: inspect `skipped` and
+`rows[].reason`, not only `complete`.
+
+Plans bind a non-secret snapshot of creation settings, template hashes and saved
+focus. The SDK planner takes this snapshot as its fourth argument, followed by
+optional bounds; see the [SDK example](examples/dependency-closed-transfer.md).
+A changed configuration returns `plan_settings_changed` until every creation has
+been pinned; restore the original configuration before resuming incomplete work.
+The identity ledger at `transactions/beads-transfer/<digest>.json` records each
+source row's exact `pmId` before create and its `itemHash` before `after_create`.
+Resume uses only these recorded identities. Missing/corrupt ledgers refuse with
+`invalid_journal`. Edited or deleted items become `item_changed` skips, including
+when replaying committed chunks; they are never recreated or counted as current
+successful transfers. Source descriptions round-trip verbatim. The package-owned
+`bead_id` registration is excluded from the ambient settings fingerprint; other
+creation settings remain guarded.
+
+Each chunk uses the core SDK workspace writer lease and durable journal. Reads
+that select mutations occur inside that lease; the core releases it after
+journal persistence. Immutable create-history messages establish row ownership.
+Foreign ids, missing/corrupt foreign histories, and unavailable foreign blockers
+are skipped with reasons, including deleted ids reserved by retained history.
+The full recorded row receipts are the `results` maps in the receiving tracker's
+`transactions/sdk/beads-transfer-<digest>-<chunk>.json` journals (chunk numbers
+start at zero); inspect them when the summary reports omitted rows.
+No transfer recovery deletes, closes, restores or
+rewrites a record. Already created rows remain valid progress when a chunk fails,
+and the same plan resumes them without duplicating items. Competing drainers
+report the same recorded completion, including a peer's success. After an abrupt
+process death, retry after the SDK's abandoned lease expires (normally 30 seconds);
+`busy` tells callers to retry the original plan. Keep chunks small enough to
+finish within the host coordinator's lease lifetime.
+
+See [the SDK and CLI example](examples/dependency-closed-transfer.md).
+
 ## Without git
 
-Import, export, validate, diff, sidecar capture/restore and snapshot reconciliation work in a plain pm
-tracker directory. Reconciliation uses SDK reads, history and transactions and
-invokes no git subprocess. None of these workflows needs a git repository.
+Import, export, validate, diff, sidecar capture/restore, snapshot reconciliation
+and resumable transfer work in a plain pm tracker without a git executable.
+Reconciliation and transfer use SDK reads, history and transactions. Transfer
+checkpoints belong to the receiving tracker. GitHub synchronization and release
+tooling need their respective repository/service context.
 
 ## License
 

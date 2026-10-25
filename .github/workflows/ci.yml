@@ -68,5 +68,22 @@ jobs:
       - name: Bun release gate
         run: bun run release:check
 
+      - name: Report uncovered branches
+        if: failure()
+        run: |
+          node --input-type=module <<'JS'
+          import { existsSync, readFileSync } from 'node:fs';
+          const report = 'coverage/lcov.info';
+          if (existsSync(report)) {
+            let source = '';
+            for (const line of readFileSync(report, 'utf8').split('\n')) {
+              if (line.startsWith('SF:')) source = line.slice(3);
+              if (line.startsWith('BRDA:') && ['0', '-'].includes(line.split(',').at(-1))) {
+                console.log(source + ':' + line.slice(5).split(',')[0] + ' uncovered branch ' + line);
+              }
+            }
+          }
+          JS
+
       - name: Verify Bun can install the package graph
         run: bun install --no-save

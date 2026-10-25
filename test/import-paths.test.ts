@@ -165,7 +165,7 @@ test("a successful import wires blocker edges and parent links to the created id
     assert.equal(result.filtered, undefined);
     const updates = s.logLines().filter((argv) => argv.includes("update"));
     const childUpdate = updates.find((argv) => argv.includes("pm-stub-2"))!;
-    assert.ok(childUpdate.some((a) => a.startsWith("id=pm-stub-1")), "blocker edge resolves to the created parent id");
+    assert.ok(childUpdate.some((a) => a.startsWith('id="pm-stub-1",')), "blocker edge resolves to the created parent id");
     const parentUpdate = updates.find((argv) => argv.includes("--parent"))!;
     assert.ok(parentUpdate.includes("pm-stub-1"), "parent link resolves via beadToPm");
     const firstCreate = s.logLines().find((argv) => argv.includes("create"))!;
@@ -199,7 +199,7 @@ test("merge-strategy skip leaves matched items untouched but keeps their edges r
     assert.ok(!s.logLines().some((argv) => argv.includes("update") && !argv.includes("--dep")),
       "the matched item is never updated");
     const depArgs = s.logLines().find((argv) => argv.includes("--dep"))!;
-    assert.ok(depArgs.includes("id=pm-existing-1,kind=blocked_by"), "edges resolve to the skipped item's pm id");
+    assert.ok(depArgs.some(arg => arg.startsWith('id="pm-existing-1",kind=blocked_by,author=')), "edges resolve to the skipped item's pm id with explicit authorship");
   } finally {
     await ext.deactivate();
     s.restorePath();
@@ -210,8 +210,8 @@ test("upsert update omits an unchanged status, routes closed through pm close, a
   const ext = await harness();
   const s = stubScenario({
     listEnvelope: envelope([
-      { ...EXISTING_MARKER_ITEM, status: "open" },
-      { id: "pm-existing-2", title: "Second", status: "closed", description: "[bead_id: bd-2]" },
+      { ...EXISTING_MARKER_ITEM, bead_id: "bd-1", status: "open" },
+      { id: "pm-existing-2", bead_id: "bd-2", title: "Second", status: "closed", description: "" },
     ]),
   });
   try {
@@ -233,7 +233,7 @@ test("upsert update omits an unchanged status, routes closed through pm close, a
     const firstUpdate = s.logLines().find((argv) => argv.includes("update") && argv.includes("pm-existing-1"))!;
     assert.ok(!firstUpdate.includes("--status"), "unchanged status is omitted");
     assert.ok(s.logLines().some((argv) => argv.includes("--replace-deps")), "upsert replaces deps atomically");
-    assert.ok(s.logLines().some((a) => a.some((x) => x.startsWith("id=pm-existing-1,"))), "edge resolves to existing item id");
+    assert.ok(s.logLines().some((a) => a.some((x) => x.startsWith('id="pm-existing-1",'))), "edge resolves to existing item id");
   } finally {
     await ext.deactivate();
     s.restorePath();
@@ -243,7 +243,7 @@ test("upsert update omits an unchanged status, routes closed through pm close, a
 test("a strict-type rejection on update retries once without --type and preserves the canonical type", async () => {
   const ext = await harness();
   const s = stubScenario({
-    listEnvelope: envelope([EXISTING_MARKER_ITEM]),
+    listEnvelope: envelope([{ ...EXISTING_MARKER_ITEM, bead_id: "bd-1" }]),
     update: { invalidTypeTimes: 1 },
   });
   try {
@@ -267,7 +267,7 @@ test("a strict-type rejection on update retries once without --type and preserve
 test("a failed update counts the record as skipped and still resolves other records' edges to it", async () => {
   const ext = await harness();
   const s = stubScenario({
-    listEnvelope: envelope([EXISTING_MARKER_ITEM]),
+    listEnvelope: envelope([{ ...EXISTING_MARKER_ITEM, bead_id: "bd-1" }]),
     update: { fail: true },
   });
   try {
@@ -281,10 +281,11 @@ test("a failed update counts the record as skipped and still resolves other reco
       options: { upsert: true },
       pmRoot: join(s.dir, "ws"),
     });
+    assert.ok(s.logLines().some(argv => argv.includes("update") && argv.includes("--title") && argv.includes("Broken")), "the structured item reaches the failing update transport");
     assert.equal(result.updated, 0);
     assert.equal(result.skipped, 1);
     const depArgs = s.logLines().find((argv) => argv.includes("--dep"))!;
-    assert.ok(depArgs.includes("id=pm-existing-1,kind=blocked_by"), "edge kept pointing at the existing item");
+    assert.ok(depArgs.some(arg => arg.startsWith('id="pm-existing-1",kind=blocked_by,author=')), "edge kept pointing at the existing item with explicit authorship");
   } finally {
     await ext.deactivate();
     s.restorePath();
@@ -384,133 +385,29 @@ function scenarioWithItem(itemBody: string): ReturnType<typeof stubScenario> {
   );
 }
 
-test("preserve-timestamps patches the persisted item and re-anchors history", async () => {
+test("source timestamps are explicitly skipped without item or history writes", async () => {
   const ext = await harness();
-  const s = scenarioWithItem('id: pm-stub-1\ntitle: T\ncreated_at: "2000-01-01T00:00:00.000Z"\nupdated_at: "2000-01-01T00:00:00.000Z"\n');
+  const original = 'id: pm-stub-1\ntitle: T\ncreated_at: "2000-01-01T00:00:00.000Z"\n';
+  const s = scenarioWithItem(original);
   try {
     const file = s.jsonlPath("in.jsonl");
     writeFileSync(file, jsonl([{ id: "bd-1", title: "Timed", created_at: ISO, updated_at: ISO }]), "utf-8");
     const result = await runImport(ext, { args: [file], options: {}, pmRoot: s.dir });
-    assert.equal(result.timestamped, 1);
-    const patched = readFileSync(join(s.dir, "tasks", "pm-stub-1.toon"), "utf-8");
-    assert.ok(patched.includes(`created_at: "${ISO}"`));
-    assert.ok(s.logLines().some((argv) => argv.includes("history-repair")), "history is re-anchored after the raw patch");
-  } finally {
-    await ext.deactivate();
-    s.restorePath();
-  }
+    assert.equal(result.timestamped ?? 0, 0);
+    assert.equal(readFileSync(join(s.dir, "tasks", "pm-stub-1.toon"), "utf-8"), original);
+    assert.ok(!s.logLines().some(argv => argv.includes("history-repair")));
+  } finally { await ext.deactivate(); s.restorePath(); }
 });
 
-test("records without timestamps skip the timestamp pass entirely", async () => {
+test("records without valid timestamps skip the timestamp pass", async () => {
   const ext = await harness();
   const s = scenarioWithItem("id: pm-stub-1\ntitle: T\n");
   try {
     const file = s.jsonlPath("in.jsonl");
-    writeFileSync(file, jsonl([{ id: "bd-1", title: "Untimed" }]), "utf-8");
+    writeFileSync(file, jsonl([{ id: "bd-1", title: "Untimed" }, { id: "bd-2", title: "Invalid time", created_at: "bad" }]), "utf-8");
     const result = await runImport(ext, { args: [file], options: {}, pmRoot: s.dir });
     assert.equal(result.timestamped ?? 0, 0);
-    assert.ok(!s.logLines().some((argv) => argv.includes("history-repair")));
-  } finally {
-    await ext.deactivate();
-    s.restorePath();
-  }
-});
-
-test("timestamps whose item file cannot be located are skipped with a warning", async () => {
-  const ext = await harness();
-  const s = stubScenario({ listEnvelope: envelope([]) }); // no item file on disk
-  try {
-    const file = s.jsonlPath("in.jsonl");
-    writeFileSync(file, jsonl([{ id: "bd-1", title: "Unlocatable", created_at: ISO }]), "utf-8");
-    const result = await runImport(ext, { args: [file], options: {}, pmRoot: join(s.dir, "nowhere") });
-    assert.equal(result.timestamped ?? 0, 0);
-  } finally {
-    await ext.deactivate();
-    s.restorePath();
-  }
-});
-
-test("an unreadable item file skips its timestamp instead of failing the import", async () => {
-  const ext = await harness();
-  const s = stubScenario({ listEnvelope: envelope([]) });
-  try {
-    // A directory where the item file should be: statSync finds it, readFileSync throws EISDIR.
-    mkdirSync(join(s.dir, "tasks", "pm-stub-1.toon"), { recursive: true });
-    const file = s.jsonlPath("in.jsonl");
-    writeFileSync(file, jsonl([{ id: "bd-1", title: "Undrinkable", created_at: ISO }]), "utf-8");
-    const result = await runImport(ext, { args: [file], options: {}, pmRoot: s.dir });
-    assert.equal(result.timestamped ?? 0, 0);
-  } finally {
-    await ext.deactivate();
-    s.restorePath();
-  }
-});
-
-test("valid timestamps on an item file without timestamp lines leave nothing to patch", async () => {
-  const ext = await harness();
-  const s = scenarioWithItem("id: pm-stub-1\ntitle: T\nbody: no front-matter dates here\n");
-  try {
-    const file = s.jsonlPath("in.jsonl");
-    writeFileSync(file, jsonl([{ id: "bd-1", title: "Patchless", created_at: ISO }]), "utf-8");
-    const result = await runImport(ext, { args: [file], options: {}, pmRoot: s.dir });
-    assert.equal(result.timestamped ?? 0, 0);
-    assert.ok(!s.logLines().some((argv) => argv.includes("history-repair")), "no patch means no repair");
-  } finally {
-    await ext.deactivate();
-    s.restorePath();
-  }
-});
-
-test("an unwritable item file skips its timestamp instead of failing the import", async () => {
-  const ext = await harness();
-  const s = scenarioWithItem('id: pm-stub-1\ntitle: T\ncreated_at: "2000-01-01T00:00:00.000Z"\n');
-  try {
-    chmodSync(join(s.dir, "tasks", "pm-stub-1.toon"), 0o444);
-    const file = s.jsonlPath("in.jsonl");
-    writeFileSync(file, jsonl([{ id: "bd-1", title: "Frozen", created_at: ISO }]), "utf-8");
-    const result = await runImport(ext, { args: [file], options: {}, pmRoot: s.dir });
-    assert.equal(result.timestamped ?? 0, 0);
-  } finally {
-    chmodSync(join(s.dir, "tasks", "pm-stub-1.toon"), 0o644); // so cleanup can remove the tree
-    await ext.deactivate();
-    s.restorePath();
-  }
-});
-
-test("a failed history-repair reverts the patch so no drift is left behind", async () => {
-  const ext = await harness();
-  const s = stubScenario(
-    { listEnvelope: envelope([]), historyRepair: { fail: true } },
-    { "tasks/pm-stub-1.toon": 'id: pm-stub-1\ntitle: T\ncreated_at: "2000-01-01T00:00:00.000Z"\n' },
-  );
-  try {
-    const file = s.jsonlPath("in.jsonl");
-    writeFileSync(file, jsonl([{ id: "bd-1", title: "Reverting", created_at: ISO }]), "utf-8");
-    const result = await runImport(ext, { args: [file], options: {}, pmRoot: s.dir });
-    assert.equal(result.timestamped ?? 0, 0);
-    assert.ok(readFileSync(join(s.dir, "tasks", "pm-stub-1.toon"), "utf-8").includes("2000-01-01"), "original value restored");
-  } finally {
-    await ext.deactivate();
-    s.restorePath();
-  }
-});
-
-test("a failed history-repair that also blocks the revert tells the operator to repair manually", async () => {
-  const ext = await harness();
-  const s = stubScenario(
-    { listEnvelope: envelope([]), historyRepair: { fail: true, chmodItemReadonly: true } },
-    { "tasks/pm-stub-1.toon": 'id: pm-stub-1\ntitle: T\ncreated_at: "2000-01-01T00:00:00.000Z"\n' },
-  );
-  try {
-    const file = s.jsonlPath("in.jsonl");
-    writeFileSync(file, jsonl([{ id: "bd-1", title: "Stuck", created_at: ISO }]), "utf-8");
-    const result = await runImport(ext, { args: [file], options: {}, pmRoot: s.dir });
-    assert.equal(result.imported, 1, "the import itself still succeeds");
-  } finally {
-    chmodSync(join(s.dir, "tasks", "pm-stub-1.toon"), 0o644); // undo the stub's chmod for cleanup
-    await ext.deactivate();
-    s.restorePath();
-  }
+  } finally { await ext.deactivate(); s.restorePath(); }
 });
 
 // --- Directly-driven defensive helpers -------------------------------------
@@ -555,7 +452,7 @@ test("a row filter excludes matching records from a real import and reports the 
 test("a failed dependency replace on an upserted item degrades to a warning", async () => {
   const ext = await harness();
   const s = stubScenario({
-    listEnvelope: envelope([{ ...EXISTING_MARKER_ITEM }]),
+    listEnvelope: envelope([{ ...EXISTING_MARKER_ITEM, bead_id: "bd-1" }]),
     depFail: true,
   });
   try {
@@ -728,4 +625,21 @@ test("the legacy beads-import alias also falls back to the --file option", async
     await ext.deactivate();
     s.restorePath();
   }
+});
+
+
+test("identity field registration failures stop before creating or updating source rows", async () => {
+  const ext = await harness();
+  try {
+    for (const stderr of ["registration refused", ""]) {
+      const scenario = stubScenario({ schemaFail: { stderr } });
+      try {
+        const file = scenario.jsonlPath("rows.jsonl");
+        writeFileSync(file, jsonl([{ id: "source", title: "Source" }]));
+        await assert.rejects(runImport(ext, { pmRoot: scenario.dir, args: [file], options: {} }),
+          new RegExp(stderr || "Could not register Beads identity field"));
+        assert.ok(!scenario.logLines().some(args => args.includes("create")));
+      } finally { scenario.restorePath(); }
+    }
+  } finally { await ext.deactivate(); }
 });

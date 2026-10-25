@@ -98,11 +98,11 @@ test("mapPriority clamps, reads numeric prefixes, and rejects non-numeric input"
   assert.equal(mapPriority("nope"), undefined);
 });
 
-test("decodeBeadId prefers the schema field, tolerates blank ones, and reads description/body markers", () => {
-  assert.equal(decodeBeadId({ bead_id: " bd-schema " }), "bd-schema");
-  assert.equal(decodeBeadId({ bead_id: "   ", description: "[bead_id: bd-marker]" }), "bd-marker",
-    "a whitespace-only field falls through to the marker");
-  assert.equal(decodeBeadId({ body: "text\n[bead_id: bd-in-body]" }), "bd-in-body");
+test("decodeBeadId honors present metadata and accepts only historical description envelopes", () => {
+  assert.equal(decodeBeadId({ bead_id: "bd-schema" }), "bd-schema");
+  assert.equal(decodeBeadId({ bead_id: "   ", description: "[bead_id: bd-marker]" }), undefined,
+    "a present whitespace-only field disables the legacy fallback");
+  assert.equal(decodeBeadId({ body: "text\n[bead_id: bd-in-body]" }), undefined);
   assert.equal(decodeBeadId({ description: "plain" }), undefined);
 });
 
@@ -229,7 +229,7 @@ test("metadataToPmItems narrows unknown metadata fields and drops non-strings", 
   ]);
   assert.deepEqual(items, [
     { bead_id: "bd-str", description: "[bead_id: x]", body: "body text" },
-    { bead_id: undefined, description: undefined, body: undefined },
+    { bead_id: "", description: undefined, body: undefined },
   ]);
 });
 

@@ -36,7 +36,7 @@ const scenario = JSON.parse(readFileSync(scenarioPath, "utf8"));
 
 /**
  * Resolve the subcommand: the first non-flag argv token after the global
- * flags, skipping the value of `--path`/`--pm-path` (the only value-taking
+ * flags, skipping the value of `--path`/`--pm-path`/`--author` (the only value-taking
  * globals this package's spawn surface uses). Dispatching on position rather
  * than on `args.includes(...)` keeps a title, tag or reason that happens to
  * equal a subcommand word from silently rerouting the stub.
@@ -44,7 +44,7 @@ const scenario = JSON.parse(readFileSync(scenarioPath, "utf8"));
 function resolveSubcommand(argv: readonly string[]): string | undefined {
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    if (arg === "--path" || arg === "--pm-path") {
+    if (arg === "--path" || arg === "--pm-path" || arg === "--author") {
       i++; // skip the flag's value
       continue;
     }
@@ -71,9 +71,15 @@ function priorWhere(pred: (argv: string[]) => boolean) {
 const isCreateCall = (argv: string[]): boolean => resolveSubcommand(argv) === "create";
 const isTitleUpdate = (argv: string[]): boolean =>
   resolveSubcommand(argv) === "update" &&
+  argv.includes("--title") &&
   !argv.some((a) => ["--dep", "--parent", "--replace-deps", "--clear-deps"].includes(a));
 
 appendFileSync(logPath, `${JSON.stringify(args)}\n`);
+
+if (subcommand === "schema") {
+  if (scenario.schemaFail) { process.stderr.write(scenario.schemaFail.stderr); process.exit(1); }
+  process.stdout.write("{}\n"); process.exit(0);
+}
 
 if (subcommand === "list") {
   if (scenario.listFail) {
@@ -97,6 +103,11 @@ if (subcommand === "create") {
   const seq = priorWhere(isCreateCall) + 1;
   process.stdout.write(`${JSON.stringify({ id: create.idBase ? `${create.idBase}-${seq}` : `pm-stub-${seq}` })}\n`);
   process.exit(0);
+}
+
+if (subcommand === "update" && args.includes("--bead-id") && !args.includes("--title")) {
+  if (scenario.migrationFail) { process.stderr.write(scenario.migrationFail.stderr); process.exit(1); }
+  process.stdout.write("{}\n"); process.exit(0);
 }
 
 if (isTitleUpdate(args)) {

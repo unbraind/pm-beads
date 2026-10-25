@@ -4,6 +4,7 @@ import test from "node:test";
 import { mkdtemp, rm, writeFile, readFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { allocateBeadsItemId } from "../item-access.ts";
 import { createHash } from "node:crypto";
 import { PmClient, WorkspaceTransactionInterruptedError, getHistoryPath, locateItem, readLocatedItem, type Dependency } from "@unbrained/pm-cli/sdk";
 import {
@@ -12,6 +13,7 @@ import {
   planBeadsReconciliation, applyBeadsReconciliation, BeadsReconcileRefusal,
   type BeadsAcknowledgement, type LiveSnapshotRecord, type SnapshotRecord,
 } from "../reconcile.ts";
+import { migrateBeadIdentities } from "../identity.ts";
 import { encodeBeadId } from "../index.ts";
 import { harness, runCommand } from "./helpers.ts";
 
@@ -205,6 +207,7 @@ test("acknowledgement accepts matching SDK fields regardless of key insertion or
 test("real tracker creates new identities and applies field options and relationships", async t => {
   const { pmRoot, client } = await fixture(t);
   await seed(client);
+  await migrateBeadIdentities(pmRoot, "reconcile-test", { apply: true });
   const original = await readLiveBeadsSnapshot(pmRoot);
   await acknowledgeBeadsSnapshot(pmRoot, "team", original, "reconcile-test");
   const incoming = parseBeadsSnapshot([
@@ -761,4 +764,34 @@ test("legacy source bindings compensation preserves a later source revision", as
     } else assert.equal(remaining, null);
     assert.equal((await client.get(id)).item.title, "Initial");
   }
+});
+
+
+test("reconciliation retains SDK allocated identities and refuses corrupt ledgers on bootstrap replay", async t => {
+  const { pmRoot, client } = await fixture(t);
+  await acknowledgeBeadsSnapshot(pmRoot, "ledger", [], "reconcile-test");
+  const incoming = parseBeadsSnapshot('{"id":"first","title":"First"}\n{"id":"second","title":"Second"}');
+  const plan = await planBeadsReconciliation(pmRoot, "ledger", incoming);
+  const directory = join(pmRoot, "transactions", "beads-reconcile");
+  await mkdir(directory, { recursive: true });
+  const path = join(directory, `${plan.digest}.json`);
+  for (const data of [null, [], {}, { first: 1, second: "x" }, { first: "", second: "x" }, { first: "same", second: "same" }]) {
+    await writeFile(path, JSON.stringify(data));
+    await assert.rejects(applyBeadsReconciliation(pmRoot, plan, "reconcile-test"), refusal("invalid_snapshot"));
+    assert.equal((await client.listAllComplete()).items.length, 0);
+  }
+  const reserved = { first: await allocateBeadsItemId(pmRoot), second: await allocateBeadsItemId(pmRoot) };
+  await writeFile(path, JSON.stringify(reserved));
+  await assert.rejects(applyBeadsReconciliation(pmRoot, plan, "reconcile-test", { onTransition(c) {
+    if (c.transition === "prepared") throw new WorkspaceTransactionInterruptedError("before rows");
+  } }), WorkspaceTransactionInterruptedError);
+  assert.equal((await client.listAllComplete()).items.length, 0);
+  await writeFile(path, '{}');
+  await assert.rejects(applyBeadsReconciliation(pmRoot, plan, "reconcile-test"), refusal("invalid_snapshot"));
+  await writeFile(path, JSON.stringify(reserved));
+  await applyBeadsReconciliation(pmRoot, plan, "reconcile-test");
+  const items = (await client.listAllComplete()).items;
+  assert.equal(items.length, 2);
+  assert.equal(items.find(item => item.bead_id === "first")!.id, reserved.first);
+  assert.equal(items.find(item => item.bead_id === "second")!.id, reserved.second);
 });

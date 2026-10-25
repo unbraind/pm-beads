@@ -4,6 +4,7 @@ import test from "node:test";
 import { createExtensionTestHarness, type ExtensionTestHarness } from "@unbrained/pm-cli/sdk/testing";
 import { isHostOutputSuppressed, type GlobalOptions } from "@unbrained/pm-cli/sdk";
 
+import { migrateBeadIdentities } from "../identity.ts";
 import extension, {
   CommandError,
   EXIT_CODE,
@@ -16,7 +17,6 @@ import extension, {
   encodeBeadId,
   extractBlockerIds,
   extractCreatedId,
-  locateItemFile,
   normalizeBeadKey,
   normalizeIsoTimestamp,
   parseRowFilter,
@@ -27,7 +27,6 @@ import extension, {
   parseExportOptions,
   readAndValidateBeads,
   MERGE_STRATEGIES,
-  patchTimestampLines,
   pmItemPassesFilter,
   pmItemToBead,
   resolveImportInputFile,
@@ -553,48 +552,15 @@ test("normalizeIsoTimestamp accepts valid ISO and rejects garbage", () => {
   assert.strictEqual(normalizeIsoTimestamp(12345 as unknown), undefined);
 });
 
-test("patchTimestampLines rewrites existing front-matter lines only", () => {
-  const toon = [
-    'id: pm-x',
-    'title: T',
-    'created_at: "2026-06-03T23:00:00.000Z"',
-    'updated_at: "2026-06-03T23:00:00.000Z"',
-    'body: ""',
-  ].join("\n");
-  const out = patchTimestampLines(toon, {
-    created_at: "2025-01-01T00:00:00.000Z",
-    updated_at: "2025-02-02T00:00:00.000Z",
-  });
-  assert.ok(out);
-  assert.match(out!, /created_at: "2025-01-01T00:00:00.000Z"/);
-  assert.match(out!, /updated_at: "2025-02-02T00:00:00.000Z"/);
-  assert.match(out!, /title: T/); // untouched
-  // No matching key -> no change.
-  assert.strictEqual(patchTimestampLines("title: T\n", { created_at: "2025-01-01T00:00:00.000Z" }), null);
-});
-
-test("patchTimestampLines round-trips a created_at through normalize+patch losslessly", () => {
-  const iso = normalizeIsoTimestamp("2024-12-25T08:30:00Z")!;
-  const file = `created_at: "2026-06-03T23:00:00.000Z"\nupdated_at: "2026-06-03T23:00:00.000Z"\n`;
-  const out = patchTimestampLines(file, { created_at: iso, updated_at: iso })!;
-  assert.ok(out.includes(`created_at: "${iso}"`), `expected created_at: "${iso}" in output`);
-});
-
-test("locateItemFile finds the per-type item file and skips sidecars", () => {
-  const root = mkdtempSync(join(tmpdir(), "pmbeads-loc-"));
-  mkdirSync(join(root, "tasks"), { recursive: true });
-  mkdirSync(join(root, "history"), { recursive: true });
-  writeFileSync(join(root, "tasks", "pm-abc.toon"), "id: pm-abc\n");
-  writeFileSync(join(root, "history", "pm-abc.jsonl"), "{}\n"); // must be ignored
-  assert.strictEqual(locateItemFile(root, "pm-abc"), join(root, "tasks", "pm-abc.toon"));
-  assert.strictEqual(locateItemFile(root, "pm-missing"), undefined);
-});
-
 test("resolvePreserveTimestamps defaults on and honors negation", () => {
   assert.strictEqual(resolvePreserveTimestamps({}), true);
   assert.strictEqual(resolvePreserveTimestamps({ "no-preserve-timestamps": true }), false);
   assert.strictEqual(resolvePreserveTimestamps({ noPreserveTimestamps: true }), false);
   assert.strictEqual(resolvePreserveTimestamps({ preserveTimestamps: false }), false);
+  for (const spelling of ["preserveTimestamps", "preserve-timestamps"]) {
+    for (const value of [false, "false", "0"]) assert.strictEqual(resolvePreserveTimestamps({ [spelling]: value }), false);
+    for (const value of [true, "true", "1"]) assert.strictEqual(resolvePreserveTimestamps({ [spelling]: value }), true);
+  }
 });
 
 // --- Workspace dependency validation (feature 2) -----------------------------
@@ -1277,6 +1243,7 @@ test("upsert refreshes status index for repeated terminal-status rows", { skip: 
     JSON.stringify({ id: "bd-repeat", title: "Closed twice", status: "closed", type: "Task" }),
   ].join("\n") + "\n", "utf-8");
 
+  await migrateBeadIdentities(pmRoot, "smoke-test", { apply: true });
   const ext = await harness();
   const ir = await runImport(ext, {
     args: [file], options: { upsert: true }, pmRoot: pmRoot,
@@ -1396,6 +1363,7 @@ test("upsert routes an open-to-closed transition through pm close, not pm update
     "utf-8",
   );
 
+  await migrateBeadIdentities(pmRoot, "smoke-test", { apply: true });
   const ext = await harness();
   const ir = await runImport(ext, { args: [file], options: { upsert: true }, pmRoot: pmRoot });
   assert.strictEqual(ir.updated, 1);
@@ -1436,6 +1404,7 @@ test("upsert sends --status for a non-closed status change", { skip: !hasPmCli()
     "utf-8",
   );
 
+  await migrateBeadIdentities(pmRoot, "smoke-test", { apply: true });
   const ext = await harness();
   const ir = await runImport(ext, { args: [file], options: { upsert: true }, pmRoot: pmRoot });
   assert.strictEqual(ir.updated, 1);
@@ -1524,21 +1493,28 @@ test("stdout export returns no second host-renderable payload", { skip: !hasPmCl
   assert.strictEqual(created.status, 0, `pm create failed: ${created.stderr}`);
 
   const ext = await harness();
-  const chunks: string[] = [];
-  const originalWrite = process.stdout.write;
-  process.stdout.write = ((chunk: string | Uint8Array) => {
-    chunks.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf-8"));
-    return true;
-  }) as typeof process.stdout.write;
   try {
-    const result = await runExport(ext, { pmRoot, options: {} });
-    assert.ok(isHostOutputSuppressed(result), "direct JSONL output must carry the SDK host-suppression marker");
-  } finally {
-    process.stdout.write = originalWrite;
-    await ext.deactivate();
-  }
-
-  const lines = chunks.join("").trim().split("\n");
+    assert.ok(isHostOutputSuppressed(await runExport(ext, { pmRoot, options: {} })),
+      "the direct exporter API suppresses the host's second result");
+  } finally { await ext.deactivate(); }
+  // Check real stdout in a separate Node process. Overriding a test worker's
+  // stdout also captures the runner's binary IPC protocol while SDK reads await IO.
+  const script = `
+    import assert from "node:assert/strict";
+    import { isHostOutputSuppressed } from "@unbrained/pm-cli/sdk";
+    import { harness, runExport } from ${JSON.stringify(new URL("./helpers.ts", import.meta.url).href)};
+    const ext = await harness();
+    try {
+      const result = await runExport(ext, { pmRoot: process.argv[1], options: {} });
+      assert.ok(isHostOutputSuppressed(result), "direct JSONL output carries the SDK suppression marker");
+    } finally { await ext.deactivate(); }
+  `;
+  const exported = spawnSync(process.execPath, ["--input-type=module", "-e", script, pmRoot], {
+    cwd: new URL("..", import.meta.url), encoding: "utf8",
+    env: Object.fromEntries(Object.entries(process.env).filter(([key]) => key !== "NODE_TEST_CONTEXT")),
+  });
+  assert.equal(exported.status, 0, exported.stderr);
+  const lines = exported.stdout.trim().split("\n");
   assert.strictEqual(lines.length, 1, "stdout must contain exactly the one exported JSONL record");
   const bead = JSON.parse(lines[0]) as { title?: string };
   assert.strictEqual(bead.title, "Machine-readable export");
@@ -2157,16 +2133,11 @@ function assertLinearGrowth<TInput>(label: string, build: (size: number) => TInp
 /** The shape CodeQL names: the marker prefix, a long space run, no closing bracket. */
 const adversarialMarker = (size: number): string => "[bead_id: " + " ".repeat(size) + "!";
 
-test("a marker written with a newline or Unicode separator still decodes", () => {
-  // The original separator was `\s*`, so markers already written as
-  // `[bead_id:\nbd-42]` decode today. Narrowing to space-and-tab to bound the
-  // quantifier would have made those unreadable and lost the id they carry -
-  // a compatibility regression on data already on disk, which is worse than
-  // the alert it was closing. The separator is bounded whitespace instead, and
-  // the capture's leading non-space is what keeps the two disjoint.
-  assert.strictEqual(decodeBeadId({ description: "[bead_id:\nbd-42]" } as never), "bd-42");
-  assert.strictEqual(decodeBeadId({ description: "[bead_id:\u00a0bd-9]" } as never), "bd-9");
-  assert.strictEqual(decodeBeadId({ description: "[bead_id:bd-7]" } as never), "bd-7");
+test("noncanonical separators are user text and never decode as legacy identity", () => {
+  // Only the exact historical encoder spelling is a migration candidate.
+  assert.strictEqual(decodeBeadId({ description: "[bead_id:\nbd-42]" } as never), undefined);
+  assert.strictEqual(decodeBeadId({ description: "[bead_id:\u00a0bd-9]" } as never), undefined);
+  assert.strictEqual(decodeBeadId({ description: "[bead_id:bd-7]" } as never), undefined);
 });
 
 test("an id the marker cannot read back is refused rather than silently dropped", () => {
@@ -2202,26 +2173,18 @@ test("every BEAD_ID_MARKER call site stays linear on adversarial whitespace (pol
 });
 
 
-test("BEAD_ID_MARKER accepts multi-word ids and bounds leading spaces (behaviour pin)", () => {
-  // The capture `\S[^\]]*` allows spaces inside the id, restoring the
-  // permissive behaviour of the original `[^\]]+` (the intermediate
-  // `[^\]\s]+` narrowed the language and did NOT match multi-word ids —
-  // Greptile P1 / cubic P1: a Beads id with internal whitespace lost its
-  // persisted identity). `encodeBeadId` only writes single-token slugs, so this
-  // only affects externally-authored markers; pinned here so a future narrowing
-  // is caught.
+test("legacy envelopes retain exact multi-word ids and reject noncanonical spacing", () => {
+  // Internal spaces were written verbatim; delimiter and padding variations were not.
   assert.equal(decodeBeadId({ description: "[bead_id: multi word]" }), "multi word");
-  // A trailing space inside the brackets is captured then trimmed away.
-  assert.equal(decodeBeadId({ description: "[bead_id: abc ]" }), "abc");
+  // The old encoder did not write trailing padding or alternate delimiters.
+  assert.equal(decodeBeadId({ description: "[bead_id: abc ]" }), undefined);
   // The slug forms the exporter actually writes still round-trip unchanged.
   assert.equal(decodeBeadId({ description: "[bead_id: bd-42]" }), "bd-42");
-  assert.equal(decodeBeadId({ description: "[bead_id:bd-42]" }), "bd-42");
+  assert.equal(decodeBeadId({ description: "[bead_id:bd-42]" }), undefined);
   // A whitespace-only id is not a valid bead id and must not match.
   assert.equal(decodeBeadId({ description: "[bead_id:   ]" }), undefined);
-  // The separator is bounded to 64 space/tab chars: 64 leading spaces still
-  // match, 65 do not. `encodeBeadId` writes exactly one, so this only affects
-  // degenerate externally-authored markers.
-  assert.equal(decodeBeadId({ description: "[bead_id:" + " ".repeat(64) + "abc]" }), "abc");
+  // Only the one space written by the old encoder is accepted.
+  assert.equal(decodeBeadId({ description: "[bead_id:" + " ".repeat(64) + "abc]" }), undefined);
   assert.equal(decodeBeadId({ description: "[bead_id:" + " ".repeat(65) + "abc]" }), undefined);
   // The capture tail is bounded to 4096 chars after the first id char (4097 total):
   // a 4097-char id round-trips, a 5000-char id does not. Real Beads ids are short
