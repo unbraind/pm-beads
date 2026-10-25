@@ -67,3 +67,24 @@ the SDK adapter passed all 58 receipt/seam tests. The focused suite passed
 242/242 with zero skips before the extra budget-disclosure compatibility
 case, including the 20 configuration matrix cases and four item-access cases
 for the already-adopted locator.
+
+## Full release gates
+
+The isolated local `npm run release:check` and `bun run release:check` each
+passed 505/505 tests, zero skips/failures/cancellations, with 100% lines,
+branches and functions across all 14 required source files. Typecheck, build,
+docstring lint, production audit (zero vulnerabilities), package dry-run,
+changelog, attestation and release-date checks all passed. Thresholds and
+dependency pins were unchanged.
+
+[CI run 40211860833](https://github.com/unbraind/pm-beads/actions/runs/40211860833)
+passed npm and Bun gates on both Node 22 and Node 26 for implementation commit
+`0cc7c326e8064e101424c8d891653918b104fe36`, with the same 505/505 counts and
+100% coverage in all four runs. The review handoff changes only evidence and
+tracker state; production code remains identical. Final-head CI is linked
+from [PR #174](https://github.com/unbraind/pm-beads/pull/174).
+
+Production source delta: 172 deleted lines and 23 added lines in `index.ts`,
+149 net lines removed. The package retains only the documented budget-key
+absence compatibility rule because the SDK has no strict-disclosure-presence
+option. The locator was already SDK-owned on the immutable baseline.
