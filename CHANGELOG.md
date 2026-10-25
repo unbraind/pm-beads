@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Resume bounded Beads transfers with dependency closure and chunk receipts ([pm-beads-tma4](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/features/pm-beads-tma4.toon))
+
 ## 2026.10.25 - 2026-10-25
 
 ### Added
