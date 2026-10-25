@@ -81,7 +81,12 @@ test('strict schema fuzz rejects sparse collections, unknown fields, nonfinite n
       assert.throws(() => generateBeadsOutgoingDelta(null,bad as BeadsAcknowledgement),refusal('invalid_input'),`${key}=${String(value)}`);
     }
   }
-  const variants: unknown[] = [ {...target,records:[{fields:row().fields,id:row().id}]}, {...target,records:[{id:row().id,fields:Object.fromEntries(Object.entries(row().fields).reverse())}]}, {...target, extra: true}, {...target, records: new Array(1)}, {...target,records:Array(BEADS_OUTGOING_LIMITS.records+1).fill(row())}, {...target,source:'x'.repeat(257)}, {...target,bindings:{r1:''}}, {...target,bindings:{a:'same',b:'same'}}, {...target,records:[row(),row()]}, {...target,records:[row('z'),row('a')]}, {...target,records:[{...row(),extra:1}]} ];
+  const hidden = structuredClone(target);Object.defineProperty(hidden,'hidden',{value:1});
+  const nullPrototype = structuredClone(target);nullPrototype.bindings=Object.assign(Object.create(null) as Record<string,string>,target.bindings);
+  assert.deepEqual(generateBeadsOutgoingDelta(null,nullPrototype),generateBeadsOutgoingDelta(null,target));
+  class ExtendedArray extends Array<SnapshotRecord> {}
+  const extended = new ExtendedArray();extended.push(row());
+  const variants: unknown[] = [ hidden, {...target,bindings:new Date()}, {...target,records:extended}, {...target,records:[{fields:row().fields,id:row().id}]}, {...target,records:[{id:row().id,fields:Object.fromEntries(Object.entries(row().fields).reverse())}]}, {...target, extra: true}, {...target, records: new Array(1)}, {...target,records:Array(BEADS_OUTGOING_LIMITS.records+1).fill(row())}, {...target,source:'x'.repeat(257)}, {...target,bindings:{r1:''}}, {...target,bindings:{a:'same',b:'same'}}, {...target,records:[row(),row()]}, {...target,records:[row('z'),row('a')]}, {...target,records:[{...row(),extra:1}]} ];
   for (const field of RECONCILE_FIELDS) {
     for (const value of [null, NaN, Infinity, [], {}, 'x'.repeat(BEADS_OUTGOING_LIMITS.string+1)]) variants.push({...target,records:[{...row(),fields:{...row().fields,[field]:value}}]});
   }

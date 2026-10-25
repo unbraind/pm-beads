@@ -46,11 +46,14 @@ function requireShape(valid: boolean): asserts valid {
 /** Strict object shape: unknown properties, arrays and null cannot stand in for objects. */
 function object(value: unknown, required: readonly string[], optional: readonly string[] = []): asserts value is Record<string, unknown> {
   requireShape(value !== null && typeof value === "object" && !Array.isArray(value));
+  requireShape(Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
+  requireShape(Reflect.ownKeys(value).length === Object.keys(value).length);
   requireShape(required.every(key => Object.hasOwn(value, key)) && Object.keys(value).every(key => required.includes(key) || optional.includes(key)));
 }
 /** Bounded dense arrays reject holes and extra properties before traversal. */
 function array(value: unknown, max: number): asserts value is unknown[] {
   requireShape(Array.isArray(value) && value.length <= max && Object.keys(value).length === value.length);
+  requireShape(Object.getPrototypeOf(value) === Array.prototype && Reflect.ownKeys(value).length === value.length + 1);
   for (let i = 0; i < value.length; i++) requireShape(Object.hasOwn(value, i));
 }
 /** Strings are the only field payloads; finite bounded numeric priority is encoded canonically. */
