@@ -66,9 +66,15 @@ function hash(value: unknown, nullable = false): void { requireShape(nullable &&
 function identity(value: unknown): asserts value is string { requireShape(typeof value === "string" && isEncodableBeadId(value)); }
 /** A single schema validates all acknowledgements and transport values at either boundary. */
 function validate(value: unknown, kind: "ack" | "wire"): void {
+  let payloadBytes = 0;
+  /** Bound payload accumulation before hashing or serializing the complete value. */
+  function spend(data: string): void {
+    payloadBytes += Buffer.byteLength(JSON.stringify(data));
+    requireShape(payloadBytes <= BEADS_OUTGOING_LIMITS.bytes);
+  }
   /** Validate a canonical field without normalizing it or interpreting status names. */
   function field(name: ReconcileField, data: unknown): void {
-    string(data);
+    string(data); spend(data);
     if (name === "priority") requireShape(/^[0-4]?$/.test(data));
     if (name === "title" || name === "status") requireShape(data.trim().length > 0);
     if (name === "tags" || name === "dependencies") {
@@ -80,7 +86,7 @@ function validate(value: unknown, kind: "ack" | "wire"): void {
   }
   /** Validate one canonical row with every native snapshot field present. */
   function record(row: unknown): void {
-    object(row, ["id", "fields"]); identity(row.id); object(row.fields, RECONCILE_FIELDS);
+    object(row, ["id", "fields"]); identity(row.id); spend(row.id); object(row.fields, RECONCILE_FIELDS);
     requireShape(Object.keys(row).join(",") === "id,fields" && Object.keys(row.fields).every((key, index) => key === RECONCILE_FIELDS[index]));
     for (const name of RECONCILE_FIELDS) field(name, row.fields[name]);
   }
@@ -97,13 +103,13 @@ function validate(value: unknown, kind: "ack" | "wire"): void {
   object(value, kind === "ack" ? ["schema", "source", "revision", "previous", "records"] :
     ["schema", "source", "sourceDigest", "baseDigest", "targetDigest", "previous", "mode"],
     kind === "ack" ? ["bindings"] : ["bindings", "inheritBindings", "operations", "records"]);
-  requireShape(value.schema === 1); string(value.source, 256); requireShape(value.source.trim().length > 0);
+  requireShape(value.schema === 1); string(value.source, 256); spend(value.source); requireShape(value.source.trim().length > 0);
   hash(value.previous, true);
   if (value.bindings !== undefined) {
     requireShape(value.bindings !== null && typeof value.bindings === "object" && !Array.isArray(value.bindings));
     object(value.bindings, [], Object.keys(value.bindings));
     requireShape(Object.keys(value.bindings).length <= BEADS_OUTGOING_LIMITS.records);
-    for (const [id, pmId] of Object.entries(value.bindings)) { identity(id); identity(pmId); }
+    for (const [id, pmId] of Object.entries(value.bindings)) { identity(id); identity(pmId); spend(id); spend(pmId); }
     requireShape(new Set(Object.values(value.bindings)).size === Object.keys(value.bindings).length);
   }
   if (kind === "ack") {
@@ -122,7 +128,7 @@ function validate(value: unknown, kind: "ack" | "wire"): void {
         object(operation, ["op"], ["id", "field", "value", "record"]);
         if (operation.op === "add") { object(operation, ["op", "record"]); record(operation.record); }
         else {
-          identity(operation.id);
+          identity(operation.id); spend(operation.id);
           if (operation.op === "remove") object(operation, ["op", "id"]);
           else {
             requireShape(operation.op === "set" || operation.op === "unset");

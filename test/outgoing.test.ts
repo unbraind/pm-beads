@@ -99,6 +99,10 @@ test('strict schema fuzz rejects sparse collections, unknown fields, nonfinite n
   for (const changes of [{mode:'nope'}, {sourceDigest:'0'.repeat(64)}, {baseDigest:null}, {records:[]}, {bindings:null}, {targetDigest:'NaN'}, {inheritBindings:false}, {inheritBindings:true,bindings:{}}]) assert.throws(() => replayBeadsOutgoingDelta(base,{...valid,...changes} as BeadsOutgoingDelta),refusal('invalid_input'));
   const sparse = [row()]; delete sparse[0]; Object.assign(sparse,{other:row()});
   assert.throws(() => generateBeadsOutgoingDelta(null,{...target,records:sparse}),refusal('invalid_input'));
+  const sharedPayload = 'x'.repeat(BEADS_OUTGOING_LIMITS.string);
+  const oversizedSdkValue = {...target,records:Array.from({length:20_000},(_,i)=>row(`r${String(i).padStart(5,'0')}`,sharedPayload))};
+  // Shared strings represent a multi-gigabyte serialization without allocating that serialization in the test.
+  assert.throws(()=>generateBeadsOutgoingDelta(null,oversizedSdkValue),refusal('invalid_input'));
   const tooLarge = ack(Array.from({length:18},(_,i)=>row(`r${i}`,'x'.repeat(BEADS_OUTGOING_LIMITS.string))));
   assert.throws(() => generateBeadsOutgoingDelta(null,tooLarge),refusal('invalid_input'));
 });
