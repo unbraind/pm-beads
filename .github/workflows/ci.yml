@@ -65,6 +65,9 @@ jobs:
       - name: npm release gate
         run: npm run release:check
 
+      - name: Bun release gate
+        run: bun run release:check
+
       - name: Report uncovered branches
         if: failure()
         run: |
@@ -81,9 +84,6 @@ jobs:
             }
           }
           JS
-
-      - name: Bun release gate
-        run: bun run release:check
 
       - name: Verify Bun can install the package graph
         run: bun install --no-save
