@@ -38,7 +38,7 @@ import { registerSidecarCommands } from "./sidecar.ts";
 export * from "./sidecar.ts";
 import { registerTransferCommands } from "./transfer.ts";
 export * from "./transfer.ts";
-import { PmClient, preserveMutationStdinTokenFields, suppressHostOutput, assertInitializedTracker, PmCliError, type PmClientFullMutationOptions } from "@unbrained/pm-cli/sdk";
+import { PmClient, preserveMutationStdinTokenFields, suppressHostOutput, listAllItemMetadata, assertInitializedTracker, PmCliError, type PmClientFullMutationOptions } from "@unbrained/pm-cli/sdk";
 import { beadsMutationAuthor, sourceDependency } from "./mutation.ts";
 import { legacyBeadIdentity, reportLegacyBeadIdentities, registerIdentityMigrationCommand } from "./identity.ts";
 // Top-level SDK runtime import. This fleet once believed extensions could not
@@ -471,10 +471,9 @@ export function normalizeIsoTimestamp(raw: unknown): string | undefined {
 }
 
 /** Report unsupported timestamp preservation without touching canonical items or history. */
-function applyTimestamps(bead: BeadsItem): boolean {
-  if (!normalizeIsoTimestamp(bead.created_at) && !normalizeIsoTimestamp(bead.updated_at)) return false;
+function reportUnsupportedTimestamps(bead: BeadsItem): void {
+  if (!normalizeIsoTimestamp(bead.created_at) && !normalizeIsoTimestamp(bead.updated_at)) return;
   console.error("  timestamp skipped: the pm SDK has no canonical source timestamp import/update API.");
-  return false;
 }
 
 /**
@@ -851,7 +850,7 @@ export function describeRepairFailure(repair: {
 async function readWorkspaceBeadIds(pmRoot: string): Promise<Set<string> | undefined> {
   let items: PmItem[] | undefined;
   try {
-    items = metadataToPmItems((await new PmClient({ pmRoot, noExtensions: true }).listAllComplete()).items);
+    items = metadataToPmItems(await listAllItemMetadata(pmRoot));
   } catch {
     /* SDK store read failed — fall back to the CLI read path below. */
   }
@@ -1177,8 +1176,8 @@ export async function assertBeadsImportable(filePath: string, pmRoot?: string): 
 /** Reuse local SDK mutations; retain the CLI transport when no initialized local tracker is available. */
 async function mutateImportedItem(args: string[], pmRoot: string, description: string | undefined, author: string) {
   try { await assertInitializedTracker(pmRoot); }
-  catch (error) {
-    if (!(error instanceof PmCliError) || error.exitCode !== EXIT_CODE.NOT_FOUND) throw error;
+  catch {
+    // Older hosts and unreadable SDK roots retain the canonical CLI error path.
     return spawnSync("pm", args, { encoding: "utf-8" });
   }
   const start = args.findIndex(token => token === "create" || token === "update");
@@ -1285,7 +1284,7 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
   const touched: Array<{ beadId?: string; pmId: string; blockers: string[]; upserted: boolean; bead: BeadsItem }> = [];
   let imported = 0;
   let updated = 0;
-  let timestamped = 0;
+  const timestamped = 0;
 
   const hasFilter = Boolean(opts.filter.statuses || opts.filter.types);
   let identityFieldReady = false;
@@ -1608,14 +1607,10 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
       }
     }
 
-    // Pass 3: timestamp fidelity. Mirror the exporter by writing each bead's
-    // created_at/updated_at back onto the persisted item (pm exposes no flag for
-    // these). Run LAST — after dependency wiring, which issues `pm update` and
-    // would otherwise re-bump updated_at — so the bead's own timestamps win and
-    // the round-trip stays lossless.
+    // Report the SDK limitation after item and relationship mutations finish.
     if (opts.preserveTimestamps) {
       for (const entry of touched) {
-        if (applyTimestamps(entry.bead)) timestamped++;
+        reportUnsupportedTimestamps(entry.bead);
       }
     }
   }

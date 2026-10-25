@@ -772,7 +772,9 @@ test("reconciliation retains SDK allocated identities and refuses corrupt ledger
   await acknowledgeBeadsSnapshot(pmRoot, "ledger", [], "reconcile-test");
   const incoming = parseBeadsSnapshot('{"id":"first","title":"First"}\n{"id":"second","title":"Second"}');
   const plan = await planBeadsReconciliation(pmRoot, "ledger", incoming);
-  const path = join(pmRoot, "beads", `${plan.digest}.identities.json`);
+  const directory = join(pmRoot, "transactions", "beads-reconcile");
+  await mkdir(directory, { recursive: true });
+  const path = join(directory, `${plan.digest}.json`);
   for (const data of [null, [], {}, { first: 1, second: "x" }, { first: "", second: "x" }, { first: "same", second: "same" }]) {
     await writeFile(path, JSON.stringify(data));
     await assert.rejects(applyBeadsReconciliation(pmRoot, plan, "reconcile-test"), refusal("invalid_snapshot"));

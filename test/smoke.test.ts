@@ -1493,21 +1493,28 @@ test("stdout export returns no second host-renderable payload", { skip: !hasPmCl
   assert.strictEqual(created.status, 0, `pm create failed: ${created.stderr}`);
 
   const ext = await harness();
-  const chunks: string[] = [];
-  const originalWrite = process.stdout.write;
-  process.stdout.write = ((chunk: string | Uint8Array) => {
-    chunks.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf-8"));
-    return true;
-  }) as typeof process.stdout.write;
   try {
-    const result = await runExport(ext, { pmRoot, options: {} });
-    assert.ok(isHostOutputSuppressed(result), "direct JSONL output must carry the SDK host-suppression marker");
-  } finally {
-    process.stdout.write = originalWrite;
-    await ext.deactivate();
-  }
-
-  const lines = chunks.join("").trim().split("\n");
+    assert.ok(isHostOutputSuppressed(await runExport(ext, { pmRoot, options: {} })),
+      "the direct exporter API suppresses the host's second result");
+  } finally { await ext.deactivate(); }
+  // Check real stdout in a separate Node process. Overriding a test worker's
+  // stdout also captures the runner's binary IPC protocol while SDK reads await IO.
+  const script = `
+    import assert from "node:assert/strict";
+    import { isHostOutputSuppressed } from "@unbrained/pm-cli/sdk";
+    import { harness, runExport } from ${JSON.stringify(new URL("./helpers.ts", import.meta.url).href)};
+    const ext = await harness();
+    try {
+      const result = await runExport(ext, { pmRoot: process.argv[1], options: {} });
+      assert.ok(isHostOutputSuppressed(result), "direct JSONL output carries the SDK suppression marker");
+    } finally { await ext.deactivate(); }
+  `;
+  const exported = spawnSync(process.execPath, ["--input-type=module", "-e", script, pmRoot], {
+    cwd: new URL("..", import.meta.url), encoding: "utf8",
+    env: Object.fromEntries(Object.entries(process.env).filter(([key]) => key !== "NODE_TEST_CONTEXT")),
+  });
+  assert.equal(exported.status, 0, exported.stderr);
+  const lines = exported.stdout.trim().split("\n");
   assert.strictEqual(lines.length, 1, "stdout must contain exactly the one exported JSONL record");
   const bead = JSON.parse(lines[0]) as { title?: string };
   assert.strictEqual(bead.title, "Machine-readable export");

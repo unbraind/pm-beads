@@ -377,7 +377,7 @@ export async function applyBeadsReconciliation(pmRoot: string, plan: BeadsReconc
   const ids = new Map([...Object.entries(base.bindings ?? {}), ...live.map(row => [row.id, row.pmId] as const)]);
   // A separate SDK transaction durably pins generated identities before any row
   // mutation. Its ledger is package state, never a tracker item storage path.
-  const identityPath = join(pmRoot, "beads", `${plan.digest}.identities.json`);
+  const identityPath = join(pmRoot, "transactions", "beads-reconcile", `${plan.digest}.json`);
   const creates = plan.changes.filter(change => change.kind === "create");
   /** Validate retained reservations on fresh and committed-bootstrap replay alike. */
   const readReserved = async (): Promise<Record<string, string>> => {
@@ -400,7 +400,7 @@ export async function applyBeadsReconciliation(pmRoot: string, plan: BeadsReconc
       for (const change of plan.changes) if (change.kind === "create") {
         saved[change.id] = await allocateBeadsItemId(pmRoot, allocated); ids.set(change.id, saved[change.id]);
       }
-      await mkdir(join(pmRoot, "beads"), { recursive: true });
+      await mkdir(join(pmRoot, "transactions", "beads-reconcile"), { recursive: true });
       await writeFileAtomic(identityPath, JSON.stringify(saved) + "\n");
     }, compensate: preserveBeadsProgress,
   }] });
