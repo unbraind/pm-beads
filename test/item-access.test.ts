@@ -4,8 +4,9 @@ import test from "node:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { PmClient, getHistoryPath, locateItem, runWithReproducibleProcessEnvironment } from "@unbrained/pm-cli/sdk";
+import { PmClient, PmCliError, getHistoryPath, locateItem, runWithReproducibleProcessEnvironment } from "@unbrained/pm-cli/sdk";
 import { allocateBeadsItemId, readBeadsItemDocument, readBeadsItemHistory } from "../item-access.ts";
+import { harness, runExport } from "./helpers.ts";
 
 /** Create a disposable non-git tracker for real history operations. */
 async function fixture(t: test.TestContext) {
@@ -59,4 +60,15 @@ test("SDK identity allocation retries unpublished batch collisions and refuses e
   });
   assert.equal(full.size, 32);
   await assert.rejects(runWithReproducibleProcessEnvironment(environment, () => allocateBeadsItemId(pmRoot, full)), /repeatedly collided/);
+});
+
+
+test("SDK workspace export preserves a non-directory tracker error before CLI fallback", async t => {
+  const dir = await mkdtemp(join(tmpdir(), "beads-invalid-root-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const pmRoot = join(dir, "not-a-tracker");
+  await writeFile(pmRoot, "synthetic non-directory tracker");
+  const ext = await harness(); t.after(() => ext.deactivate());
+  await assert.rejects(runExport(ext, { pmRoot, options: { "dry-run": true } }),
+    (error: unknown) => error instanceof PmCliError && error.code === "tracker_root_not_directory" && error.exitCode === 2);
 });
