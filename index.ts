@@ -1399,7 +1399,7 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
       const tags = opts.tagsOverride
         ? opts.tagsOverride
         : labels.length
-          ? labels.join(",")
+          ? JSON.stringify(labels)
           : undefined;
       const beadId = opts.preserveIds ? normalizeBeadKey(item.id) : undefined;
       const baseDescription = typeof item.description === "string" ? item.description : title;

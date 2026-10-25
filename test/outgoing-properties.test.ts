@@ -110,3 +110,16 @@ test('outbound snapshots retain SDK-configured custom statuses under 32 random r
     current=target;
   }
 });
+
+test('export/upsert retains comma-bearing native tag boundaries through the SDK',async t=>{
+  const dir=await mkdtemp(join(tmpdir(),'beads-outgoing-tags-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+  const pmRoot=join(dir,'tracker'),client=new PmClient({pmRoot,author:'model',noExtensions:true});await client.init('tags');await ensureBeadIdentityField(client);
+  const options:PmClientFullMutationOptions={title:'Tags',type:'Task',beadId:'tags',tags:JSON.stringify(['a,b','a','b','tag-1'])};
+  const id=(await client.create(options)).item.id;
+  const expected=(await client.get(id)).item.tags;
+  const ext=await harness();t.after(()=>ext.deactivate());
+  const oldPath=process.env.PATH;process.env.PATH=join(import.meta.dirname,'..','node_modules','.bin')+':'+oldPath;t.after(()=>{process.env.PATH=oldPath;});
+  const file=join(dir,'export.jsonl');await runExport(ext,{pmRoot,options:{output:file}});
+  await runImport(ext,{pmRoot,args:[file],options:{upsert:true,'no-preserve-timestamps':true}});
+  assert.deepEqual((await client.get(id)).item.tags,expected);
+});
