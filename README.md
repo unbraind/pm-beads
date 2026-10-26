@@ -528,7 +528,7 @@ an incompatible source; they do not substitute receiver defaults for source data
 
 The public SDK exports `snapshotBeadsTransferSettings`, `planBeadsTransfer`,
 `validateBeadsTransferPlan`, `applyBeadsTransfer`,
-`summarizeBeadsTransfer`, `beadsTransferItemId`, their option/receipt types, and
+`summarizeBeadsTransfer`, their option/receipt types, and
 `BeadsTransferRefusal` with `code`, `remedy` and optional `omission`. Expected CLI
 refusals return those fields as TOON/JSON and exit 2. Plan and drain summaries
 include counts, at most 20 row identifiers, omission totals, and a resume remedy;

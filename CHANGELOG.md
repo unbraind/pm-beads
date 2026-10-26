@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Other
+
+- Use SDK certification for complete Beads workspace reads ([pm-beads-hsjo](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-hsjo.toon))
+
 ## 2026.10.26 - 2026-10-26
 
 ### Added
