@@ -6,6 +6,10 @@
 
 - Resume bounded Beads transfers with dependency closure and chunk receipts ([pm-beads-tma4](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/features/pm-beads-tma4.toon))
 
+### Other
+
+- Use SDK certification for complete Beads workspace reads ([pm-beads-hsjo](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-hsjo.toon))
+
 ## 2026.10.25 - 2026-10-25
 
 ### Added
