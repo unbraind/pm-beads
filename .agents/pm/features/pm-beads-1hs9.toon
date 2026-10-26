@@ -6,9 +6,9 @@ status: open
 priority: 2
 tags: []
 created_at: "2026-10-25T22:00:36.905Z"
-updated_at: "2026-10-26T05:29:47.248Z"
+updated_at: "2026-10-26T22:45:31.232Z"
 author: codex-agent
-comments[12]{created_at,author,text}:
+comments[16]{created_at,author,text}:
   "2026-10-25T22:01:02.491Z",codex-agent,"Overlap recheck: core SDK history and certified complete reads provide revisions and tracker data; Beads reconciliation consumes full snapshots; pending transfer preserves dependency closure; pm-vcs storage and pm-csv import own different boundaries. None supplies acknowledged outbound field operations. Design: a pure, bounded snapshot protocol reuses Beads acknowledgements and existing normalization, emits explicit unset/remove operations and source/base/target receipts, reconstructs a full snapshot before existing reconciliation. No new mutable outbox, lease, checkpoint or tracker mutation path."
   "2026-10-25T22:09:52.930Z",codex-agent,"Implemented stateless typed outbound generation/replay and CLI aliases. Reused the existing acknowledgement digest in persistence and validation. Exact-base inheritance avoids resending unchanged bindings. Targeted protocol suite: 5 tests pass; outgoing module has 100% measured lines, branches and functions. Public read-only no-git copy: 103 records, exactly 2 operations, 1701-byte delta versus 72261-byte full snapshot, unchanged bytes and source tree, replay/no-base fallback verified, wrong-base refused. Seeded SDK state differential and compiled CLI checks are in progress."
   "2026-10-25T22:11:20.966Z",codex-agent,"Behavioral revert proof: with tests unchanged, reverting only the generateBeadsOutgoingDelta field-change condition to suppress updates makes the 1,000-record acceptance regression fail (expected two field operations, actual zero). Restore passes 5/5; targeted outgoing coverage remains 100% lines/branches/functions. Real compiled CLI passes JSON, TOON, replay and wrong-base checks without git. SDK-configured custom status test passes 32 randomized role registries; transport preserves opaque status values without lifecycle filtering. No mutable shared protocol state exists, so no new lease/journal/retry ownership path is added."
@@ -21,12 +21,18 @@ comments[12]{created_at,author,text}:
   "2026-10-26T05:01:42.786Z",codex-agent,"Separate behavioral revert proofs, tests unchanged: restoring only outgoing.validate to the prior handwritten validator makes the real-tracker producer property fail with invalid_input on live metadata; restoring only compareBeadsIdentities to localeCompare makes the strict Unicode-order property fail on distinct identities that collate equally. Both functions restored. Typecheck and test typecheck pass; docstring lint passes. Final targeted coverage and complete CI release gates will be recorded before handoff."
   "2026-10-26T05:08:23.556Z",codex-agent,"Final targeted coverage passes 8/8 tests with 100% lines/branches/functions for outgoing.ts and snapshot-schema.ts. Linked pm tests pass 5/5 protocol plus 3/3 producer/order checks. Compiled CLI now consumes actual SDK-live acknowledgements containing both canonically equivalent Unicode identities and changed history metadata; JSON, TOON and replay pass. Updated public validation deliberately passes readLiveBeadsSnapshot output directly to acknowledgement, preserving pmId/version/updatedAt: 103 records, exactly 2 operations, 1701-byte delta versus 86596-byte full snapshot, read-only non-git copy and source bytes unchanged. Typecheck, test typecheck, docstring lint, changelog check and whitespace check pass. Separate revert proofs are above. Ready for final-head full npm/Bun CI verification."
   "2026-10-26T05:29:43.606Z",codex-agent,"CI run 40272662651 on 3afaaea passed all 517 functional tests on Node 26 but correctly failed unchanged 100% coverage thresholds on two acknowledgement refusal guards. Added one focused real-SDK boundary regression: oversized source refuses without persisting state; a shape-valid tampered SHA or foreign-source receipt refuses without rewriting its file; existing items and valid acknowledgement remain unchanged. Focused reconciliation suite passes 46/46 at 100% lines/branches/functions. Removing only the digest/source integrity guard or only the producer schema guard makes that new test fail with a missing expected rejection; restoring passes. Production code is unchanged from 3afaaea. The obsolete failing run was canceled; new-head full CI must pass before handoff."
-files[12]{path,scope}:
+  "2026-10-26T22:35:42.023Z",codex-agent,"Re-review found persisted schema-1 transfer ordering drift. Preserve released schema-1 ordering and digests; new plans use schema 2. Add npm-released golden plans, identity journals and acknowledgement fixtures with Unicode identities, resume through the SDK, prove legacy branch necessity, then run targeted checks and CI release gates."
+  "2026-10-26T22:41:29.228Z",codex-agent,"Compatibility evidence: npm pack pm-beads@latest resolved 2026.10.26 (tarball SHA-256 17761fded389c1ba91f33223180eb3a44a06ae698c1498d583dfa5c4e5347436). Three frozen fixtures capture released CLI partial transfer, SDK interrupted bootstrap, and live acknowledgement plus reconciliation ledger/checkpoint. All resume retaining original plan digests, core identities and legacy journal formats; SDK-read final fields equal the released result. 512 random Unicode sets validate schema-1 UTF-16 and schema-2 code-point rules independently. Targeted compatibility, transfer and reconciliation: 57/57. Typecheck, test typecheck and docstring lint pass. Behavioral revert proof: removing only schema-1 transfer selection/topology branches fails both released transfer fixtures with invalid_plan (0/2); restoring passes. Removing only legacy reconciliation snapshot collation fails its golden (0/1); restoring gives compatibility 4/4. Old acknowledgement bytes and revisions remain verified unchanged; new reconciliation reservation envelopes explicitly carry schema 2 and digest, historical raw maps remain implicit schema 1 under their owning plan. Full npm and Bun gates will be verified in CI at the pushed head."
+  "2026-10-26T22:44:04.171Z",codex-agent,"pm-linked execution passed all three commands: outgoing 5/5, producer agreement 4/4, and compatibility 4/4. Compatibility restores npm-generated UTF-8 artifacts without normalization, runs with no git on PATH, retains schema-1 transfer and reconciliation transaction identifiers and original acknowledgement revisions, and checks both original and resumed identity pins. README records format-version ownership and explicitly forbids implicit migration; fixture provenance includes exact npm integrity and generation program. Compiled outgoing and transfer CLI smoke checks and real SIGKILL checkpoint recovery passed; additional transfer property validation is running before push."
+  "2026-10-26T22:45:23.548Z",codex-agent,"Host resource boundary: stopped the additional local integration runner after compiled outgoing CLI, transfer CLI and real SIGKILL recovery had passed. Its remaining 512-row export/upsert pipelines are not counted as local passes and will use the required CI npm/Bun release gate evidence. Required focused compatibility/transfer/reconciliation suite remains 57/57; all 13 pm-linked tests passed. No full release suite was run locally."
+files[14]{path,scope}:
   contracts.ts,project
   index.ts,project
   outgoing.ts,project
   reconcile.ts,project
   snapshot-schema.ts,project
+  test/compat.test.ts,project
+  test/fixtures/compat/README.md,project
   test/import-paths.test.ts,project
   test/outgoing-cli.test.ts,project
   test/outgoing-producers.test.ts,project
@@ -34,10 +40,12 @@ files[12]{path,scope}:
   test/outgoing.test.ts,project
   test/public-outgoing-validation.ts,project
   transfer.ts,project
-tests[2]{command,scope,provenance{author,created_at,source_kind,source_ref}}:
+tests[3]{command,scope,provenance{author,created_at,source_kind,source_ref}}:
   node --test test/outgoing.test.ts,project,codex-agent,"2026-10-25T22:09:57.478Z",local_mutation,feat/acknowledged-outgoing-deltas
   node --test test/outgoing-producers.test.ts,project,codex-agent,"2026-10-26T05:01:45.297Z",local_mutation,feat/acknowledged-outgoing-deltas
-docs[2]{path,scope}:
+  node --test --test-concurrency=2 test/compat.test.ts,project,codex-agent,"2026-10-26T22:40:15.132Z",local_mutation,feat/acknowledged-outgoing-deltas
+docs[3]{path,scope}:
   examples/acknowledged-outgoing-deltas.md,project
   README.md,project
+  test/fixtures/compat/README.md,project
 body: ""

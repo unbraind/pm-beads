@@ -776,19 +776,23 @@ test("reconciliation retains SDK allocated identities and refuses corrupt ledger
   await mkdir(directory, { recursive: true });
   const path = join(directory, `${plan.digest}.json`);
   for (const data of [null, [], {}, { first: 1, second: "x" }, { first: "", second: "x" }, { first: "same", second: "same" }]) {
-    await writeFile(path, JSON.stringify(data));
+    await writeFile(path, JSON.stringify({ schema: 2, digest: plan.digest, rows: data }));
     await assert.rejects(applyBeadsReconciliation(pmRoot, plan, "reconcile-test"), refusal("invalid_snapshot"));
     assert.equal((await client.listAllComplete()).items.length, 0);
   }
+  for (const envelope of [null, {}, { schema: 1, digest: plan.digest, rows: {} }, { schema: 2, digest: "wrong", rows: {} }]) {
+    await writeFile(path, JSON.stringify(envelope));
+    await assert.rejects(applyBeadsReconciliation(pmRoot, plan, "reconcile-test"), refusal("invalid_snapshot"));
+  }
   const reserved = { first: await allocateBeadsItemId(pmRoot), second: await allocateBeadsItemId(pmRoot) };
-  await writeFile(path, JSON.stringify(reserved));
+  await writeFile(path, JSON.stringify({ schema: 2, digest: plan.digest, rows: reserved }));
   await assert.rejects(applyBeadsReconciliation(pmRoot, plan, "reconcile-test", { onTransition(c) {
     if (c.transition === "prepared") throw new WorkspaceTransactionInterruptedError("before rows");
   } }), WorkspaceTransactionInterruptedError);
   assert.equal((await client.listAllComplete()).items.length, 0);
   await writeFile(path, '{}');
   await assert.rejects(applyBeadsReconciliation(pmRoot, plan, "reconcile-test"), refusal("invalid_snapshot"));
-  await writeFile(path, JSON.stringify(reserved));
+  await writeFile(path, JSON.stringify({ schema: 2, digest: plan.digest, rows: reserved }));
   await applyBeadsReconciliation(pmRoot, plan, "reconcile-test");
   const items = (await client.listAllComplete()).items;
   assert.equal(items.length, 2);

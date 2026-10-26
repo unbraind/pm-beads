@@ -635,3 +635,18 @@ itself lists each affected stream in its output; `pm history --verify <id>` spot
 content, so `reconcile` only re-greens the hash chain (no data loss) — see the authoritative
 [pm-cli merge-safety guide](https://github.com/unbraind/pm-cli/blob/main/docs/MERGE_SAFETY.md). The
 older blunt `pm history-repair --all` remains available as a lower-level primitive.
+
+### Persisted plan compatibility
+
+New transfer and reconciliation plans use schema 2 and strict code-point identity ordering. Saved plans are validated under their own schema; validation never upgrades or reseals their digest.
+
+| Artifact | Preserved version rules |
+| --- | --- |
+| Transfer plan | Schema 1 retains released UTF-16 selection, topology and dependency ordering; schema 2 uses code points. |
+| Transfer identity journal | Schema matches its owning plan, with the same original digest, reserved core ids and SDK hash pins. |
+| Reconciliation plan | Schema 1 retains released snapshot collation, UTF-16 change/dependency ordering and tracker revision; schema 2 uses code points. |
+| Reconciliation identity journal | Historical raw maps are implicit schema 1 under a schema-1 plan; new schema-2 envelopes carry explicit schema, digest and rows. |
+| Acknowledgement / outgoing receipt | Existing schema 1 preserves exact record/property order and hashes. Consumers verify the stored representation without sorting or normalization. |
+| SDK checkpoint | The public coordinator reads its own `schemaVersion`; original transaction ids include the unchanged plan digest. |
+
+A saved schema-1 exchange resumes its original journal. No implicit migration occurs. Unknown versions refuse; retain the original files and use a package supporting their version. [Released npm compatibility fixtures](test/fixtures/compat/README.md) exercise CLI and SDK exchanges with BMP, astral, private-use and combining identities, including interrupted checkpoints.
