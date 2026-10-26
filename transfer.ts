@@ -254,7 +254,7 @@ async function ownership(pmRoot: string, plan: BeadsTransferPlan, id: string, pi
     }
     // An intent written before create recovers the narrow create-to-ledger crash gap.
     // Only an unchanged initial creation can complete that intent.
-    if (!pin.itemHash && history.entries.length !== 1) return "changed";
+    if (history.entries.length !== 1) return "changed";
     pin.itemHash = itemHash; pin.hashKind = "sdk";
     return "owned";
   } catch { return "foreign"; }
