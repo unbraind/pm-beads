@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { PmClient } from '@unbrained/pm-cli/sdk';
 import { validateBeadsTransferPlan, planBeadsTransfer, applyBeadsTransfer, type BeadsTransferPlan } from '../transfer.ts';
 import { applyBeadsReconciliation, readLiveBeadsSnapshot, readBeadsAcknowledgement, beadsAcknowledgementDigest,
-  reconcileBeadsSnapshots, type BeadsReconcilePlan, type BeadsAcknowledgement, type SnapshotRecord } from '../reconcile.ts';
+  reconcileBeadsSnapshots, acknowledgeBeadsSnapshot, parseBeadsSnapshot, type BeadsReconcilePlan, type BeadsAcknowledgement, type SnapshotRecord } from '../reconcile.ts';
 
 const originalPath=process.env.PATH,originalCeiling=process.env.GIT_CEILING_DIRECTORIES;
 before(()=>{process.env.PATH='';process.env.GIT_CEILING_DIRECTORIES=tmpdir();});
@@ -110,4 +110,28 @@ test('512 random string sets validate schema-1 UTF-16 and schema-2 code-point or
     assert.throws(()=>validateBeadsTransferPlan(seal({...old,selected:current.selected,records:current.records})));
     assert.throws(()=>validateBeadsTransferPlan(seal({...current,selected:old.selected,records:old.records})));
   }
+});
+
+test('unstarted schema-1 reconciliation plans allocate legacy reservations once without migration',async t=>{
+  const pmRoot=await mkdtemp(join(tmpdir(),'beads-compat-unstarted-'));t.after(()=>rm(pmRoot,{recursive:true,force:true}));
+  const client=new PmClient({pmRoot,author:'compat-test',noExtensions:true});await client.init('compat');
+  const baseline=await acknowledgeBeadsSnapshot(pmRoot,'unstarted',[],'compat-test');
+  const incoming=parseBeadsSnapshot('{"id":"𐀀","title":"Astral"}\n{"id":"","title":"Private","dependencies":["𐀀"]}',1);
+  const original=reconcileBeadsSnapshots(baseline,incoming,[],1),file=join(pmRoot,'saved-plan.json');
+  await writeFile(file,JSON.stringify(original)+'\n');
+  const plan=JSON.parse(await readFile(file,'utf8')) as BeadsReconcilePlan;
+  const result=await applyBeadsReconciliation(pmRoot,plan,'compat-test');
+  const ledger=join(pmRoot,'transactions','beads-reconcile',plan.digest+'.json'),text=await readFile(ledger,'utf8');
+  const pins=JSON.parse(text) as Record<string,string>;
+  assert.deepEqual(Object.keys(pins),plan.changes.map(change=>change.id));
+  assert(Object.values(pins).every(id=>typeof id==='string'&&id.startsWith('compat-')));
+  assert.equal(Object.hasOwn(pins,'schema'),false);assert.equal(Object.hasOwn(pins,'rows'),false);
+  const live=await readLiveBeadsSnapshot(pmRoot,'unstarted',incoming,pins,'compat-test',1);
+  assert.deepEqual(live.map(({id,fields})=>({id,fields})),incoming);
+  for(const row of live)assert.equal(row.pmId,pins[row.id]);
+  assert.equal((await readBeadsAcknowledgement(pmRoot,'unstarted'))!.revision,result.baseRevision);
+  assert.equal(await readFile(ledger,'utf8'),text);
+  assert.equal(await readFile(file,'utf8'),JSON.stringify(original)+'\n');
+  const checkpoint=JSON.parse(await readFile(join(pmRoot,'transactions','sdk','beads-reconcile-'+plan.digest+'-identity.json'),'utf8')) as {schemaVersion:number;transactionId:string};
+  assert.equal(checkpoint.schemaVersion,1);assert.equal(checkpoint.transactionId,'beads-reconcile-'+original.digest+'-identity');
 });
