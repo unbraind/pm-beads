@@ -2,6 +2,12 @@
 
 ## 2026.10.26 - 2026-10-26
 
+### Other
+
+- Use SDK certification for complete Beads workspace reads ([pm-beads-hsjo](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-hsjo.toon))
+
+## 2026.10.26 - 2026-10-26
+
 ### Added
 
 - Resume bounded Beads transfers with dependency closure and chunk receipts ([pm-beads-tma4](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/features/pm-beads-tma4.toon))
@@ -34,9 +40,9 @@
 
 ## 2026.10.21 - 2026-10-21
 
-### Fixed
+### Closed
 
-- Daily Release workflow is failing ([pm-beads-github-be8d2d927676-85](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-github-be8d2d927676-85.toon))
+- Closed: Daily Release workflow is failing ([pm-beads-github-be8d2d927676-85](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-github-be8d2d927676-85.toon))
 
 ## 2026.10.5 - 2026-10-05
 
@@ -98,19 +104,22 @@
 
 ## 2026.9.1 - 2026-09-01
 
-### Fixed
+### Closed
 
-- Move the host CLI pin and its version-contract constant together so the bump can land ([pm-beads-vb7j](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-vb7j.toon))
+- Closed: Move the host CLI pin and its version-contract constant together so the bump can land ([pm-beads-vb7j](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-vb7j.toon))
 
 ## 2026.8.31 - 2026-08-31
 
 ### Fixed
 
-- Pin pm-changelog 2026.8.30 before the next release ([pm-beads-h8cp](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-h8cp.toon))
 - Remove the unused changelog verifier test import ([pm-beads-3uet](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-3uet.toon))
 - Run the changelog date guard against same-day release suffixes ([pm-beads-7uxj](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-7uxj.toon))
 - Rebase the changelog date verifier onto the current release workflow ([pm-beads-vuzd](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-vuzd.toon))
 - CodeQL action updates split into mutually blocking pull requests ([pm-beads-1d0b](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-1d0b.toon))
+
+### Closed
+
+- Closed: Pin pm-changelog 2026.8.30 before the next release ([pm-beads-h8cp](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-h8cp.toon))
 
 ## 2026.8.29 - 2026-08-29
 
@@ -126,17 +135,17 @@
 - Canonicalize complete workspace reads and adopt the current pm host contract ([pm-beads-1uz3](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-1uz3.toon))
 - Keep beads export stdout as pure JSONL without host summary output ([pm-beads-y76h](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-y76h.toon))
 
-### Security
-
-- The identity gate deadlocks the one remediation its own failure message prescribes ([pm-beads-a3xr](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-a3xr.toon))
-- Remove absolute host paths and non-public identities from the entire reachable Git history ([pm-beads-lajb](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-lajb.toon))
-
 ### Other
 
 - Finish attested publishing review backlog ([pm-beads-bxqr](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-bxqr.toon))
 - Alert on daily release failure and require merge drivers in CI ([pm-beads-rgm0](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-rgm0.toon))
 - Resolve CodeRabbit findings on PR 75 ([pm-beads-bfw8](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-bfw8.toon))
 - Resolve PR 75 review thread and history drift on lajb ([pm-beads-1bgo](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-1bgo.toon))
+
+### Closed
+
+- Closed: The identity gate deadlocks the one remediation its own failure message prescribes ([pm-beads-a3xr](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-a3xr.toon))
+- Closed: Remove absolute host paths and non-public identities from the entire reachable Git history ([pm-beads-lajb](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-lajb.toon))
 
 ## 2026.8.16 - 2026-08-16
 
@@ -154,13 +163,16 @@
 
 ### Fixed
 
-- Fix daily release ordering so npm publish no longer races ahead of the protected main push ([pm-beads-kbnm](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-kbnm.toon))
 - Propagate the docstring gate entry guard fix ([pm-beads-sidy](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-sidy.toon))
 - The mandatory docstring gate could skip its own scan and still exit zero ([pm-beads-cg9v](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-cg9v.toon))
 
 ### Other
 
 - Adopt the canonical pm-ops docstring gate ([pm-beads-c7mx](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-c7mx.toon))
+
+### Closed
+
+- Closed: Fix daily release ordering so npm publish no longer races ahead of the protected main push ([pm-beads-kbnm](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-kbnm.toon))
 
 ## 2026.8.7 - 2026-08-07
 
@@ -214,34 +226,34 @@
 
 ## 2026.7.26 - 2026-07-26
 
-### Fixed
-
-- Documented install command fails: pm install github.com/unbraind/pm-beads cannot resolve an entry file ([pm-beads-00wh](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-00wh.toon))
-
 ### Other
 
 - Enable governance duplicate-detection advisory mode and adopt pm-cli 2026.7.25 ([pm-beads-89ni](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-89ni.toon))
 
+### Closed
+
+- Closed: Documented install command fails: pm install github.com/unbraind/pm-beads cannot resolve an entry file ([pm-beads-00wh](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-00wh.toon))
+
 ## 2026.7.25 - 2026-07-25
-
-### Fixed
-
-- pm item reads are capped at Node's 1 MiB spawnSync default, so a mature tracker fails with no diagnosis ([pm-beads-6a9l](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-6a9l.toon))
 
 ### Other
 
 - Adopt --respect-item-release in changelog scripts and bump pm-changelog to 2026.7.24 ([pm-beads-anzm](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-anzm.toon))
 
+### Closed
+
+- Closed: pm item reads are capped at Node's 1 MiB spawnSync default, so a mature tracker fails with no diagnosis ([pm-beads-6a9l](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-6a9l.toon))
+
 ## 2026.7.23 - 2026-07-23
-
-### Fixed
-
-- Merge-safety docs follow-up: clarify verify scope + pin pm-cli 2026.7.22 (Greptile P1/P2) ([pm-beads-fiq7](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-fiq7.toon))
-- Recommend pm merge reconcile (2026.7.22) over raw history-repair in Multi-agent merge safety docs ([pm-beads-dlsd](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-dlsd.toon))
 
 ### Other
 
 - Adopt pm field-aware merge driver for multi-agent branch-merge safety ([pm-beads-crk5](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-crk5.toon))
+
+### Closed
+
+- Closed: Merge-safety docs follow-up: clarify verify scope + pin pm-cli 2026.7.22 (Greptile P1/P2) ([pm-beads-fiq7](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-fiq7.toon))
+- Closed: Recommend pm merge reconcile (2026.7.22) over raw history-repair in Multi-agent merge safety docs ([pm-beads-dlsd](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-dlsd.toon))
 
 ## 2026.7.19 - 2026-07-19
 
@@ -279,12 +291,15 @@
 ### Fixed
 
 - beads validate --no-workspace is a silent no-op (runtime normalizes flag to workspace:false) ([pm-beads-u440](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-u440.toon))
-- Promote pm beads validate to first-class command registration ([pm-beads-azv0](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-azv0.toon))
 
 ### Other
 
 - Align pm-beads with pm CLI 2026.6.12 release readiness ([pm-beads-pib4](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-pib4.toon))
 - Restore pm CLI runtime dependency for pm-beads ([pm-beads-w7n9](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-w7n9.toon))
+
+### Closed
+
+- Closed: Promote pm beads validate to first-class command registration ([pm-beads-azv0](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-azv0.toon))
 
 ## 2026.6.9 - 2026-06-09
 
@@ -359,13 +374,16 @@
 
 ### Fixed
 
-- beads import returns error object instead of throwing (exit 0 on failure + malformed file) ([pm-beads-w7ru](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-w7ru.toon))
 - beads import --dry-run silently ignored (still writes) ([pm-beads-nfpq](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-nfpq.toon))
 
 ### Other
 
 - Production-readiness audit 2026-05-29 ([pm-beads-e6t2](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-e6t2.toon))
 - Production-readiness audit 2026-05-28 ([pm-beads-xwv6](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-xwv6.toon))
+
+### Closed
+
+- Closed: beads import returns error object instead of throwing (exit 0 on failure + malformed file) ([pm-beads-w7ru](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-w7ru.toon))
 
 ## 2026.5.28 - 2026-05-28
 
