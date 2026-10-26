@@ -19,8 +19,8 @@
 // descriptions remain verbatim. Exact historical suffixes are a migration-only
 // fallback when that field is absent; body text never supplies identity.
 
-import { CommandError, EXIT_CODE, DIFF_FIELDS, type DiffField } from "./contracts.ts";
-export { CommandError, EXIT_CODE, DIFF_FIELDS, type DiffField } from "./contracts.ts";
+import { CommandError, EXIT_CODE, DIFF_FIELDS, isEncodableBeadId, type DiffField } from "./contracts.ts";
+export { CommandError, EXIT_CODE, DIFF_FIELDS, isEncodableBeadId, type DiffField } from "./contracts.ts";
 import type {
   CommandDefinition,
   CommandHandlerContext,
@@ -32,6 +32,8 @@ import type {
   Importer,
   SchemaFieldDefinition,
 } from "@unbrained/pm-cli/sdk/authoring";
+import { compareBeadsIdentities } from "./snapshot-schema.ts";
+export * from "./snapshot-schema.ts";
 import { registerOutgoingCommands } from "./outgoing.ts";
 export * from "./outgoing.ts";
 import { registerReconcileCommands } from "./reconcile.ts";
@@ -303,11 +305,6 @@ export function mapPriority(raw: number | string | undefined): string | undefine
   const n = typeof raw === "number" ? raw : parseInt(String(raw), 10);
   if (isNaN(n)) return undefined;
   return String(Math.min(4, Math.max(0, n)));
-}
-
-/** Validate the historical supported id range independently of description contents. */
-export function isEncodableBeadId(beadId: string): boolean {
-  return Boolean(beadId) && beadId.trim() === beadId && beadId.length <= 4097 && !/[\[\]\r\n]/.test(beadId);
 }
 
 /** Produce the historical envelope for compatibility fixtures; production writes use bead_id. */
@@ -665,7 +662,7 @@ export function detectDependencyCycles(adj: Map<string, string[]>): string[][] {
         const idx = pathIndex.get(next);
         if (idx !== undefined) {
           const cycle = path.slice(idx);
-          const key = [...cycle].sort().join("\u001f");
+          const key = [...cycle].sort(compareBeadsIdentities).join("\u001f");
           if (!seenCycleKeys.has(key)) {
             seenCycleKeys.add(key);
             cycles.push([...cycle, next]);
@@ -2061,7 +2058,7 @@ export function normalizeDiffField(bead: BeadsItem, field: DiffField): string {
       // Compare on the set of upstream blocker ids (order-insensitive). Reuses
       // the same edge-normalizer the importer/validator use, so the many Beads
       // edge spellings collapse to one canonical form.
-      return [...new Set(extractBlockerIds(bead))].sort().join(",");
+      return [...new Set(extractBlockerIds(bead))].sort(compareBeadsIdentities).join(",");
     }
     default: {
       const exhaustive: never = field;
@@ -2124,9 +2121,9 @@ export function diffBeads(a: BeadsItem[], b: BeadsItem[], filter?: RowFilter): B
     if (!aIndex.has(id)) added.push(id);
   }
 
-  added.sort();
-  removed.sort();
-  changed.sort((x, y) => x.id.localeCompare(y.id));
+  added.sort(compareBeadsIdentities);
+  removed.sort(compareBeadsIdentities);
+  changed.sort((x, y) => compareBeadsIdentities(x.id, y.id));
 
   const drift = added.length > 0 || removed.length > 0 || changed.length > 0;
   return {

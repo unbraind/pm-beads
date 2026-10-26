@@ -1,4 +1,5 @@
 /** Dependency-closed, resumable Beads creation using the host's durable transaction journals. */
+import { compareBeadsIdentities } from "./snapshot-schema.ts";
 import { createHash } from "node:crypto";
 import { readFile, readdir, mkdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -97,7 +98,7 @@ function references(row: SnapshotRecord): string[] {
 function buildPlan(records: SnapshotRecord[], selected: readonly string[], source: string, limits: BeadsTransferLimits, settings: BeadsTransferSettings): BeadsTransferPlan {
   if (typeof source !== "string" || !source.trim() || source.length > 128 || !Array.isArray(selected) || !selected.length ||
       selected.some(id => typeof id !== "string" || !id.trim())) refuse("invalid_input", "Choose a stable source name (up to 128 characters) and at least one exact Beads id.");
-  const seeds = [...new Set(selected)].sort();
+  const seeds = [...new Set(selected)].sort(compareBeadsIdentities);
   if (seeds.some(id => id.length > 128) || records.some(row => row.id.length > 128)) refuse("invalid_input", "Keep Beads ids at or below 128 characters for bounded agent receipts.");
   const byId = new Map(records.map(row => [row.id, row]));
   const closure = new Map<string, SnapshotRecord>();
@@ -118,7 +119,7 @@ function buildPlan(records: SnapshotRecord[], selected: readonly string[], sourc
   const remaining = new Map([...closure].map(([id, row]) => [id, new Set(references(row))]));
   const ordered: SnapshotRecord[] = [];
   while (remaining.size) {
-    const ready = [...remaining].filter(([, refs]) => !refs.size).map(([id]) => id).sort();
+    const ready = [...remaining].filter(([, refs]) => !refs.size).map(([id]) => id).sort(compareBeadsIdentities);
     if (!ready.length) refuse("invalid_input", "Remove cyclic parent/dependency relationships before planning the transfer.");
     for (const id of ready) {
       ordered.push(closure.get(id)!); remaining.delete(id);

@@ -594,7 +594,10 @@ No tracker mutation or durable outbox is introduced. Reconstructed records feed
 the existing reviewed reconciliation workflow; omissions remain deletion proposals.
 
 A single strict boundary schema enforces dense arrays, unique identities,
-canonical receipt ordering, documented string/record limits, and finite domains.
+one shared producer/consumer snapshot schema, documented string/record limits, and finite domains.
+The schema accepts live SDK metadata and legacy acknowledgement layouts. New
+identity ordering uses Unicode code points; canonically equivalent but distinct
+strings remain distinct. Metadata/layout receipts preserve exact historical revisions.
 Typed refusals carry a code, remedy and exit status 2. Status names remain opaque
 transport data; lifecycle decisions belong to the SDK registry. See the
 [worked SDK/CLI example, protocol limits and recovery remedies](examples/acknowledged-outgoing-deltas.md).

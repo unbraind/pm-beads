@@ -6,8 +6,11 @@ import { CommandError } from "./contracts.ts";
 import { RECONCILE_FIELDS, beadsAcknowledgementDigest, type BeadsAcknowledgement, type SnapshotRecord, type ReconcileField } from "./reconcile.ts";
 import { isEncodableBeadId, optionString } from "./index.ts";
 
+import { BEADS_SNAPSHOT_LIMITS, BEADS_RECORD_SCHEMA, BEADS_RECORD_RECEIPT_SCHEMA, BEADS_RECORDS_SCHEMA,
+  validateBeadsSchema, checkBeadsSchema, BEADS_ACKNOWLEDGEMENT_SCHEMA, compareBeadsIdentities, type BeadsRecordReceipt } from "./snapshot-schema.ts";
+
 /** Transport limits apply equally to SDK values, input files and emitted envelopes. */
-export const BEADS_OUTGOING_LIMITS = { bytes: 16_777_216, records: 20_000, operations: 240_000, string: 1_048_576 } as const;
+export const BEADS_OUTGOING_LIMITS = BEADS_SNAPSHOT_LIMITS;
 /** One independent operation; unset clears a field, remove explicitly omits a source record. */
 export type BeadsOutgoingOperation =
   | { op: "set"; id: string; field: ReconcileField; value: string }
@@ -17,7 +20,7 @@ export type BeadsOutgoingOperation =
 /** Identity receipts are sufficient to verify the reconstructed acknowledgement, without unchanged records. */
 interface OutgoingReceipt {
   schema: 1; source: string; sourceDigest: string; baseDigest: string | null; targetDigest: string;
-  previous: string | null; bindings?: Record<string, string>; inheritBindings?: true;
+  previous: string | null; bindings?: Record<string, string>; inheritBindings?: true; recordReceipts?: BeadsRecordReceipt[]; recordOrder?: string[];
 }
 /** Complete transport value. A missing sender base produces a full snapshot. */
 export type BeadsOutgoingDelta = OutgoingReceipt & (
@@ -72,61 +75,33 @@ function validate(value: unknown, kind: "ack" | "wire"): void {
     payloadBytes += Buffer.byteLength(JSON.stringify(data));
     requireShape(payloadBytes <= BEADS_OUTGOING_LIMITS.bytes);
   }
-  /** Validate a canonical field without normalizing it or interpreting status names. */
-  function field(name: ReconcileField, data: unknown): void {
-    string(data); spend(data);
-    if (name === "priority") requireShape(/^[0-4]?$/.test(data));
-    if (name === "title" || name === "status") requireShape(data.trim().length > 0);
-    if (name === "tags" || name === "dependencies") {
-      let list: unknown;
-      try { list = JSON.parse(data); } catch { requireShape(false); }
-      array(list, BEADS_OUTGOING_LIMITS.records);
-      for (const entry of list) string(entry, 4097);
-    }
+  /** Interpret the shared producer schema, mapping shape failures to transport refusals. */
+  function shared(data: unknown, schema: Parameters<typeof validateBeadsSchema>[1]): void {
+    requireShape(checkBeadsSchema(data, schema, spend));
   }
-  /** Validate one canonical row with every native snapshot field present. */
-  function record(row: unknown): void {
-    object(row, ["id", "fields"]); identity(row.id); spend(row.id); object(row.fields, RECONCILE_FIELDS);
-    requireShape(Object.keys(row).join(",") === "id,fields" && Object.keys(row.fields).every((key, index) => key === RECONCILE_FIELDS[index]));
-    for (const name of RECONCILE_FIELDS) field(name, row.fields[name]);
+  /** Native fields use the same descriptor as record producers. */
+  function field(name: ReconcileField, data: unknown): void { shared(data, BEADS_RECORD_SCHEMA.properties.fields.properties[name]); }
+  if (kind === "ack") {
+    shared(value, BEADS_ACKNOWLEDGEMENT_SCHEMA);
+    requireShape((value as BeadsAcknowledgement).revision === beadsAcknowledgementDigest(value as BeadsAcknowledgement));
+    requireShape(Buffer.byteLength(JSON.stringify(value)) <= BEADS_OUTGOING_LIMITS.bytes); return;
   }
-  /** Complete records must be unique and ordered like acknowledged snapshots. */
-  function records(rows: unknown): void {
-    array(rows, BEADS_OUTGOING_LIMITS.records);
-    let previous: string | undefined;
-    for (const row of rows) {
-      record(row);
-      const id = (row as SnapshotRecord).id;
-      requireShape(previous === undefined || previous.localeCompare(id, "en") < 0); previous = id;
-    }
-  }
-  object(value, kind === "ack" ? ["schema", "source", "revision", "previous", "records"] :
-    ["schema", "source", "sourceDigest", "baseDigest", "targetDigest", "previous", "mode"],
-    kind === "ack" ? ["bindings"] : ["bindings", "inheritBindings", "operations", "records"]);
+  object(value, ["schema", "source", "sourceDigest", "baseDigest", "targetDigest", "previous", "mode"],
+    ["bindings", "inheritBindings", "operations", "records", "recordReceipts", "recordOrder"]);
   requireShape(value.schema === 1); string(value.source, 256); spend(value.source); requireShape(value.source.trim().length > 0);
   hash(value.previous, true);
-  if (value.bindings !== undefined) {
-    requireShape(value.bindings !== null && typeof value.bindings === "object" && !Array.isArray(value.bindings));
-    object(value.bindings, [], Object.keys(value.bindings));
-    requireShape(Object.keys(value.bindings).length <= BEADS_OUTGOING_LIMITS.records);
-    for (const [id, pmId] of Object.entries(value.bindings)) { identity(id); identity(pmId); spend(id); spend(pmId); }
-    requireShape(new Set(Object.values(value.bindings)).size === Object.keys(value.bindings).length);
-  }
-  if (kind === "ack") {
-    hash(value.revision); records(value.records);
-    requireShape(value.revision === beadsAcknowledgementDigest(value as unknown as BeadsAcknowledgement));
-  } else {
+  if (value.bindings !== undefined) shared(value.bindings, BEADS_ACKNOWLEDGEMENT_SCHEMA.properties.bindings);
     hash(value.sourceDigest); hash(value.baseDigest, true); hash(value.targetDigest);
     if (value.inheritBindings !== undefined) requireShape(value.inheritBindings === true && value.mode === "delta" && !Object.hasOwn(value, "bindings"));
     requireShape(value.sourceDigest === sourceDigest(value.source));
-    if (value.mode === "snapshot") { requireShape(!Object.hasOwn(value, "operations") && value.baseDigest === null); records(value.records); }
+    if (value.mode === "snapshot") { requireShape(!Object.hasOwn(value, "operations") && !Object.hasOwn(value, "recordReceipts") && !Object.hasOwn(value, "recordOrder") && value.baseDigest === null); shared(value.records, BEADS_RECORDS_SCHEMA); }
     else {
       requireShape(value.mode === "delta" && !Object.hasOwn(value, "records") && value.baseDigest !== null);
       array(value.operations, BEADS_OUTGOING_LIMITS.operations);
       const touched = new Map<string, Set<string>>();
       for (const operation of value.operations) {
         object(operation, ["op"], ["id", "field", "value", "record"]);
-        if (operation.op === "add") { object(operation, ["op", "record"]); record(operation.record); }
+        if (operation.op === "add") { object(operation, ["op", "record"]); shared(operation.record, BEADS_RECORD_SCHEMA); }
         else {
           identity(operation.id); spend(operation.id);
           if (operation.op === "remove") object(operation, ["op", "id"]);
@@ -144,7 +119,19 @@ function validate(value: unknown, kind: "ack" | "wire"): void {
         keys.add(key); touched.set(id, keys);
       }
     }
+  if (value.recordReceipts !== undefined) {
+    array(value.recordReceipts, BEADS_OUTGOING_LIMITS.records);
+    const ids = new Set<string>();
+    for (const receipt of value.recordReceipts) {
+      shared(receipt, BEADS_RECORD_RECEIPT_SCHEMA);
+      const row = receipt as BeadsRecordReceipt;
+      const keys = Object.keys(row).filter(key => key !== "keys" && key !== "fieldKeys").concat("fields");
+      requireShape(!ids.has(row.id) && row.keys.length === keys.length && new Set(row.keys).size === keys.length && keys.every(key => row.keys.includes(key as keyof SnapshotRecord)) &&
+        row.fieldKeys.length === RECONCILE_FIELDS.length && new Set(row.fieldKeys).size === RECONCILE_FIELDS.length);
+      ids.add(row.id);
+    }
   }
+  if (value.recordOrder !== undefined) { array(value.recordOrder, BEADS_OUTGOING_LIMITS.records); for (const id of value.recordOrder) { identity(id); spend(id); } requireShape(new Set(value.recordOrder).size === value.recordOrder.length); }
   // The shape has no untrusted numbers except schema=1; serialization is bounded too.
   requireShape(Buffer.byteLength(JSON.stringify(value)) <= BEADS_OUTGOING_LIMITS.bytes);
 }
@@ -152,6 +139,11 @@ function validate(value: unknown, kind: "ack" | "wire"): void {
 function sourceDigest(source: string): string { return createHash("sha256").update(JSON.stringify(source)).digest("hex"); }
 /** An explicit unset uses the canonical empty representation, including collection fields. */
 function empty(field: ReconcileField): string { return field === "tags" || field === "dependencies" ? "[]" : ""; }
+/** Preserve live history metadata and supported historical object key order without field duplication. */
+function recordReceipt(row: SnapshotRecord): BeadsRecordReceipt {
+  const { fields, ...metadata } = row;
+  return { ...metadata, keys: Object.keys(row) as Array<keyof SnapshotRecord>, fieldKeys: Object.keys(fields) as ReconcileField[] };
+}
 /** Produce only changed fields, retaining identity receipts; null base explicitly requests full fallback. */
 export function generateBeadsOutgoingDelta(base: BeadsAcknowledgement | null, target: BeadsAcknowledgement): BeadsOutgoingDelta {
   validate(target, "ack");
@@ -164,7 +156,7 @@ export function generateBeadsOutgoingDelta(base: BeadsAcknowledgement | null, ta
     const old = new Map(base.records.map(row => [row.id, row]));
     const next = new Map(target.records.map(row => [row.id, row]));
     const operations: BeadsOutgoingOperation[] = [];
-    for (const id of [...new Set([...old.keys(), ...next.keys()])].sort((a, b) => a.localeCompare(b, "en"))) {
+    for (const id of [...new Set([...old.keys(), ...next.keys()])].sort(compareBeadsIdentities)) {
       const before = old.get(id), after = next.get(id);
       if (!after) operations.push({ op: "remove", id });
       else if (!before) operations.push({ op: "add", record: structuredClone(after) });
@@ -172,7 +164,11 @@ export function generateBeadsOutgoingDelta(base: BeadsAcknowledgement | null, ta
         operations.push(after.fields[field] === empty(field) ? { op: "unset", id, field } : { op: "set", id, field, value: after.fields[field] });
       }
     }
-    result = { ...receipt, mode: "delta", operations };
+    const recordReceipts = target.records.filter(row => old.has(row.id) && JSON.stringify(recordReceipt(old.get(row.id)!)) !== JSON.stringify(recordReceipt(row))).map(recordReceipt);
+    const recordOrder = target.records.map(row => row.id);
+    const inheritedOrder = [...base.records.filter(row => next.has(row.id)).map(row => row.id), ...operations.filter(operation => operation.op === "add").map(operation => operation.record.id)];
+    result = { ...receipt, mode: "delta", operations, ...(recordReceipts.length ? { recordReceipts } : {}),
+      ...(JSON.stringify(recordOrder) !== JSON.stringify(inheritedOrder) ? { recordOrder } : {}) };
   }
   validate(result, "wire"); return result;
 }
@@ -193,8 +189,14 @@ export function replayBeadsOutgoingDelta(current: BeadsAcknowledgement | null, d
       row.fields[operation.field] = operation.op === "set" ? operation.value : empty(operation.field);
     }
   }
+  for (const receipt of delta.recordReceipts ?? []) {
+    const row = rows.get(receipt.id); requireShape(row !== undefined);
+    rows.set(receipt.id, Object.fromEntries(receipt.keys.map(key => [key, key === "fields" ? Object.fromEntries(receipt.fieldKeys.map(field => [field, row.fields[field]])) : receipt[key]])) as SnapshotRecord);
+  }
+  const order = delta.mode === "snapshot" ? delta.records.map(row => row.id) : delta.recordOrder ?? [...rows.keys()];
+  requireShape(order.length === rows.size && order.every(id => rows.has(id)));
   const acknowledgement: BeadsAcknowledgement = { schema: 1, source: delta.source, revision: delta.targetDigest, previous: delta.previous,
-    records: [...rows.values()].sort((a, b) => a.id.localeCompare(b.id, "en")), ...((delta.inheritBindings ? current?.bindings : delta.bindings) ? { bindings: structuredClone((delta.inheritBindings ? current!.bindings : delta.bindings)!) } : {}) };
+    records: order.map(id => rows.get(id)!), ...((delta.inheritBindings ? current?.bindings : delta.bindings) ? { bindings: structuredClone((delta.inheritBindings ? current!.bindings : delta.bindings)!) } : {}) };
   if (beadsAcknowledgementDigest(acknowledgement) !== delta.targetDigest) refuse("target_mismatch", "Regenerate the outgoing envelope from the original acknowledged snapshots; reconstructed contents do not match the target receipt.");
   validate(acknowledgement, "ack"); return { acknowledgement, unchanged: false };
 }

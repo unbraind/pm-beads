@@ -40,3 +40,8 @@ export const DIFF_FIELDS = [
 
 /** A Beads record field that the diff compares between two files. */
 export type DiffField = (typeof DIFF_FIELDS)[number];
+
+/** Validate the historical supported id range independently of description contents. */
+export function isEncodableBeadId(beadId: string): boolean {
+  return Boolean(beadId) && beadId.trim() === beadId && beadId.length <= 4097 && !/[\[\]\r\n]/.test(beadId);
+}

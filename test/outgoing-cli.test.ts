@@ -5,20 +5,24 @@ import { cp,mkdir,mkdtemp,rm,symlink,writeFile } from 'node:fs/promises';
 import { join,resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
-import { PmClient } from '@unbrained/pm-cli/sdk';
-import { canonicalBeadsRecord,beadsAcknowledgementDigest } from '../reconcile.ts';
+import { PmClient, type PmClientFullMutationOptions } from '@unbrained/pm-cli/sdk';
+import { readLiveBeadsSnapshot,acknowledgeBeadsSnapshot,readBeadsAcknowledgement,planBeadsReconciliation,applyBeadsReconciliation,beadsAcknowledgementDigest } from '../reconcile.ts';
+import { ensureBeadIdentityField } from '../identity.ts';
 import { generateBeadsOutgoingDelta } from '../outgoing.ts';
 
 test('compiled outgoing command renders exact JSON and compact TOON and refuses a wrong base without git',async t=>{
   const root=resolve(import.meta.dirname,'..'),dir=await mkdtemp(join(tmpdir(),'beads-outgoing-cli-'));t.after(()=>rm(dir,{recursive:true,force:true}));
   const pmRoot=join(dir,'tracker'),extension=join(pmRoot,'extensions','pm-beads');
-  await new PmClient({pmRoot,noExtensions:true}).init('outgoing');await mkdir(extension,{recursive:true});
+  const client=new PmClient({pmRoot,noExtensions:true,author:'cli-test'});await client.init('outgoing');await ensureBeadIdentityField(client);
+  for(const id of ['é','e\u0301','A']){const options:PmClientFullMutationOptions={title:id,type:'Task',beadId:id};await client.create(options);}
+  await mkdir(extension,{recursive:true});
   for(const entry of ['dist','manifest.json','package.json'])await cp(join(root,entry),join(extension,entry),{recursive:true});
   await symlink(join(root,'node_modules'),join(extension,'node_modules'),'junction');
-  const state={source:'team',previous:null,records:[canonicalBeadsRecord({id:'one',title:'One'})]};
-  const base={schema:1 as const,...state,revision:beadsAcknowledgementDigest(state)};
-  const changed=structuredClone(state);changed.records[0].fields.title='New';changed.records[0].fields.description='large payload '.repeat(2000);
-  const target={...base,...changed,revision:beadsAcknowledgementDigest(changed)};
+  const live=await readLiveBeadsSnapshot(pmRoot);
+  const base=await acknowledgeBeadsSnapshot(pmRoot,'team',live,'cli-test');
+  await client.update(live[0].pmId,{title:'New',description:'large payload '.repeat(2000)});
+  await applyBeadsReconciliation(pmRoot,await planBeadsReconciliation(pmRoot,'team',await readLiveBeadsSnapshot(pmRoot)),'cli-test');
+  const target=(await readBeadsAcknowledgement(pmRoot,'team'))!;
   const b=join(dir,'base.json'),n=join(dir,'target.json'),d=join(dir,'delta.json');
   const delta=generateBeadsOutgoingDelta(base,target);
   await writeFile(b,JSON.stringify(base));await writeFile(n,JSON.stringify(target));await writeFile(d,JSON.stringify(delta));

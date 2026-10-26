@@ -24,12 +24,12 @@ try{
   execFileSync('tar',['-x','-C',scratch],{input:execFileSync('git',['-C',root,'archive',sourceHead,'.agents/pm'],{maxBuffer:64*1024*1024})});
   const client=new PmClient({pmRoot,noExtensions:true,author:'public-validation'});
   await client.listAllComplete();const live=await readLiveBeadsSnapshot(pmRoot); // Warm SDK-derived caches before freezing the copy.
-  await acknowledgeBeadsSnapshot(pmRoot,'public-fleet',live.map(({id,fields})=>({id,fields})),'public-validation');
+  await acknowledgeBeadsSnapshot(pmRoot,'public-fleet',live,'public-validation');
   await permissions(pmRoot,true);const before=await fingerprint(pmRoot);
   const previousPath=process.env.PATH;process.env.PATH='';process.env.GIT_CEILING_DIRECTORIES=tmpdir();
   const started=performance.now();
   const baseline=(await readBeadsAcknowledgement(pmRoot,'public-fleet'))!;
-  assert.deepEqual(baseline.records,(await readLiveBeadsSnapshot(pmRoot)).map(({id,fields})=>({id,fields})));
+  assert.deepEqual(baseline.records,await readLiveBeadsSnapshot(pmRoot));
   const changed=structuredClone(baseline.records);changed[0].fields.title+=' (synthetic change)';changed.at(-1)!.fields.description+='\r\nSynthetic validation change.\r\n';
   const target=ack(changed,baseline.revision,baseline.bindings!),delta=generateBeadsOutgoingDelta(baseline,target);
   assert.equal(delta.mode,'delta');if(delta.mode!=='delta')throw Error('mode');assert.equal(delta.operations.length,2);
@@ -40,7 +40,7 @@ try{
   assert.equal(await fingerprint(pmRoot),before);
   const elapsedMs=Number((performance.now()-started).toFixed(2));process.env.PATH=previousPath;
   assert.equal(execFileSync('git',['-C',root,'rev-parse',`${sourceHead}:.agents/pm`],{encoding:'utf8'}).trim(),trackerTree);
-  console.log(JSON.stringify({repository,sourceHead,trackerTree,records:baseline.records.length,changedFields:2,operations:delta.operations.length,
+  console.log(JSON.stringify({repository,sourceHead,trackerTree,records:baseline.records.length,changedFields:2,operations:delta.operations.length,liveMetadataPreserved:baseline.records.every(row=>row.pmId&&row.version&&row.updatedAt),
     deltaJsonBytes:Buffer.byteLength(JSON.stringify(delta)),fullSnapshotJsonBytes:Buffer.byteLength(JSON.stringify(full)),replayUnchanged:true,
     incorrectBaseRefused:true,fullFallbackVerified:true,readOnly:true,nonGit:true,gitAbsentFromPath:true,trackerFingerprint:before,trackerUnchanged:true,sourceUnchanged:true,elapsedMs},null,2));
 }finally{await permissions(scratch,false);await rm(scratch,{recursive:true,force:true});}

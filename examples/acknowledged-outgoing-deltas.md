@@ -76,9 +76,22 @@ unreadable base is an error; it never silently becomes an empty base.
 One strict schema checks both SDK and CLI boundaries. JSON envelopes reject
 unknown keys, sparse arrays, duplicate record identities, conflicting operations,
 invalid SHA-256 receipts and invalid priority strings (only integers 0–4 or the
-canonical empty value). Records must be ordered by canonical Beads identity,
-with the package's `id`, `fields` property order and all fields in
-`RECONCILE_FIELDS` order. Bounds are 16 MiB serialized JSON, 20,000 records,
+canonical empty value). One shared declarative schema in `snapshot-schema.ts`
+derives SDK types and validation for canonical records, live SDK records, and
+schema-1 acknowledgements. Producers use that same schema before emitting or
+persisting values. Live `pmId`, `version`, and `updatedAt` metadata is accepted and
+preserved. `recordReceipts` carries changed metadata and property layout without
+duplicating field values; dropping metadata is explicit in those receipts.
+
+New snapshot, acknowledgement, reconciliation, transfer selection, dependency,
+and diff identity orders use the total Unicode code-point comparator
+`compareBeadsIdentities`. No locale collation or Unicode normalization is used.
+Distinct `é` and `e\u0301`, case variants, and confusables remain distinct.
+Historical acknowledgements may retain older array/property order: optional
+`recordOrder` and layout receipts preserve their exact digest bytes rather than
+rewriting them. A full snapshot also preserves historical order verbatim.
+
+Bounds are 16 MiB serialized JSON, 20,000 records,
 240,000 operations, 1 MiB per field string, 4,097 characters per collection entry,
 and 256 characters per source name. The only numeric wire value is schema `1`;
 all emitted numbers have a finite, bounded domain. Large results refuse instead

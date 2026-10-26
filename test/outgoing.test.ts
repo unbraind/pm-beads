@@ -6,11 +6,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { canonicalBeadsRecord, beadsAcknowledgementDigest, type BeadsAcknowledgement, type SnapshotRecord, RECONCILE_FIELDS } from '../reconcile.ts';
 import { BEADS_OUTGOING_LIMITS, generateBeadsOutgoingDelta, replayBeadsOutgoingDelta, BeadsOutgoingRefusal, type BeadsOutgoingDelta } from '../outgoing.ts';
+import { compareBeadsIdentities } from '../snapshot-schema.ts';
 import { harness, runCommand } from './helpers.ts';
 
 /** Produce a real-format acknowledgement receipt for pure protocol tests. */
 export function ack(records: SnapshotRecord[], previous: string | null = null, source = 'team'): BeadsAcknowledgement {
-  const state = { source, previous, records: structuredClone(records).sort((a,b) => a.id.localeCompare(b.id, 'en')), bindings: Object.fromEntries(records.map(row => [row.id, `pm-${row.id}`])) };
+  const state = { source, previous, records: structuredClone(records).sort((a,b) => compareBeadsIdentities(a.id,b.id)), bindings: Object.fromEntries(records.map(row => [row.id, `pm-${row.id}`])) };
   return { schema: 1, ...state, revision: beadsAcknowledgementDigest(state) };
 }
 /** Require actionable typed refusal, never a raw parsing/type error. */
@@ -84,9 +85,10 @@ test('strict schema fuzz rejects sparse collections, unknown fields, nonfinite n
   const hidden = structuredClone(target);Object.defineProperty(hidden,'hidden',{value:1});
   const nullPrototype = structuredClone(target);nullPrototype.bindings=Object.assign(Object.create(null) as Record<string,string>,target.bindings);
   assert.deepEqual(generateBeadsOutgoingDelta(null,nullPrototype),generateBeadsOutgoingDelta(null,target));
+  assert.deepEqual(replayBeadsOutgoingDelta(base,Object.setPrototypeOf(structuredClone(valid),null)).acknowledgement,target);
   class ExtendedArray extends Array<SnapshotRecord> {}
   const extended = new ExtendedArray();extended.push(row());
-  const variants: unknown[] = [ hidden, {...target,bindings:new Date()}, {...target,records:extended}, {...target,records:[{fields:row().fields,id:row().id}]}, {...target,records:[{id:row().id,fields:Object.fromEntries(Object.entries(row().fields).reverse())}]}, {...target, extra: true}, {...target, records: new Array(1)}, {...target,records:Array(BEADS_OUTGOING_LIMITS.records+1).fill(row())}, {...target,source:'x'.repeat(257)}, {...target,bindings:{r1:''}}, {...target,bindings:{a:'same',b:'same'}}, {...target,records:[row(),row()]}, {...target,records:[row('z'),row('a')]}, {...target,records:[{...row(),extra:1}]} ];
+  const variants: unknown[] = [ hidden, {...target,bindings:new Date()}, {...target,records:extended}, {...target, extra: true}, {...target, records: new Array(1)}, {...target,records:Array(BEADS_OUTGOING_LIMITS.records+1).fill(row())}, {...target,source:'x'.repeat(257)}, {...target,bindings:{r1:''}}, {...target,bindings:{a:'same',b:'same'}}, {...target,records:[row(),row()]}, {...target,records:[row('z'),row('a')]}, {...target,records:[{...row(),extra:1}]} ];
   for (const field of RECONCILE_FIELDS) {
     for (const value of [null, NaN, Infinity, [], {}, 'x'.repeat(BEADS_OUTGOING_LIMITS.string+1)]) variants.push({...target,records:[{...row(),fields:{...row().fields,[field]:value}}]});
   }
@@ -94,13 +96,13 @@ test('strict schema fuzz rejects sparse collections, unknown fields, nonfinite n
   for (const value of ['5','-1','Infinity','2.5']) variants.push({...target,records:[{...row(),fields:{...row().fields,priority:value}}]});
   variants.push({...target,records:[{...row(),fields:{...row().fields,title:'  '}}]});
   for (const bad of variants) assert.throws(() => generateBeadsOutgoingDelta(null,bad as BeadsAcknowledgement),refusal('invalid_input'));
-  const invalidOperations = [new Array(1), Array(BEADS_OUTGOING_LIMITS.operations+1).fill({op:'remove',id:'r1'}), [{op:'explode'}], [{op:'remove',id:''}], [{op:'unset',id:'r1',field:'unknown'}], [{op:'unset',id:'r1',field:'title'}], [{op:'set',id:'r1',field:'priority',value:Infinity}], [{op:'set',id:'r1',field:'description',value:'a',extra:true}], [{op:'add',record:null}], [{op:'remove',id:'r1'},{op:'remove',id:'r1'}], [{op:'remove',id:'r1'},{op:'set',id:'r1',field:'description',value:'x'}], [{op:'set',id:'r1',field:'description',value:'x'},{op:'remove',id:'r1'}]];
+  const invalidOperations = [new Array(1), Array(BEADS_OUTGOING_LIMITS.operations+1).fill({op:'remove',id:'r1'}), [{op:'explode'}], [{op:'remove',id:''}], [{op:'unset',id:'r1',field:'unknown'}], [{op:'unset',id:'r1',field:'priority',value:'extra'}], [{op:'set',id:'r1',field:'priority',value:Infinity}], [{op:'set',id:'r1',field:'description',value:'a',extra:true}], [{op:'add',record:null}], [{op:'remove',id:'r1'},{op:'remove',id:'r1'}], [{op:'remove',id:'r1'},{op:'set',id:'r1',field:'description',value:'x'}], [{op:'set',id:'r1',field:'description',value:'x'},{op:'remove',id:'r1'}]];
   for (const operations of invalidOperations) assert.throws(() => replayBeadsOutgoingDelta(base,{...valid,operations} as BeadsOutgoingDelta),refusal('invalid_input'));
   for (const changes of [{mode:'nope'}, {sourceDigest:'0'.repeat(64)}, {baseDigest:null}, {records:[]}, {bindings:null}, {targetDigest:'NaN'}, {inheritBindings:false}, {inheritBindings:true,bindings:{}}]) assert.throws(() => replayBeadsOutgoingDelta(base,{...valid,...changes} as BeadsOutgoingDelta),refusal('invalid_input'));
   const sparse = [row()]; delete sparse[0]; Object.assign(sparse,{other:row()});
   assert.throws(() => generateBeadsOutgoingDelta(null,{...target,records:sparse}),refusal('invalid_input'));
   const sharedPayload = 'x'.repeat(BEADS_OUTGOING_LIMITS.string);
-  const oversizedSdkValue = {...target,records:Array.from({length:20_000},(_,i)=>row(`r${String(i).padStart(5,'0')}`,sharedPayload))};
+  const oversizedSdkValue = {...target,records:Array.from({length:20_000},(_,i)=>({id:`r${String(i).padStart(5,'0')}`,fields:{...row().fields,description:sharedPayload}}))};
   // Shared strings represent a multi-gigabyte serialization without allocating that serialization in the test.
   assert.throws(()=>generateBeadsOutgoingDelta(null,oversizedSdkValue),refusal('invalid_input'));
   const tooLarge = ack(Array.from({length:18},(_,i)=>row(`r${i}`,'x'.repeat(BEADS_OUTGOING_LIMITS.string))));
