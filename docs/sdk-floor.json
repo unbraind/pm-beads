@@ -1,0 +1,637 @@
+{
+  "package": "pm-beads",
+  "auditedMain": "f345866a0e9b523b1cfc65968d8d113bd81007c0",
+  "requiredFloor": "2026.9.8",
+  "previousFloors": {
+    "manifest": "2026.10.15",
+    "peer": ">=2026.10.15",
+    "dependency": null
+  },
+  "scope": "Published stable artifact API availability; no package runtime or lifecycle scripts executed. Purely erased types are excluded; function and constructor types used by runtime SDK loaders are included.",
+  "apis": [
+    {
+      "kind": "export",
+      "module": "/sdk",
+      "name": "assertInitializedTracker",
+      "uses": [
+        "index.ts:41"
+      ],
+      "first": "2026.8.21",
+      "previous": "2026.8.20",
+      "sha256": "bbc0ccb9df0d7979563d384b778c30cb2858c9e63949d694475b776ec8c70aff",
+      "previousSha256": "4a613893a4b1deffb92b12b2b6651a16b371cef2c2657dc4dcac52de41321156"
+    },
+    {
+      "kind": "export",
+      "module": "/sdk",
+      "name": "commitWorkspaceTransaction",
+      "uses": [
+        "reconcile.ts:5",
+        "transfer.ts:5"
+      ],
+      "first": "2026.7.19",
+      "previous": "2026.7.18",
+      "sha256": "513e0aead42767a113a26b8b2e2cbb8a22879d0cb0500d4d3cdd16d21d9f7a39",
+      "previousSha256": "44b48fe680cf330254a4ab8d42b55cbcee81ba5cf21e4d4550b40413265d64b9"
+    },
+    {
+      "kind": "export",
+      "module": "/sdk",
+      "name": "EXIT_CODE",
+      "uses": [
+        "item-access.ts:2",
+        "identity.ts:2"
+      ],
+      "first": "2026.5.14",
+      "previous": "2026.5.12",
+      "sha256": "7f7e9131afadb891344bf2fb93b15bc157d18c532a5da4ec31677957d37b7260",
+      "previousSha256": "42dcaef84dc441b7792aeffa059bfe10a86ae8b12b1084472229bba03fb29910"
+    },
+    {
+      "kind": "export",
+      "module": "/sdk",
+      "name": "generateItemId",
+      "uses": [
+        "item-access.ts:2"
+      ],
+      "first": "2026.5.14",
+      "previous": "2026.5.12",
+      "sha256": "7f7e9131afadb891344bf2fb93b15bc157d18c532a5da4ec31677957d37b7260",
+      "previousSha256": "42dcaef84dc441b7792aeffa059bfe10a86ae8b12b1084472229bba03fb29910"
+    },
+    {
+      "kind": "export",
+      "module": "/sdk",
+      "name": "getHistoryPath",
+      "uses": [
+        "item-access.ts:2"
+      ],
+      "first": "2026.5.14",
+      "previous": "2026.5.12",
+      "sha256": "7f7e9131afadb891344bf2fb93b15bc157d18c532a5da4ec31677957d37b7260",
+      "previousSha256": "42dcaef84dc441b7792aeffa059bfe10a86ae8b12b1084472229bba03fb29910"
+    },
+    {
+      "kind": "export",
+      "module": "/sdk",
+      "name": "hashDocument",
+      "uses": [
+        "identity.ts:2"
+      ],
+      "first": "2026.7.23",
+      "previous": "2026.7.22",
+      "sha256": "caf1a21b0b587dc55c3509654466dd1e20383e30f2d17b47678887a15a5490af",
+      "previousSha256": "d013832d6afc97c9a5c6f4a48a497f54a216643f8c7017b9c4f807ce6607532b"
+    },
+    {
+      "kind": "export",
+      "module": "/sdk",
+      "name": "inspectCompleteListResult",
+      "uses": [
+        "index.ts:41"
+      ],
+      "first": "2026.8.18",
+      "previous": "2026.8.17",
+      "sha256": "b00374f0e32c98ccec03a5893d8bfbbae45650f44bd04292ceafd8d9aac059f7",
+      "previousSha256": "fda330eb4887031751889ef85b510d52886fa5f70b4813f3951d7eed705023f2"
+    },
+    {
+      "kind": "export",
+      "module": "/sdk",
+      "name": "listAllItemMetadata",
+      "uses": [
+        "index.ts:41"
+      ],
+      "first": "2026.7.13",
+      "previous": "2026.7.12",
+      "sha256": "10d5b0f8787c643cb8caf58f656cc95097f6ac84fcdaa6ff59911780fcd894a5",
+      "previousSha256": "a612224324e3ae91e2fc8c25f83d9a65fc13db66914aeb04ee65e16a523521be"
+    },
+    {
+      "kind": "export",
+      "module": "/sdk",
+      "name": "locateItem",
+      "uses": [
+        "item-access.ts:2"
+      ],
+      "first": "2026.5.14",
+      "previous": "2026.5.12",
+      "sha256": "7f7e9131afadb891344bf2fb93b15bc157d18c532a5da4ec31677957d37b7260",
+      "previousSha256": "42dcaef84dc441b7792aeffa059bfe10a86ae8b12b1084472229bba03fb29910"
+    },
+    {
+      "kind": "export",
+      "module": "/sdk",
+      "name": "parseTags",
+      "uses": [
+        "reconcile.ts:5"
+      ],
+      "first": "2026.5.14",
+      "previous": "2026.5.12",
+      "sha256": "7f7e9131afadb891344bf2fb93b15bc157d18c532a5da4ec31677957d37b7260",
+      "previousSha256": "42dcaef84dc441b7792aeffa059bfe10a86ae8b12b1084472229bba03fb29910"
+    },
+    {
+      "kind": "export",
+      "module": "/sdk",
+      "name": "PmClient",
+      "uses": [
+        "identity.ts:2",
+        "reconcile.ts:5",
+        "transfer.ts:5",
+        "index.ts:41"
+      ],
+      "first": "2026.7.6",
+      "previous": "2026.7.5",
+      "sha256": "0d6e446cf93a0f0660ce4e21943adf1e0c21381010ef67369f40cc9834b8d158",
+      "previousSha256": "4a6664f68120cace5648faf48d51b08c14e969d9c7e185e592f1a0fceae57274"
+    },
+    {
+      "kind": "export",
+      "module": "/sdk",
+      "name": "PmCliError",
+      "uses": [
+        "item-access.ts:2",
+        "identity.ts:2",
+        "index.ts:41"
+      ],
+      "first": "2026.5.14",
+      "previous": "2026.5.12",
+      "sha256": "7f7e9131afadb891344bf2fb93b15bc157d18c532a5da4ec31677957d37b7260",
+      "previousSha256": "42dcaef84dc441b7792aeffa059bfe10a86ae8b12b1084472229bba03fb29910"
+    },
+    {
+      "kind": "export",
+      "module": "/sdk",
+      "name": "preserveMutationStdinTokenFields",
+      "uses": [
+        "identity.ts:2",
+        "reconcile.ts:5",
+        "transfer.ts:5",
+        "index.ts:41"
+      ],
+      "first": "2026.8.24",
+      "previous": "2026.8.23",
+      "sha256": "c334544b8bb73a436b022b95621ef8151381790168800c080ee5cbe81e852b08",
+      "previousSha256": "31fdc154c4af68d64b3d4edc5d47e53c0e0a03f9e69f5b67222d3901bce67592"
+    },
+    {
+      "kind": "export",
+      "module": "/sdk",
+      "name": "readHistorySnapshot",
+      "uses": [
+        "item-access.ts:2"
+      ],
+      "first": "2026.9.8",
+      "previous": "2026.9.7",
+      "sha256": "529c08a4cb65507f86dc3f9b7efd673a031c6491156ae753c0a058d0d48e10bc",
+      "previousSha256": "9befaac9056ce94b2dff006e0fe2329c0b0c18479bf9c9f9027684789387c7ae"
+    },
+    {
+      "kind": "export",
+      "module": "/sdk",
+      "name": "readLocatedItem",
+      "uses": [
+        "item-access.ts:2"
+      ],
+      "first": "2026.5.14",
+      "previous": "2026.5.12",
+      "sha256": "7f7e9131afadb891344bf2fb93b15bc157d18c532a5da4ec31677957d37b7260",
+      "previousSha256": "42dcaef84dc441b7792aeffa059bfe10a86ae8b12b1084472229bba03fb29910"
+    },
+    {
+      "kind": "export",
+      "module": "/sdk",
+      "name": "readSettings",
+      "uses": [
+        "item-access.ts:2",
+        "transfer.ts:5"
+      ],
+      "first": "2026.5.14",
+      "previous": "2026.5.12",
+      "sha256": "7f7e9131afadb891344bf2fb93b15bc157d18c532a5da4ec31677957d37b7260",
+      "previousSha256": "42dcaef84dc441b7792aeffa059bfe10a86ae8b12b1084472229bba03fb29910"
+    },
+    {
+      "kind": "export",
+      "module": "/sdk",
+      "name": "resolveItemTypeRegistry",
+      "uses": [
+        "item-access.ts:2"
+      ],
+      "first": "2026.5.14",
+      "previous": "2026.5.12",
+      "sha256": "7f7e9131afadb891344bf2fb93b15bc157d18c532a5da4ec31677957d37b7260",
+      "previousSha256": "42dcaef84dc441b7792aeffa059bfe10a86ae8b12b1084472229bba03fb29910"
+    },
+    {
+      "kind": "export",
+      "module": "/sdk",
+      "name": "resolveTypeSynonym",
+      "uses": [
+        "reconcile.ts:5"
+      ],
+      "first": "2026.7.23",
+      "previous": "2026.7.22",
+      "sha256": "caf1a21b0b587dc55c3509654466dd1e20383e30f2d17b47678887a15a5490af",
+      "previousSha256": "d013832d6afc97c9a5c6f4a48a497f54a216643f8c7017b9c4f807ce6607532b"
+    },
+    {
+      "kind": "export",
+      "module": "/sdk",
+      "name": "runWithActiveExtensions",
+      "uses": [
+        "identity.ts:2"
+      ],
+      "first": "2026.7.21",
+      "previous": "2026.7.20",
+      "sha256": "99151effed0e40579f01629f135a73384cb8e8f922c6c63da497638507009452",
+      "previousSha256": "6fbc1d789477491e007d03396dbf1dd2f09376220059887faf6f9d50668a6b08"
+    },
+    {
+      "kind": "export",
+      "module": "/sdk",
+      "name": "setActiveExtensionHooks",
+      "uses": [
+        "identity.ts:2"
+      ],
+      "first": "2026.7.23",
+      "previous": "2026.7.22",
+      "sha256": "caf1a21b0b587dc55c3509654466dd1e20383e30f2d17b47678887a15a5490af",
+      "previousSha256": "d013832d6afc97c9a5c6f4a48a497f54a216643f8c7017b9c4f807ce6607532b"
+    },
+    {
+      "kind": "export",
+      "module": "/sdk",
+      "name": "suppressHostOutput",
+      "uses": [
+        "index.ts:41"
+      ],
+      "first": "2026.7.15",
+      "previous": "2026.7.14",
+      "sha256": "1c5d8e7427d74af157577ff58e0692a986016ee355eaf3a6b5ccebca5a9779aa",
+      "previousSha256": "4a42de258a3b1cabff1112dd90ae4f3cc272e25ada229d818becae0f2845e128"
+    },
+    {
+      "kind": "export",
+      "module": "/sdk",
+      "name": "update",
+      "uses": [
+        "identity.ts:2"
+      ],
+      "first": "2026.7.7",
+      "previous": "2026.7.6",
+      "sha256": "c455dbda90d6f5aff55b23517683376ea6ab74d4a1540f3f8274590b1687c47e",
+      "previousSha256": "0d6e446cf93a0f0660ce4e21943adf1e0c21381010ef67369f40cc9834b8d158"
+    },
+    {
+      "kind": "export",
+      "module": "/sdk",
+      "name": "verifyHistoryEntries",
+      "uses": [
+        "item-access.ts:2"
+      ],
+      "first": "2026.7.24",
+      "previous": "2026.7.23",
+      "sha256": "ae7757c7e4b02bf5c0908a7bcfd487926912bc2f71332c68c9e1be4017d796ab",
+      "previousSha256": "caf1a21b0b587dc55c3509654466dd1e20383e30f2d17b47678887a15a5490af"
+    },
+    {
+      "kind": "export",
+      "module": "/sdk",
+      "name": "writeFileAtomic",
+      "uses": [
+        "reconcile.ts:5",
+        "sidecar.ts:6",
+        "transfer.ts:5"
+      ],
+      "first": "2026.5.14",
+      "previous": "2026.5.12",
+      "sha256": "7f7e9131afadb891344bf2fb93b15bc157d18c532a5da4ec31677957d37b7260",
+      "previousSha256": "42dcaef84dc441b7792aeffa059bfe10a86ae8b12b1084472229bba03fb29910"
+    },
+    {
+      "kind": "member",
+      "module": "BeforeMutationHookContext",
+      "name": "before",
+      "uses": [
+        "identity.ts:83"
+      ],
+      "first": "2026.8.2",
+      "previous": "2026.8.1",
+      "sha256": "c9f8e516319ba4d6609ea0272e4fa70360668531c379ec54b29df8aa418293e3",
+      "previousSha256": "242013e81ed2c4329a3cb20d3e70fa58f6dbb627d00c2c1e883562e786850f80"
+    },
+    {
+      "kind": "member",
+      "module": "CommandHandlerContext",
+      "name": "args",
+      "uses": [
+        "reconcile.ts:522",
+        "sidecar.ts:326",
+        "transfer.ts:410",
+        "index.ts:2677",
+        "index.ts:2743",
+        "index.ts:2788"
+      ],
+      "first": "2026.5.1",
+      "previous": "2026.3.12",
+      "sha256": "730de8b79aa0074dc2ca81a54ce37f9aaa0a4167b690c9a62b87d2121a8b37f7",
+      "previousSha256": "4e4e6a33cb45d665f072120e9e1ce25d2e5773e738cbc914b29e8f54367747fb"
+    },
+    {
+      "kind": "member",
+      "module": "CommandHandlerContext",
+      "name": "global",
+      "uses": [
+        "identity.ts:106",
+        "reconcile.ts:513",
+        "transfer.ts:405",
+        "index.ts:2678",
+        "index.ts:2740",
+        "index.ts:2788"
+      ],
+      "first": "2026.5.1",
+      "previous": "2026.3.12",
+      "sha256": "730de8b79aa0074dc2ca81a54ce37f9aaa0a4167b690c9a62b87d2121a8b37f7",
+      "previousSha256": "4e4e6a33cb45d665f072120e9e1ce25d2e5773e738cbc914b29e8f54367747fb"
+    },
+    {
+      "kind": "member",
+      "module": "CommandHandlerContext",
+      "name": "options",
+      "uses": [
+        "identity.ts:106",
+        "reconcile.ts:511",
+        "reconcile.ts:514",
+        "reconcile.ts:528",
+        "reconcile.ts:533",
+        "sidecar.ts:324",
+        "sidecar.ts:325",
+        "sidecar.ts:327",
+        "sidecar.ts:328",
+        "transfer.ts:400",
+        "transfer.ts:406",
+        "transfer.ts:407",
+        "transfer.ts:416",
+        "transfer.ts:419",
+        "transfer.ts:420",
+        "index.ts:2677",
+        "index.ts:2678",
+        "index.ts:2702",
+        "index.ts:2732",
+        "index.ts:2788"
+      ],
+      "first": "2026.5.1",
+      "previous": "2026.3.12",
+      "sha256": "730de8b79aa0074dc2ca81a54ce37f9aaa0a4167b690c9a62b87d2121a8b37f7",
+      "previousSha256": "4e4e6a33cb45d665f072120e9e1ce25d2e5773e738cbc914b29e8f54367747fb"
+    },
+    {
+      "kind": "member",
+      "module": "CommandHandlerContext",
+      "name": "pm_root",
+      "uses": [
+        "identity.ts:106",
+        "reconcile.ts:520",
+        "reconcile.ts:529",
+        "reconcile.ts:532",
+        "transfer.ts:405",
+        "transfer.ts:412",
+        "transfer.ts:419",
+        "index.ts:2678",
+        "index.ts:2702",
+        "index.ts:2743",
+        "index.ts:2788"
+      ],
+      "first": "2026.5.1",
+      "previous": "2026.3.12",
+      "sha256": "730de8b79aa0074dc2ca81a54ce37f9aaa0a4167b690c9a62b87d2121a8b37f7",
+      "previousSha256": "4e4e6a33cb45d665f072120e9e1ce25d2e5773e738cbc914b29e8f54367747fb"
+    },
+    {
+      "kind": "member",
+      "module": "ExtensionApi",
+      "name": "registerCommand",
+      "uses": [
+        "identity.ts:101",
+        "reconcile.ts:542",
+        "sidecar.ts:342",
+        "transfer.ts:435",
+        "index.ts:2652",
+        "index.ts:2685",
+        "index.ts:2746",
+        "index.ts:2747",
+        "index.ts:2791",
+        "index.ts:2792"
+      ],
+      "first": "2026.5.1",
+      "previous": "2026.3.12",
+      "sha256": "730de8b79aa0074dc2ca81a54ce37f9aaa0a4167b690c9a62b87d2121a8b37f7",
+      "previousSha256": "4e4e6a33cb45d665f072120e9e1ce25d2e5773e738cbc914b29e8f54367747fb"
+    },
+    {
+      "kind": "member",
+      "module": "ExtensionApi",
+      "name": "registerExporter",
+      "uses": [
+        "index.ts:2625"
+      ],
+      "first": "2026.5.1",
+      "previous": "2026.3.12",
+      "sha256": "730de8b79aa0074dc2ca81a54ce37f9aaa0a4167b690c9a62b87d2121a8b37f7",
+      "previousSha256": "4e4e6a33cb45d665f072120e9e1ce25d2e5773e738cbc914b29e8f54367747fb"
+    },
+    {
+      "kind": "member",
+      "module": "ExtensionApi",
+      "name": "registerImporter",
+      "uses": [
+        "index.ts:2589"
+      ],
+      "first": "2026.5.1",
+      "previous": "2026.3.12",
+      "sha256": "730de8b79aa0074dc2ca81a54ce37f9aaa0a4167b690c9a62b87d2121a8b37f7",
+      "previousSha256": "4e4e6a33cb45d665f072120e9e1ce25d2e5773e738cbc914b29e8f54367747fb"
+    },
+    {
+      "kind": "member",
+      "module": "ExtensionApi",
+      "name": "registerItemFields",
+      "uses": [
+        "index.ts:2573"
+      ],
+      "first": "2026.5.1",
+      "previous": "2026.3.12",
+      "sha256": "730de8b79aa0074dc2ca81a54ce37f9aaa0a4167b690c9a62b87d2121a8b37f7",
+      "previousSha256": "4e4e6a33cb45d665f072120e9e1ce25d2e5773e738cbc914b29e8f54367747fb"
+    },
+    {
+      "kind": "member",
+      "module": "ImportExportContext",
+      "name": "args",
+      "uses": [
+        "index.ts:2592"
+      ],
+      "first": "2026.5.1",
+      "previous": "2026.3.12",
+      "sha256": "730de8b79aa0074dc2ca81a54ce37f9aaa0a4167b690c9a62b87d2121a8b37f7",
+      "previousSha256": "4e4e6a33cb45d665f072120e9e1ce25d2e5773e738cbc914b29e8f54367747fb"
+    },
+    {
+      "kind": "member",
+      "module": "ImportExportContext",
+      "name": "global",
+      "uses": [
+        "index.ts:2593"
+      ],
+      "first": "2026.5.1",
+      "previous": "2026.3.12",
+      "sha256": "730de8b79aa0074dc2ca81a54ce37f9aaa0a4167b690c9a62b87d2121a8b37f7",
+      "previousSha256": "4e4e6a33cb45d665f072120e9e1ce25d2e5773e738cbc914b29e8f54367747fb"
+    },
+    {
+      "kind": "member",
+      "module": "ImportExportContext",
+      "name": "options",
+      "uses": [
+        "index.ts:2592",
+        "index.ts:2593",
+        "index.ts:2628"
+      ],
+      "first": "2026.5.1",
+      "previous": "2026.3.12",
+      "sha256": "730de8b79aa0074dc2ca81a54ce37f9aaa0a4167b690c9a62b87d2121a8b37f7",
+      "previousSha256": "4e4e6a33cb45d665f072120e9e1ce25d2e5773e738cbc914b29e8f54367747fb"
+    },
+    {
+      "kind": "member",
+      "module": "ImportExportContext",
+      "name": "pm_root",
+      "uses": [
+        "index.ts:2593",
+        "index.ts:2628"
+      ],
+      "first": "2026.5.1",
+      "previous": "2026.3.12",
+      "sha256": "730de8b79aa0074dc2ca81a54ce37f9aaa0a4167b690c9a62b87d2121a8b37f7",
+      "previousSha256": "4e4e6a33cb45d665f072120e9e1ce25d2e5773e738cbc914b29e8f54367747fb"
+    },
+    {
+      "kind": "member",
+      "module": "PmClient",
+      "name": "close",
+      "uses": [
+        "reconcile.ts:464"
+      ],
+      "first": "2026.7.6",
+      "previous": "2026.7.5",
+      "sha256": "0d6e446cf93a0f0660ce4e21943adf1e0c21381010ef67369f40cc9834b8d158",
+      "previousSha256": "4a6664f68120cace5648faf48d51b08c14e969d9c7e185e592f1a0fceae57274"
+    },
+    {
+      "kind": "member",
+      "module": "PmClient",
+      "name": "create",
+      "uses": [
+        "reconcile.ts:455",
+        "transfer.ts:302",
+        "index.ts:1199"
+      ],
+      "first": "2026.7.6",
+      "previous": "2026.7.5",
+      "sha256": "0d6e446cf93a0f0660ce4e21943adf1e0c21381010ef67369f40cc9834b8d158",
+      "previousSha256": "4a6664f68120cace5648faf48d51b08c14e969d9c7e185e592f1a0fceae57274"
+    },
+    {
+      "kind": "member",
+      "module": "PmClient",
+      "name": "get",
+      "uses": [
+        "reconcile.ts:413",
+        "reconcile.ts:441",
+        "reconcile.ts:447"
+      ],
+      "first": "2026.7.6",
+      "previous": "2026.7.5",
+      "sha256": "0d6e446cf93a0f0660ce4e21943adf1e0c21381010ef67369f40cc9834b8d158",
+      "previousSha256": "4a6664f68120cace5648faf48d51b08c14e969d9c7e185e592f1a0fceae57274"
+    },
+    {
+      "kind": "member",
+      "module": "PmClient",
+      "name": "listAllComplete",
+      "uses": [
+        "identity.ts:54",
+        "reconcile.ts:244",
+        "transfer.ts:412",
+        "index.ts:1942"
+      ],
+      "first": "2026.8.18",
+      "previous": "2026.8.17",
+      "sha256": "b00374f0e32c98ccec03a5893d8bfbbae45650f44bd04292ceafd8d9aac059f7",
+      "previousSha256": "fda330eb4887031751889ef85b510d52886fa5f70b4813f3951d7eed705023f2"
+    },
+    {
+      "kind": "member",
+      "module": "PmClient",
+      "name": "restore",
+      "uses": [
+        "reconcile.ts:463"
+      ],
+      "first": "2026.7.7",
+      "previous": "2026.7.6",
+      "sha256": "c455dbda90d6f5aff55b23517683376ea6ab74d4a1540f3f8274590b1687c47e",
+      "previousSha256": "0d6e446cf93a0f0660ce4e21943adf1e0c21381010ef67369f40cc9834b8d158"
+    },
+    {
+      "kind": "member",
+      "module": "PmClient",
+      "name": "schemaAddField",
+      "uses": [
+        "identity.ts:28"
+      ],
+      "first": "2026.7.9",
+      "previous": "2026.7.8",
+      "sha256": "87600f77a82d5e66c8ac05f120b435a0fb22b5fad42ae5db4540bb4ca45a01ea",
+      "previousSha256": "b892cce02e555decd3f0d09af0d2a5d8817494fe577e357ffaea84ef385a9b6a"
+    },
+    {
+      "kind": "member",
+      "module": "PmClient",
+      "name": "schemaListFields",
+      "uses": [
+        "identity.ts:26"
+      ],
+      "first": "2026.7.9",
+      "previous": "2026.7.8",
+      "sha256": "87600f77a82d5e66c8ac05f120b435a0fb22b5fad42ae5db4540bb4ca45a01ea",
+      "previousSha256": "b892cce02e555decd3f0d09af0d2a5d8817494fe577e357ffaea84ef385a9b6a"
+    },
+    {
+      "kind": "member",
+      "module": "PmClient",
+      "name": "update",
+      "uses": [
+        "reconcile.ts:456",
+        "index.ts:1199"
+      ],
+      "first": "2026.7.6",
+      "previous": "2026.7.5",
+      "sha256": "0d6e446cf93a0f0660ce4e21943adf1e0c21381010ef67369f40cc9834b8d158",
+      "previousSha256": "4a6664f68120cace5648faf48d51b08c14e969d9c7e185e592f1a0fceae57274"
+    },
+    {
+      "kind": "member",
+      "module": "WorkspaceTransactionTransitionContext",
+      "name": "transition",
+      "uses": [
+        "reconcile.ts:485"
+      ],
+      "first": "2026.7.19",
+      "previous": "2026.7.18",
+      "sha256": "513e0aead42767a113a26b8b2e2cbb8a22879d0cb0500d4d3cdd16d21d9f7a39",
+      "previousSha256": "44b48fe680cf330254a4ab8d42b55cbcee81ba5cf21e4d4550b40413265d64b9"
+    }
+  ]
+}
