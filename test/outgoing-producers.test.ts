@@ -2,13 +2,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createHash } from 'node:crypto';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { PmClient, preserveMutationStdinTokenFields, type PmClientFullMutationOptions } from '@unbrained/pm-cli/sdk';
 import { ensureBeadIdentityField } from '../identity.ts';
 import { canonicalBeadsRecord, parseBeadsSnapshot, readLiveBeadsSnapshot, acknowledgeBeadsSnapshot,
-  readBeadsAcknowledgement, beadsAcknowledgementDigest, planBeadsReconciliation, applyBeadsReconciliation,
+  readBeadsAcknowledgement, beadsAcknowledgementDigest, BeadsReconcileRefusal, planBeadsReconciliation, applyBeadsReconciliation,
   type BeadsAcknowledgement, type SnapshotRecord } from '../reconcile.ts';
 import { planBeadsTransfer, snapshotBeadsTransferSettings, validateBeadsTransferPlan } from '../transfer.ts';
 import { generateBeadsOutgoingDelta, replayBeadsOutgoingDelta, type BeadsOutgoingDelta } from '../outgoing.ts';
@@ -130,4 +130,27 @@ test('shared schema rejects malformed metadata and layout receipts while allowin
   assert.equal(checkBeadsSchema(null,BEADS_RECORD_SCHEMA),false);
   assert(checkBeadsSchema(record,BEADS_RECORD_SCHEMA));
   validateBeadsSchema([record],BEADS_RECORDS_SCHEMA);validateBeadsSchema(base,BEADS_ACKNOWLEDGEMENT_SCHEMA);
+});
+
+test('shared acknowledgement boundaries preserve corrupt files and refuse oversized sources without writes',async t=>{
+  const dir=await mkdtemp(join(tmpdir(),'beads-ack-boundary-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+  const pmRoot=join(dir,'tracker'),client=new PmClient({pmRoot,noExtensions:true,author:'producer-test'});
+  await client.init('boundary');await client.create({title:'Existing',type:'Task'});
+  const live=await readLiveBeadsSnapshot(pmRoot);
+  const oversized='x'.repeat(257);
+  await assert.rejects(acknowledgeBeadsSnapshot(pmRoot,oversized,live,'producer-test'),error=>error instanceof BeadsReconcileRefusal&&error.code==='invalid_snapshot');
+  assert.equal(await readBeadsAcknowledgement(pmRoot,oversized),null);
+  const baseline=await acknowledgeBeadsSnapshot(pmRoot,'producer',live,'producer-test');
+  const file=join(pmRoot,'beads',createHash('sha256').update(JSON.stringify('producer')).digest('hex')+'.json');
+  const original=await readFile(file,'utf8');
+  const foreign={...baseline,source:'another-source'};foreign.revision=beadsAcknowledgementDigest(foreign);
+  for(const value of [{...baseline,revision:'0'.repeat(64)},foreign]){
+    const corrupted=JSON.stringify(value)+'\n';
+    await writeFile(file,corrupted);
+    await assert.rejects(readBeadsAcknowledgement(pmRoot,'producer'),error=>error instanceof BeadsReconcileRefusal&&error.code==='invalid_snapshot');
+    assert.equal(await readFile(file,'utf8'),corrupted);
+  }
+  await writeFile(file,original);
+  assert.deepEqual(await readBeadsAcknowledgement(pmRoot,'producer'),baseline);
+  assert.deepEqual(await readLiveBeadsSnapshot(pmRoot),live);
 });
