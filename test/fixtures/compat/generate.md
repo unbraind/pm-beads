@@ -1,6 +1,6 @@
 # Released fixture generator
 
-Run this TypeScript program as `generate.ts` beside the extracted npm `package` directory in a scratch directory. Link that directory's `node_modules` and `package/node_modules` to the package's installed, pinned development dependencies. Pass the output fixture directory as the first argument. This executes the published JavaScript, including its CLI extension. It never imports the working branch implementation.
+Run this TypeScript program as `generate.ts` beside the extracted npm `package` directory in a scratch directory. Install `@unbrained/pm-cli@2026.10.20` in that scratch directory with `npm install --ignore-scripts --no-audit --no-fund @unbrained/pm-cli@2026.10.20`, then link `package/node_modules` to the scratch `node_modules`. The captured host version is fixed independently of this branch's current development pins. Pass the output fixture directory as the first argument. This executes the published JavaScript, including its CLI extension. It never imports the working branch implementation.
 
 The generator captures synthetic durable text verbatim before completing each exchange with the old version. Cache and extension directories are omitted. No existing tracker is read or modified. SDK-generated identities, timestamps, history and coordinator receipts are intentionally frozen; regenerate only as a reviewed compatibility-fixture change.
 
@@ -15,6 +15,10 @@ import { spawnSync } from 'node:child_process';
 import { PmClient, WorkspaceTransactionInterruptedError } from '@unbrained/pm-cli/sdk';
 import { planBeadsTransfer, snapshotBeadsTransferSettings, applyBeadsTransfer } from './package/dist/transfer.js';
 import { parseBeadsSnapshot, readLiveBeadsSnapshot, acknowledgeBeadsSnapshot, planBeadsReconciliation, applyBeadsReconciliation } from './package/dist/reconcile.js';
+assert.equal(JSON.parse(await readFile(join(import.meta.dirname,'package','package.json'),'utf8')).version,'2026.10.26');
+for(const hostRoot of [import.meta.dirname,join(import.meta.dirname,'package')]){
+  assert.equal(JSON.parse(await readFile(join(hostRoot,'node_modules','@unbrained','pm-cli','package.json'),'utf8')).version,'2026.10.20');
+}
 const output=process.argv[2],root=await mkdtemp(join(tmpdir(),'beads-released-golden-'));
 const author='compat-test';
 const input=[{id:'𐀀',title:'Astral 𐀀 / BMP A / private  / é',tags:['unicode'],priority:1},{id:'',title:'Private  / astral 𐀀'},{id:'é',title:'Composed é'},{id:'é',title:'Combining é'},{id:'Z',title:'BMP Z',dependencies:['𐀀',''],parent:'𐀀'}].map(r=>JSON.stringify(r)).join('\n');

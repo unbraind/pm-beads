@@ -1,6 +1,6 @@
 # Released compatibility goldens
 
-Captured on 2026-10-26 from the then-latest published `pm-beads@2026.10.26`, obtained with `npm pack pm-beads@latest --pack-destination <scratch> --json`, then extracted with tar. No working-branch producer generated these artifacts. The npm tarball is not committed.
+Captured on 2026-10-26 from the then-latest published `pm-beads@2026.10.26`, obtained with `npm pack pm-beads@latest --pack-destination <scratch> --json`, then extracted with tar. No working-branch producer generated these artifacts. The npm tarball is not committed. The generator pins and verifies the captured SDK host version separately from this branch's current development dependencies.
 
 - npm SHA-1: `2d503a76557768c37eff3ac6a4861129131eb462`
 - npm integrity: `sha512-NnWeui1YXHoWTex8xb1FEjVEZHvChMbtpittwd7WpcmgBfbqpZcLqxlLxplFvw2U5z5uT+d0R4jeL+wE3R8AHg==`
