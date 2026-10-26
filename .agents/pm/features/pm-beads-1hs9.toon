@@ -2,13 +2,15 @@ id: pm-beads-1hs9
 title: Send acknowledged Beads changes as compact field operations
 description: "Generate field operations between two acknowledged Beads snapshots, with explicit removals, source/base digests and a full-snapshot fallback when the base is unavailable. Acceptance: two changed fields among 1,000 records emit exactly two operations plus identity receipts; replay is a no-op; an incorrect base refuses without altering either side. Include typed SDK and CLI, strict bounded validation, property tests, no-git public tracker measurements and npm/Bun CI evidence."
 type: Feature
-status: open
+status: in_progress
 priority: 2
 tags: []
 created_at: "2026-10-25T22:00:36.905Z"
-updated_at: "2026-10-26T22:57:03.093Z"
+updated_at: "2026-10-26T23:04:20.492Z"
+assignee: codex-agent
+claim_principal: codex-agent
 author: codex-agent
-comments[19]{created_at,author,text}:
+comments[20]{created_at,author,text}:
   "2026-10-25T22:01:02.491Z",codex-agent,"Overlap recheck: core SDK history and certified complete reads provide revisions and tracker data; Beads reconciliation consumes full snapshots; pending transfer preserves dependency closure; pm-vcs storage and pm-csv import own different boundaries. None supplies acknowledged outbound field operations. Design: a pure, bounded snapshot protocol reuses Beads acknowledgements and existing normalization, emits explicit unset/remove operations and source/base/target receipts, reconstructs a full snapshot before existing reconciliation. No new mutable outbox, lease, checkpoint or tracker mutation path."
   "2026-10-25T22:09:52.930Z",codex-agent,"Implemented stateless typed outbound generation/replay and CLI aliases. Reused the existing acknowledgement digest in persistence and validation. Exact-base inheritance avoids resending unchanged bindings. Targeted protocol suite: 5 tests pass; outgoing module has 100% measured lines, branches and functions. Public read-only no-git copy: 103 records, exactly 2 operations, 1701-byte delta versus 72261-byte full snapshot, unchanged bytes and source tree, replay/no-base fallback verified, wrong-base refused. Seeded SDK state differential and compiled CLI checks are in progress."
   "2026-10-25T22:11:20.966Z",codex-agent,"Behavioral revert proof: with tests unchanged, reverting only the generateBeadsOutgoingDelta field-change condition to suppress updates makes the 1,000-record acceptance regression fail (expected two field operations, actual zero). Restore passes 5/5; targeted outgoing coverage remains 100% lines/branches/functions. Real compiled CLI passes JSON, TOON, replay and wrong-base checks without git. SDK-configured custom status test passes 32 randomized role registries; transport preserves opaque status values without lifecycle filtering. No mutable shared protocol state exists, so no new lease/journal/retry ownership path is added."
@@ -28,6 +30,7 @@ comments[19]{created_at,author,text}:
   "2026-10-26T22:53:42.030Z",codex-agent,"CI run 40415012844 passed 526/526 tests on both Node versions but correctly failed the unchanged 100 percent branch threshold: reconcile.ts legacy reservation writer branch was not exercised. Add a real SDK regression for a saved schema-1 reconciliation plan before identity bootstrap, proving it allocates and retains the original raw-map format. Existing npm-generated resume fixtures already cover populated legacy journals. No production behavior or threshold changes are needed."
   "2026-10-26T22:54:33.530Z",codex-agent,"Coverage correction verified: compatibility suite 5/5; typecheck, test typecheck and docstring lint pass. New real non-git SDK test saves a schema-1 plan before bootstrap, applies it, and checks the raw reservation map, core identity pins, SDK checkpoint schema/transaction id, final fields and unchanged saved plan bytes. Additional behavioral revert proof: dropping only the schema-1 reservation writer fails this regression (0/1); restoring it passes (1/1). Production code remains byte-identical to the prior pushed compatibility fix. CI 40415012844 was a test-pass/coverage-fail run and is not final release evidence."
   "2026-10-26T22:56:54.285Z",codex-agent,"Final linked verification passed all three commands: outgoing 5/5, producer agreement 4/4, compatibility 5/5 (14 tests, no failures or skips). Typecheck, test typecheck and docstring lint pass. This test-only correction covers the pre-bootstrap schema-1 reservation writer; production sources remain unchanged. The final CI run and exact pushed head will be recorded in the PR body after all npm and Bun release gates pass."
+  "2026-10-26T23:04:20.492Z",codex-agent,"CI 40416371748 passed 527/527 tests and 100 percent measured coverage, then failed changelog:check because the pull-request merge context has the published 2026.10.26 base while the branch still has the older package manifest. Align the feature branch with origin/main and regenerate the changelog in that context. Preserve append-only pm history and use any required merge receipt command once; no merge-driver product work. This run is not final full-gate evidence."
 files[14]{path,scope}:
   contracts.ts,project
   index.ts,project
