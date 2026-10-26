@@ -643,7 +643,7 @@ New transfer and reconciliation plans use schema 2 and strict code-point identit
 | Artifact | Preserved version rules |
 | --- | --- |
 | Transfer plan | Schema 1 retains released UTF-16 selection, topology and dependency ordering; schema 2 uses code points. |
-| Transfer identity journal | Schema matches its owning plan, with the same original digest, reserved core ids and SDK hash pins. |
+| Transfer identity journal | Schema matches its owning plan, with the same original digest and reserved core ids. Existing SDK and legacy document-hash pins retain their own validation rules and are never upgraded by verification. |
 | Reconciliation plan | Schema 1 retains released snapshot collation, UTF-16 change/dependency ordering and tracker revision; schema 2 uses code points. |
 | Reconciliation identity journal | Historical raw maps are implicit schema 1 under a schema-1 plan; new schema-2 envelopes carry explicit schema, digest and rows. |
 | Acknowledgement / outgoing receipt | Existing schema 1 preserves exact record/property order and hashes. Consumers verify the stored representation without sorting or normalization. |

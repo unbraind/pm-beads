@@ -6,6 +6,7 @@ import { mkdtemp, mkdir, readFile, writeFile, rm, readdir } from 'node:fs/promis
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { PmClient } from '@unbrained/pm-cli/sdk';
+import { readBeadsItemDocument } from '../item-access.ts';
 import { validateBeadsTransferPlan, planBeadsTransfer, applyBeadsTransfer, type BeadsTransferPlan } from '../transfer.ts';
 import { applyBeadsReconciliation, readLiveBeadsSnapshot, readBeadsAcknowledgement, beadsAcknowledgementDigest,
   reconcileBeadsSnapshots, acknowledgeBeadsSnapshot, parseBeadsSnapshot, type BeadsReconcilePlan, type BeadsAcknowledgement, type SnapshotRecord } from '../reconcile.ts';
@@ -134,4 +135,29 @@ test('unstarted schema-1 reconciliation plans allocate legacy reservations once 
   assert.equal(await readFile(file,'utf8'),JSON.stringify(original)+'\n');
   const checkpoint=JSON.parse(await readFile(join(pmRoot,'transactions','sdk','beads-reconcile-'+plan.digest+'-identity.json'),'utf8')) as {schemaVersion:number;transactionId:string};
   assert.equal(checkpoint.schemaVersion,1);assert.equal(checkpoint.transactionId,'beads-reconcile-'+original.digest+'-identity');
+});
+
+
+test('schema-1 document-hash identity pins retain their original digest and format through completion and replay',async t=>{
+  const golden=await load('cli-transfer'),pmRoot=await restore(t,golden),plan=golden.plan as BeadsTransferPlan;
+  const partial=await applyBeadsTransfer(pmRoot,plan,'compat-test',{maxChunks:2});
+  assert.equal(partial.complete,false);assert.equal(partial.transferred,3);
+  const file=join(pmRoot,'transactions','beads-transfer',plan.digest+'.json');
+  const journal=JSON.parse(await readFile(file,'utf8')) as {schema:1;digest:string;rows:Record<string,{pmId:string;itemHash:string|null;hashKind?:'sdk'}>};
+  const id='𐀀',pin=journal.rows[id];assert(pin.itemHash);
+  // The remaining dependent must inspect this pin before its own create/journal write.
+  // This supported older receipt predates hashKind; its hash comes from an SDK document read.
+  pin.itemHash=createHash('sha256').update(JSON.stringify(await readBeadsItemDocument(pmRoot,pin.pmId))).digest('hex');
+  delete pin.hashKind;
+  await writeFile(file,JSON.stringify(journal)+'\n');
+  const originalPin=structuredClone(pin),originalPlan=JSON.stringify(plan);
+  const result=await applyBeadsTransfer(pmRoot,plan,'compat-test',{maxChunks:10});
+  assert.equal(result.complete,true);assert.equal(result.skipped,0);assert.equal(result.digest,journal.digest);
+  const completed=JSON.parse(await readFile(file,'utf8')) as typeof journal;
+  assert.equal(completed.schema,1);assert.equal(completed.digest,journal.digest);assert.deepEqual(completed.rows[id],originalPin);
+  assert.deepEqual(await state(pmRoot),golden.expected);
+  const beforeReplay=await readFile(file,'utf8');
+  const replay=await applyBeadsTransfer(pmRoot,plan,'compat-test',{maxChunks:10});
+  assert.equal(replay.replayedChunks,replay.totalChunks);assert.equal(replay.digest,plan.digest);
+  assert.equal(await readFile(file,'utf8'),beforeReplay);assert.equal(JSON.stringify(plan),originalPlan);
 });

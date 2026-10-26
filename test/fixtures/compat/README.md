@@ -28,3 +28,5 @@ a1c2493afe554207ec2a0d1e6d3718cec5f1843d27452ae0da5cdf36dd4929b5  sdk-transfer.j
 ```
 
 Normal tests never regenerate these files or fetch npm. Run `node --test --test-concurrency=2 test/compat.test.ts`.
+
+A separate compatibility regression restores the released CLI fixture, advances its original plan to a dependency boundary, and encodes one completed pin in the supported older document-hash representation using a real SDK document read. Completion and replay must preserve that pin verbatim. This controlled older-format variant is created only in the scratch test; the published-package golden files and their hashes remain unchanged.

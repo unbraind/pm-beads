@@ -246,10 +246,11 @@ async function ownership(pmRoot: string, plan: BeadsTransferPlan, id: string, pi
     if (!history.verification?.ok) return "changed";
     const itemHash = history.verification.current_item_hash;
     if (pin.itemHash) {
-      // Older ledgers hashed the serialized canonical document. Verify that pin
-      // once before upgrading it to the SDK's own verified document digest.
+      // Older ledgers hashed the serialized canonical document. Validate with
+      // that receipt's rules and preserve it; verification never migrates pins.
       const expected = pin.hashKind === "sdk" ? itemHash : hash(await readBeadsItemDocument(pmRoot, pin.pmId, history));
       if (pin.itemHash !== expected) return "changed";
+      return "owned";
     }
     // An intent written before create recovers the narrow create-to-ledger crash gap.
     // Only an unchanged initial creation can complete that intent.
