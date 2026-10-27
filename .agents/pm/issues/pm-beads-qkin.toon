@@ -1,12 +1,14 @@
 id: pm-beads-qkin
-title: Point the npm homepage at the package catalog and link the author
-description: Apply the owner-requested package homepage and linked author metadata; verify the matching GitHub repository website. Published npm metadata updates with the next release.
-type: Chore
-status: in_progress
+title: Point the npm homepage at the package's website and link the author
+description: "GH issue #175: https://github.com/unbraind/pm-beads/issues/175 · author @unbraind · state reason completed · created 2026-10-25T21:54:18Z · updated 2026-10-26T08:22:01Z"
+type: Issue
+status: closed
 priority: 2
-tags[1]: "gh:unbraind/pm-beads#175"
+tags[2]: "gh:unbraind/pm-beads#175","github_author:unbraind"
 created_at: "2026-10-26T06:47:37.147Z"
-updated_at: "2026-10-26T07:26:16.733Z"
+updated_at: "2026-10-27T07:54:44.343Z"
+closed_at: "2026-10-27T07:54:44.339Z"
+completed_at: "2026-10-26T08:22:01.000Z"
 author: codex-agent
 acceptance_criteria: Package homepage points to its catalog page; author links to the about page; repository and bugs remain unchanged; GitHub website matches; local manifest checks pass.
 comments[4]{created_at,author,text}:
@@ -23,4 +25,5 @@ tests[3]{command,scope,provenance{author,created_at,source_kind,source_ref}}:
   node --test test/package-metadata.test.ts,project,codex-agent,"2026-10-26T07:26:12.172Z",local_mutation,chore/npm-homepage-author
 docs[1]{path,scope}:
   CHANGELOG.md,project
-body: ""
+close_reason: GitHub issue #175 closed
+body: "## Why\n\nOn npm, `pm-beads` links **Homepage** to `https://github.com/unbraind/pm-beads#readme`, the same place as the Repository link beside it. The package has its page in the pm cli package catalog: https://pm-cli.unbrained.dev/packages/pm-beads. Pointing npm there gives people a useful place to land and lets search engines tie the package to its website. The author field (`\"@unbraind\"`) has no link to the person behind the work.\n\n## What to change\n\nIn `package.json`:\n\n```json\n\"homepage\": \"https://pm-cli.unbrained.dev/packages/pm-beads\",\n\"author\": { \"name\": \"unbrained\", \"url\": \"https://unbrained.dev/about\" },\n```\n\n- Currently: `\"homepage\": \"https://github.com/unbraind/pm-beads#readme\"`, `\"author\": \"@unbraind\"`.\n- Keep `repository` and `bugs` as they are.\n- Set the repository's GitHub website (About → Website) to the same address (currently empty): `gh repo edit unbraind/pm-beads --homepage https://pm-cli.unbrained.dev/packages/pm-beads`.\n- npm takes the new fields with the next published version.\n\n## Acceptance\n\n- [ ] `npm view pm-beads homepage` prints `https://pm-cli.unbrained.dev/packages/pm-beads` after the next release.\n- [ ] `npm view pm-beads author` includes the url `https://unbrained.dev/about`.\n- [ ] The GitHub repository's website is `https://pm-cli.unbrained.dev/packages/pm-beads`.\n\n## Context\n\nChecked 2026-10-25 with `npm view` and the GitHub API. The same change has been filed in every published unbrained package's repository (pm-cli as unbraind/pm-cli#1594, its extensions, pm-web and the agent-ready clis), so they all link the same way: the product page as homepage, https://unbrained.dev/about as the author."
