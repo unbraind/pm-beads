@@ -2,13 +2,18 @@ id: pm-beads-1hs9
 title: Send acknowledged Beads changes as compact field operations
 description: "Generate field operations between two acknowledged Beads snapshots, with explicit removals, source/base digests and a full-snapshot fallback when the base is unavailable. Acceptance: two changed fields among 1,000 records emit exactly two operations plus identity receipts; replay is a no-op; an incorrect base refuses without altering either side. Include typed SDK and CLI, strict bounded validation, property tests, no-git public tracker measurements and npm/Bun CI evidence."
 type: Feature
-status: open
+status: closed
 priority: 2
 tags: []
 created_at: "2026-10-25T22:00:36.905Z"
-updated_at: "2026-10-26T23:50:07.506Z"
+updated_at: "2026-10-27T08:54:48.772Z"
+closed_at: "2026-10-27T08:54:47.651Z"
+completed_at: "2026-10-27T00:15:46.000Z"
 author: codex-agent
-comments[27]{created_at,author,text}:
+resolution: "Merged PR #176 at 5e2b449c135875b4e99e11cbabd55a5a93eb0283; inspected outgoing.ts and ran node --test --test-concurrency=2 test/outgoing.test.ts test/outgoing-properties.test.ts on main. Exactly two operations across 1000 records, no-op replay, wrong-base refusal, explicit removals/fallback, strict schemas and 512 SDK-readback sequences."
+expected_result: "Generate field operations between two acknowledged Beads snapshots, with explicit removals, source/base digests and a full-snapshot fallback when the base is unavailable. Acceptance: two changed fields among 1,000 records emit exactly two operations plus identity receipts; replay is a no-op; an incorrect base refuses without altering either side. Include typed SDK and CLI, strict bounded validation, property tests, no-git public tracker measurements and npm/Bun CI evidence."
+actual_result: "Exactly two operations across 1000 records, no-op replay, wrong-base refusal, explicit removals/fallback, strict schemas and 512 SDK-readback sequences."
+comments[29]{created_at,author,text}:
   "2026-10-25T22:01:02.491Z",codex-agent,"Overlap recheck: core SDK history and certified complete reads provide revisions and tracker data; Beads reconciliation consumes full snapshots; pending transfer preserves dependency closure; pm-vcs storage and pm-csv import own different boundaries. None supplies acknowledged outbound field operations. Design: a pure, bounded snapshot protocol reuses Beads acknowledgements and existing normalization, emits explicit unset/remove operations and source/base/target receipts, reconstructs a full snapshot before existing reconciliation. No new mutable outbox, lease, checkpoint or tracker mutation path."
   "2026-10-25T22:09:52.930Z",codex-agent,"Implemented stateless typed outbound generation/replay and CLI aliases. Reused the existing acknowledgement digest in persistence and validation. Exact-base inheritance avoids resending unchanged bindings. Targeted protocol suite: 5 tests pass; outgoing module has 100% measured lines, branches and functions. Public read-only no-git copy: 103 records, exactly 2 operations, 1701-byte delta versus 72261-byte full snapshot, unchanged bytes and source tree, replay/no-base fallback verified, wrong-base refused. Seeded SDK state differential and compiled CLI checks are in progress."
   "2026-10-25T22:11:20.966Z",codex-agent,"Behavioral revert proof: with tests unchanged, reverting only the generateBeadsOutgoingDelta field-change condition to suppress updates makes the 1,000-record acceptance regression fail (expected two field operations, actual zero). Restore passes 5/5; targeted outgoing coverage remains 100% lines/branches/functions. Real compiled CLI passes JSON, TOON, replay and wrong-base checks without git. SDK-configured custom status test passes 32 randomized role registries; transport preserves opaque status values without lifecycle filtering. No mutable shared protocol state exists, so no new lease/journal/retry ownership path is added."
@@ -36,6 +41,8 @@ comments[27]{created_at,author,text}:
   "2026-10-26T23:27:14.110Z",codex-agent,"The immutable-pin early return makes the later !pin.itemHash guard redundant: only null intents reach that block. Remove that unreachable short-circuit alternative before the final coverage gate, keeping the single-entry crash-gap check. Recheck legacy pins and null-intent recovery with focused real-SDK cases; no additional format or migration changes."
   "2026-10-26T23:31:32.713Z",codex-agent,"After simplifying the null-intent guard, focused legacy-pin/crash-gap cases pass 3/3; all four linked commands pass 18 test executions (outgoing 5, producer agreement 4, compatibility 6, focused recovery 3). Typecheck, test typecheck and docstring lint pass. Keep the item claimed/in progress through code validation; record the full 528-test release-gate result before releasing the claim. The final evidence-only commit will also receive clean CI gates. The previous 240010d CI run was superseded by this guard cleanup and canceled rather than counted as release evidence."
   "2026-10-26T23:50:01.002Z",codex-agent,"Verified code-head release evidence: https://github.com/unbraind/pm-beads/actions/runs/40420467966 at 04359779b8ac0e368d20a14b01e26e66d185ba67. npm and Bun on Node 22 and 26 each passed 528/528 tests, with zero failures, skips, cancellations or todos. All four gates report 100 percent measured lines, branches and functions for all 16 intended sources. Fresh-clone strict health and Bun graph installation also passed. Verified all four runs include the 512 native mutation/export/delta/reconciliation model, 512 Unicode identity sets, 512 versioned-order sets, released CLI/SDK/acknowledgement fixtures, unstarted v1 reservations and unchanged legacy document-hash pins. Four behavioral revert proofs are recorded; local compatibility 6/6, transfer plus compatibility 17/17, focused recovery 3/3 and linked executions 18/18 pass. Real public snapshot evidence remains 103 records, two operations, 1701-byte delta versus 86596-byte full snapshot, metadata retained and source unchanged. Implementation and review evidence are complete; release this claim without closing the item. The evidence-only follow-up commit changes tracker state, and its final CI will be linked in the PR."
+  "2026-10-27T08:45:41.942Z",codex-agent,"Closure audit: verify every acceptance criterion on current main against merged PR #176 (5e2b449c135875b4e99e11cbabd55a5a93eb0283), inspect outgoing.ts, and run the focused linked check before closing. Completion will be the merge timestamp 2026-10-27T00:15:46Z."
+  "2026-10-27T08:54:46.462Z",codex-agent,"Merged PR #176 at 5e2b449c135875b4e99e11cbabd55a5a93eb0283; inspected outgoing.ts and ran node --test --test-concurrency=2 test/outgoing.test.ts test/outgoing-properties.test.ts on main. Exactly two operations across 1000 records, no-op replay, wrong-base refusal, explicit removals/fallback, strict schemas and 512 SDK-readback sequences. Full unchanged npm and Bun release gates run in CI for this tracker-only closure PR; prior behavioral revert evidence remains in the merged implementation history."
 files[14]{path,scope}:
   contracts.ts,project
   index.ts,project
@@ -51,13 +58,48 @@ files[14]{path,scope}:
   test/outgoing.test.ts,project
   test/public-outgoing-validation.ts,project
   transfer.ts,project
-tests[4]{command,scope,provenance{author,created_at,source_kind,source_ref}}:
-  node --test test/outgoing.test.ts,project,codex-agent,"2026-10-25T22:09:57.478Z",local_mutation,feat/acknowledged-outgoing-deltas
-  node --test test/outgoing-producers.test.ts,project,codex-agent,"2026-10-26T05:01:45.297Z",local_mutation,feat/acknowledged-outgoing-deltas
-  node --test --test-concurrency=2 test/compat.test.ts,project,codex-agent,"2026-10-26T22:40:15.132Z",local_mutation,feat/acknowledged-outgoing-deltas
-  node --test --test-concurrency=2 --test-name-pattern='document-hash identity|creation-to-journal interruption|SDK hash pins' test/compat.test.ts test/transfer.test.ts test/transfer-properties.test.ts,project,codex-agent,"2026-10-26T23:29:23.803Z",local_mutation,feat/acknowledged-outgoing-deltas
+tests[5]:
+  - command: node --test test/outgoing.test.ts
+    scope: project
+    provenance:
+      author: codex-agent
+      created_at: "2026-10-25T22:09:57.478Z"
+      source_kind: local_mutation
+      source_ref: feat/acknowledged-outgoing-deltas
+  - command: node --test test/outgoing-producers.test.ts
+    scope: project
+    provenance:
+      author: codex-agent
+      created_at: "2026-10-26T05:01:45.297Z"
+      source_kind: local_mutation
+      source_ref: feat/acknowledged-outgoing-deltas
+  - command: node --test --test-concurrency=2 test/compat.test.ts
+    scope: project
+    provenance:
+      author: codex-agent
+      created_at: "2026-10-26T22:40:15.132Z"
+      source_kind: local_mutation
+      source_ref: feat/acknowledged-outgoing-deltas
+  - command: node --test --test-concurrency=2 --test-name-pattern='document-hash identity|creation-to-journal interruption|SDK hash pins' test/compat.test.ts test/transfer.test.ts test/transfer-properties.test.ts
+    scope: project
+    provenance:
+      author: codex-agent
+      created_at: "2026-10-26T23:29:23.803Z"
+      source_kind: local_mutation
+      source_ref: feat/acknowledged-outgoing-deltas
+  - command: node --test --test-concurrency=2 test/outgoing.test.ts test/outgoing-properties.test.ts
+    scope: project
+    timeout_seconds: 600
+    pm_context_mode: tracker
+    workspace_context_mode: source
+    provenance:
+      author: codex-agent
+      created_at: "2026-10-27T08:45:47.226Z"
+      source_kind: local_mutation
+      source_ref: chore/close-delivered-1027
 docs[3]{path,scope}:
   examples/acknowledged-outgoing-deltas.md,project
   README.md,project
   test/fixtures/compat/README.md,project
+close_reason: Delivered on main by merged PR #176
 body: ""
