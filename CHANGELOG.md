@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Send acknowledged Beads changes as compact field operations ([pm-beads-1hs9](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/features/pm-beads-1hs9.toon))
+
 ## 2026.10.27 - 2026-10-27
 
 ### Fixed
