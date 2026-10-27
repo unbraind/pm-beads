@@ -93,7 +93,7 @@ test('bounded drain resumes chunks without duplicates, resolves cross-chunk link
   const replay = await applyBeadsTransfer(pmRoot, p, 'third-agent');
   assert.equal(replay.replayedChunks, 2); assert.equal(replay.complete, true); assert.equal(replay.skipped, 1);
   assert.deepEqual(await Promise.all(items.map(i => readFile(getHistoryPath(pmRoot, i.id), 'utf8'))), histories);
-  for (const invalid of [{ ...p, digest: 'bad' }, { ...p, schema: 2 }, { ...p, records: null }, { ...p, limits: { ...p.limits, chunkSize: 0 } }, null]) {
+  for (const invalid of [{ ...p, digest: 'bad' }, { ...p, schema: 3 }, { ...p, records: null }, { ...p, limits: { ...p.limits, chunkSize: 0 } }, null]) {
     await assert.rejects(applyBeadsTransfer(pmRoot, invalid as unknown as BeadsTransferPlan, 'test'), refusal('invalid_plan'));
   }
   for (const options of [{ maxChunks: 0 }, { lockWaitMs: 0 }]) await assert.rejects(applyBeadsTransfer(pmRoot, p, 'test', options), refusal('invalid_input'));

@@ -169,7 +169,7 @@ test("a successful import wires blocker edges and parent links to the created id
     const parentUpdate = updates.find((argv) => argv.includes("--parent"))!;
     assert.ok(parentUpdate.includes("pm-stub-1"), "parent link resolves via beadToPm");
     const firstCreate = s.logLines().find((argv) => argv.includes("create"))!;
-    for (const flag of ["--priority", "1", "--tags", "core", "--assignee", "ana", "--sprint", "S1", "--release", "R1", "--deadline"]) {
+    for (const flag of ["--priority", "1", "--tags", '["core"]', "--assignee", "ana", "--sprint", "S1", "--release", "R1", "--deadline"]) {
       assert.ok(firstCreate.includes(flag), `create carries ${flag}`);
     }
   } finally {

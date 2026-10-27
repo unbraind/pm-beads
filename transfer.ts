@@ -1,4 +1,5 @@
 /** Dependency-closed, resumable Beads creation using the host's durable transaction journals. */
+import { compareBeadsIdentities } from "./snapshot-schema.ts";
 import { createHash } from "node:crypto";
 import { readFile, readdir, mkdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -23,7 +24,7 @@ export const BEADS_TRANSFER_LIMITS = { maxRows: 1000, maxEdges: 4000, maxBytes: 
 export interface BeadsTransferLimits { maxRows: number; maxEdges: number; maxBytes: number; chunkSize: number }
 /** Portable immutable input; the digest identifies one exact exchange, including source and bounds. */
 export interface BeadsTransferPlan {
-  schema: 1; source: string; selected: string[]; limits: BeadsTransferLimits;
+  schema: 1 | 2; source: string; selected: string[]; limits: BeadsTransferLimits;
   records: SnapshotRecord[]; settings: BeadsTransferSettings; digest: string;
 }
 /** Non-secret creation configuration plus hashes of optional ambient inputs. */
@@ -33,7 +34,7 @@ export interface BeadsTransferSettings {
 /** Exact identity intent and immutable creation hash retained independently of chunk completion. */
 interface TransferIdentity { pmId: string; itemHash: string | null; hashKind?: "sdk" }
 /** One durable exchange ledger; the SDK writer lease protects all reads and writes during mutation. */
-interface TransferJournal { schema: 1; digest: string; rows: Record<string, TransferIdentity> }
+interface TransferJournal { schema: 1 | 2; digest: string; rows: Record<string, TransferIdentity> }
 /** Categories callers can handle without parsing prose. */
 export type BeadsTransferRefusalCode = "invalid_input" | "closure_limit" | "missing_selection" | "invalid_plan" | "plan_settings_changed" | "invalid_journal" | "busy";
 /** Bounded evidence accompanying a refusal; a refused plan never transfers a partial closure. */
@@ -94,10 +95,10 @@ function references(row: SnapshotRecord): string[] {
   return [...new Set([...(JSON.parse(row.fields.dependencies) as string[]), ...(row.fields.parent ? [row.fields.parent] : [])])];
 }
 /** Build the bounded transitive closure and deterministic dependency-first ordering. */
-function buildPlan(records: SnapshotRecord[], selected: readonly string[], source: string, limits: BeadsTransferLimits, settings: BeadsTransferSettings): BeadsTransferPlan {
+function buildPlan(records: SnapshotRecord[], selected: readonly string[], source: string, limits: BeadsTransferLimits, settings: BeadsTransferSettings, schema: 1 | 2): BeadsTransferPlan {
   if (typeof source !== "string" || !source.trim() || source.length > 128 || !Array.isArray(selected) || !selected.length ||
       selected.some(id => typeof id !== "string" || !id.trim())) refuse("invalid_input", "Choose a stable source name (up to 128 characters) and at least one exact Beads id.");
-  const seeds = [...new Set(selected)].sort();
+  const seeds = [...new Set(selected)].sort(schema === 1 ? undefined : compareBeadsIdentities);
   if (seeds.some(id => id.length > 128) || records.some(row => row.id.length > 128)) refuse("invalid_input", "Keep Beads ids at or below 128 characters for bounded agent receipts.");
   const byId = new Map(records.map(row => [row.id, row]));
   const closure = new Map<string, SnapshotRecord>();
@@ -118,7 +119,7 @@ function buildPlan(records: SnapshotRecord[], selected: readonly string[], sourc
   const remaining = new Map([...closure].map(([id, row]) => [id, new Set(references(row))]));
   const ordered: SnapshotRecord[] = [];
   while (remaining.size) {
-    const ready = [...remaining].filter(([, refs]) => !refs.size).map(([id]) => id).sort();
+    const ready = [...remaining].filter(([, refs]) => !refs.size).map(([id]) => id).sort(schema === 1 ? undefined : compareBeadsIdentities);
     if (!ready.length) refuse("invalid_input", "Remove cyclic parent/dependency relationships before planning the transfer.");
     for (const id of ready) {
       ordered.push(closure.get(id)!); remaining.delete(id);
@@ -126,12 +127,16 @@ function buildPlan(records: SnapshotRecord[], selected: readonly string[], sourc
     }
   }
   enforce(Buffer.byteLength(JSON.stringify(ordered)), limits.maxBytes, "maxBytes");
-  const plan: BeadsTransferPlan = { schema: 1, source, selected: seeds, limits, records: ordered, settings, digest: "" };
+  const plan: BeadsTransferPlan = { schema, source, selected: seeds, limits, records: ordered, settings, digest: "" };
   plan.digest = hash({ ...plan, digest: "" });
   return plan;
 }
 /** Parse with the existing Beads structural validator, then plan a complete creation-only exchange. */
 export function planBeadsTransfer(text: string, selected: readonly string[], source: string, settings: BeadsTransferSettings, options: Partial<BeadsTransferLimits> = {}): BeadsTransferPlan {
+  return planVersion(text, selected, source, settings, options, 2);
+}
+/** Parse controls under the saved version without upgrading its canonical bytes. */
+function planVersion(text: string, selected: readonly string[], source: string, settings: BeadsTransferSettings, options: Partial<BeadsTransferLimits>, schema: 1 | 2): BeadsTransferPlan {
   if (!settings || Object.keys(settings).sort().join() !== "configuration,focus,idPrefix,templates" ||
       Object.values(settings).some(field => typeof field !== "string")) refuse("invalid_input", "Snapshot the receiving tracker settings before planning this transfer.");
   const limits: BeadsTransferLimits = {
@@ -142,9 +147,9 @@ export function planBeadsTransfer(text: string, selected: readonly string[], sou
   };
   enforce(Buffer.byteLength(text), 16_777_216, "inputBytes");
   let records: SnapshotRecord[];
-  try { records = parseBeadsSnapshot(text); }
+  try { records = parseBeadsSnapshot(text, schema); }
   catch { return refuse("invalid_input", "Run beads validate and repair invalid JSONL, duplicate ids, unsupported statuses or dangling dependencies before planning."); }
-  return buildPlan(records, selected, source, limits, settings);
+  return buildPlan(records, selected, source, limits, settings, schema);
 }
 /** Reconstitute supported Beads fields so a loaded plan passes through the original parser again. */
 function toBead(row: SnapshotRecord): BeadsItem {
@@ -154,15 +159,15 @@ function toBead(row: SnapshotRecord): BeadsItem {
 /** Validate untrusted saved plans, including canonical fields, topology, limits and the digest. */
 export function validateBeadsTransferPlan(value: BeadsTransferPlan): BeadsTransferPlan {
   try {
-    if (value.schema !== 1 || !Array.isArray(value.records)) throw new Error("shape");
+    if ((value.schema !== 1 && value.schema !== 2) || !Array.isArray(value.records)) throw new Error("shape");
     const text = value.records.map(row => JSON.stringify(toBead(row))).join("\n");
-    const parsed = planBeadsTransfer(text, value.selected, value.source, value.settings, value.limits);
+    const parsed = planVersion(text, value.selected, value.source, value.settings, value.limits, value.schema);
     // Descriptions are already normalized at the JSONL boundary. Validate their type,
     // then carry them verbatim rather than destructively stripping another marker.
     for (const row of value.records) if (typeof row.fields.description !== "string") throw new Error("description");
     const descriptions = new Map(value.records.map(row => [row.id, row.fields.description]));
     const fresh = buildPlan(parsed.records.map(row => ({ ...row, fields: { ...row.fields, description: descriptions.get(row.id)! } })),
-      parsed.selected, parsed.source, parsed.limits, value.settings);
+      parsed.selected, parsed.source, parsed.limits, value.settings, value.schema);
     if (JSON.stringify(fresh) !== JSON.stringify(value)) throw new Error("digest");
     return fresh;
   } catch { return refuse("invalid_plan", "Generate a fresh plan with --plan-out; preserve the original plan to resume its existing checkpoints."); }
@@ -208,7 +213,7 @@ async function readJournal(pmRoot: string, plan: BeadsTransferPlan): Promise<Tra
   if (!text) return undefined;
   try {
     const journal = JSON.parse(text) as TransferJournal;
-    if (journal.schema !== 1 || journal.digest !== plan.digest || Object.keys(journal.rows).length !== plan.records.length ||
+    if (journal.schema !== plan.schema || journal.digest !== plan.digest || Object.keys(journal.rows).length !== plan.records.length ||
         plan.records.some(row => { const pin = journal.rows[row.id]; return !pin || typeof pin.pmId !== "string" || !pin.pmId ||
           !(pin.itemHash === null || typeof pin.itemHash === "string" && /^[a-f0-9]{64}$/.test(pin.itemHash)) ||
           !(pin.hashKind === undefined || pin.hashKind === "sdk"); }) ||
@@ -241,14 +246,15 @@ async function ownership(pmRoot: string, plan: BeadsTransferPlan, id: string, pi
     if (!history.verification?.ok) return "changed";
     const itemHash = history.verification.current_item_hash;
     if (pin.itemHash) {
-      // Older ledgers hashed the serialized canonical document. Verify that pin
-      // once before upgrading it to the SDK's own verified document digest.
+      // Older ledgers hashed the serialized canonical document. Validate with
+      // that receipt's rules and preserve it; verification never migrates pins.
       const expected = pin.hashKind === "sdk" ? itemHash : hash(await readBeadsItemDocument(pmRoot, pin.pmId, history));
       if (pin.itemHash !== expected) return "changed";
+      return "owned";
     }
     // An intent written before create recovers the narrow create-to-ledger crash gap.
     // Only an unchanged initial creation can complete that intent.
-    if (!pin.itemHash && history.entries.length !== 1) return "changed";
+    if (history.entries.length !== 1) return "changed";
     pin.itemHash = itemHash; pin.hashKind = "sdk";
     return "owned";
   } catch { return "foreign"; }
@@ -341,7 +347,7 @@ export async function applyBeadsTransfer(pmRoot: string, input: BeadsTransferPla
         const reserved = new Set<string>();
         const rows: [string, TransferIdentity][] = [];
         for (const row of plan.records) rows.push([row.id, { pmId: await allocateBeadsItemId(pmRoot, reserved), itemHash: null }]);
-        await saveJournal(pmRoot, plan, { schema: 1, digest: plan.digest, rows: Object.fromEntries(rows) });
+        await saveJournal(pmRoot, plan, { schema: plan.schema, digest: plan.digest, rows: Object.fromEntries(rows) });
       }, compensate: preserveBeadsProgress }],
       onTransition: options.onIdentityTransition,
     });
