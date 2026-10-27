@@ -2,9 +2,19 @@
 
 ## Unreleased
 
+### Fixed
+
+- Point the npm homepage at the package's website and link the author ([pm-beads-qkin](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-qkin.toon))
+
 ### Other
 
 - Use SDK certification for complete Beads workspace reads ([pm-beads-hsjo](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-hsjo.toon))
+
+### Closed
+
+- Closed: Daily Release workflow is failing ([pm-beads-github-be8d2d927676-172](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-github-be8d2d927676-172.toon))
+- Closed: Daily Release workflow is failing ([pm-beads-github-be8d2d927676-162](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-github-be8d2d927676-162.toon))
+- Closed: Daily Release workflow is failing ([pm-beads-github-be8d2d927676-181](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-github-be8d2d927676-181.toon))
 
 ## 2026.10.26 - 2026-10-26
 
