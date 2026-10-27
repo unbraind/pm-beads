@@ -1,0 +1,14 @@
+id: pm-beads-github-be8d2d927676-181
+title: Daily Release workflow is failing
+description: "GH issue #181: https://github.com/unbraind/pm-beads/issues/181 · author @github-actions[bot] · state reason completed · created 2026-10-26T10:48:57Z · updated 2026-10-26T14:42:35Z"
+type: Issue
+status: closed
+priority: 2
+tags[3]: "gh:unbraind/pm-beads#181","github_author:github-actions[bot]",release-failure
+created_at: "2026-10-27T07:54:44.362Z"
+updated_at: "2026-10-27T07:54:44.443Z"
+closed_at: "2026-10-27T07:54:44.439Z"
+completed_at: "2026-10-26T14:42:35.000Z"
+author: pm-github
+close_reason: GitHub issue #181 closed
+body: "The `release` job of the Daily Release workflow failed.\n\n- Failing job: `release`\n- Run URL: https://github.com/unbraind/pm-beads/actions/runs/40297020501\n- Commit: e8e187e200897b41903ecb7950fb1fe0dd6cf1b7\n- Date (UTC): 2026-10-26T10:48:54Z\n\n\n---\n\n### GitHub comments (3)\n\n> **@coderabbitai[bot]** (2026-10-26T10:50:04Z)\n>\n> <!-- coderabbit-ai-generated:v1 -->\n> \n> <!-- This is an auto-generated issue plan by CodeRabbit -->\n> \n> <details>\n> <summary>⚠️ Possible Duplicate Issue(s)</summary>\n> <dl>\n> <dd>\n> \n> - https://github.com/unbraind/pm-beads/issues/172\n> </dd>\n> </dl>\n> </details>\n> \n> ---\n> <details>\n> <summary>📝 Issue Planner</summary>\n> <dl>\n> <dd>\n> \n> <sub>Check the box below or use the `@coderabbitai plan` command to generate an implementation plan and prompts that you can use with your favorite coding assistant.</sub>\n> \n> - [ ] <!-- {\"checkboxId\":\"8d4f2b9c-3e1a-4f7c-a9b2-d5e8f1c4a7b9\"} --> Create Plan\n> </dd>\n> </dl>\n> </details>\n> \n> \n> ---\n> <details>\n> <summary> 🧪 Issue enrichment is currently in open beta.</summary>\n> <dl>\n> <dd>\n> \n> \n> You can configure auto-planning by selecting labels in the issue_enrichment configuration.\n> \n> To disable automatic issue enrichment, add the following to your `.coderabbit.yaml`:\n> ```yaml\n> issue_enrichment:\n>   auto_enrich:\n>     enabled: false\n> ```\n> </dd>\n> </dl>\n> </details>\n> \n> 💬 Have feedback or questions? Drop into our [discord](https://discord.gg/coderabbit)!\n\n> **@github-actions[bot]** (2026-10-26T12:36:15Z)\n>\n> The `release` job of the Daily Release workflow failed.\n> \n> - Failing job: `release`\n> - Run URL: https://github.com/unbraind/pm-beads/actions/runs/40297020501\n> - Commit: e8e187e200897b41903ecb7950fb1fe0dd6cf1b7\n> - Date (UTC): 2026-10-26T12:36:13Z\n> \n\n> **@unbraind** (2026-10-26T14:42:34Z)\n>\n> Recovered: pm-beads@2026.10.26 is published on npm (`npm view pm-beads version` → 2026.10.26); successful release run: https://github.com/unbraind/pm-beads/actions/runs/40297020501. The earlier failure was the release PR's required checks still queued after the job's 30-minute merge wait (runner pool saturated); the host release-rerun sweep re-ran it."

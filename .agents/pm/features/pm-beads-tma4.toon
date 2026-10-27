@@ -2,11 +2,13 @@ id: pm-beads-tma4
 title: Resume bounded Beads transfers with dependency closure and chunk receipts
 description: "Add a dependency-aware transfer plan and resumable per-chunk application using public pm SDK capabilities. Overlap checked against the current CLI, pm-beads and pm-context: keep existing JSONL parser, structural validation and core transactions; do not duplicate neighborhood packing."
 type: Feature
-status: in_progress
+status: closed
 priority: 2
 tags[1]: "gh:unbraind/pm-beads#165"
 created_at: "2026-10-24T11:13:36.736Z"
-updated_at: "2026-10-25T00:46:08.348Z"
+updated_at: "2026-10-25T11:26:32.926Z"
+closed_at: "2026-10-25T11:26:32.895Z"
+completed_at: "2026-10-25T01:02:59.000Z"
 author: codex-agent
 acceptance_criteria: "A killed transfer resumes without duplicates; A late cross-chunk dependency is resolved without dangling edges; Exceeding closure limits yields an explicit omission or refusal receipt; Concurrent drainers inspect and mutate state under the SDK writer lease; foreign records are skipped with reasons; all transition boundaries have interleaving tests on one non-git tracker; Typed SDK and CLI, bounded TOON/JSON receipts, README and example, public tracker copy measurements, and npm plus Bun CI release gates"
 comments[63]{created_at,author,text}:
@@ -180,4 +182,5 @@ tests[10]:
 docs[2]{path,scope}:
   examples/dependency-closed-transfer.md,project
   README.md,project
+close_reason: "https://github.com/unbraind/pm-beads/pull/165 merged 2026-10-25T01:02:59Z, merge e2249675263ad1d8dd8cd2490d79aaa19cbb6209: Resume dependency-closed Beads transfers without duplicate rows or dangling edges. Reviewed (read-only codex/Claude review, MERGE verdict) with green CI release gates."
 body: ""

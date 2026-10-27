@@ -176,6 +176,24 @@ count-inconsistent, identity-less, or duplicate-ID envelopes before import,
 export, or workspace diff consumes any row.
 Pass `--no-workspace` to restrict the check to the file alone.
 
+Whole-workspace export and reconciliation reads use `PmClient.listAllComplete`.
+The synchronous `buildBeadsFromWorkspace` API and legacy subprocess fallback
+use the same SDK policy through `inspectCompleteListResult`; the request adds
+`--strict-read` and `--no-truncate` to its full, unbounded projection. Invalid
+answers still throw `IncompleteWorkspaceReadError` (a `CommandError`) with the
+command and count/total context. Diagnostics now report SDK finding codes and
+all detected violations instead of the first package-owned predicate.
+
+SDK certification also refuses missing all-status scope, runtime or unknown
+filters, terminal exclusion, missing strict-read or no-truncate proof, an
+applied row limit, selected or unproven projection fields, read-session
+suppression, and IDs duplicated after trimming whitespace. These receipts
+could pass the previous local validator. The package still refuses any budget
+truncation or omission disclosure, including informational receipts. That small
+compatibility rule remains because the SDK has no option requiring disclosure
+keys to be absent; the SDK otherwise owns all completeness predicates.
+See [the differential evidence](examples/sdk-adoption-validation.md).
+
 ```bash
 pm beads validate items.jsonl
 pm beads validate items.jsonl --json          # structured report on stdout
@@ -510,7 +528,7 @@ an incompatible source; they do not substitute receiver defaults for source data
 
 The public SDK exports `snapshotBeadsTransferSettings`, `planBeadsTransfer`,
 `validateBeadsTransferPlan`, `applyBeadsTransfer`,
-`summarizeBeadsTransfer`, `beadsTransferItemId`, their option/receipt types, and
+`summarizeBeadsTransfer`, their option/receipt types, and
 `BeadsTransferRefusal` with `code`, `remedy` and optional `omission`. Expected CLI
 refusals return those fields as TOON/JSON and exit 2. Plan and drain summaries
 include counts, at most 20 row identifiers, omission totals, and a resume remedy;
@@ -556,10 +574,40 @@ finish within the host coordinator's lease lifetime.
 
 See [the SDK and CLI example](examples/dependency-closed-transfer.md).
 
+## Acknowledged outgoing deltas
+
+`pm beads outgoing --base base.json --target target.json --json` emits only
+changed fields between two saved acknowledgements, plus source/base/target
+identity receipts. `--target target.json` without a base emits a full snapshot.
+`pm beads outgoing --base base.json --replay delta.json --json` reconstructs and
+verifies the target; exact replay returns `unchanged: true`. The default output
+is TOON and `beads-outgoing` is the equivalent alias.
+
+The typed SDK exports `generateBeadsOutgoingDelta`, `replayBeadsOutgoingDelta`,
+`BeadsOutgoingDelta`, `BeadsOutgoingOperation`, `BeadsOutgoingRefusal` and
+`BEADS_OUTGOING_LIMITS`. Existing acknowledgement APIs supply the inputs. Explicit
+`set`, `unset`, `add` and `remove` operations preserve optional-field clears and
+source omissions. Two changed fields among 1,000 records emit exactly two
+operations; unchanged bindings are inherited from the verified base. A wrong
+base refuses without writes and instructs the caller to request a full snapshot.
+No tracker mutation or durable outbox is introduced. Reconstructed records feed
+the existing reviewed reconciliation workflow; omissions remain deletion proposals.
+
+A single strict boundary schema enforces dense arrays, unique identities,
+one shared producer/consumer snapshot schema, documented string/record limits, and finite domains.
+The schema accepts live SDK metadata and legacy acknowledgement layouts. New
+identity ordering uses Unicode code points; canonically equivalent but distinct
+strings remain distinct. Metadata/layout receipts preserve exact historical revisions.
+Typed refusals carry a code, remedy and exit status 2. Status names remain opaque
+transport data; lifecycle decisions belong to the SDK registry. See the
+[worked SDK/CLI example, protocol limits and recovery remedies](examples/acknowledged-outgoing-deltas.md).
+
 ## Without git
 
 Import, export, validate, diff, sidecar capture/restore, snapshot reconciliation
 and resumable transfer work in a plain pm tracker without a git executable.
+Acknowledged outgoing delta generation and replay also work without git and do
+not initialize or mutate a tracker.
 Reconciliation and transfer use SDK reads, history and transactions. Transfer
 checkpoints belong to the receiving tracker. GitHub synchronization and release
 tooling need their respective repository/service context.
@@ -587,3 +635,18 @@ itself lists each affected stream in its output; `pm history --verify <id>` spot
 content, so `reconcile` only re-greens the hash chain (no data loss) — see the authoritative
 [pm-cli merge-safety guide](https://github.com/unbraind/pm-cli/blob/main/docs/MERGE_SAFETY.md). The
 older blunt `pm history-repair --all` remains available as a lower-level primitive.
+
+### Persisted plan compatibility
+
+New transfer and reconciliation plans use schema 2 and strict code-point identity ordering. Saved plans are validated under their own schema; validation never upgrades or reseals their digest.
+
+| Artifact | Preserved version rules |
+| --- | --- |
+| Transfer plan | Schema 1 retains released UTF-16 selection, topology and dependency ordering; schema 2 uses code points. |
+| Transfer identity journal | Schema matches its owning plan, with the same original digest and reserved core ids. Existing SDK and legacy document-hash pins retain their own validation rules and are never upgraded by verification. |
+| Reconciliation plan | Schema 1 retains released snapshot collation, UTF-16 change/dependency ordering and tracker revision; schema 2 uses code points. |
+| Reconciliation identity journal | Historical raw maps are implicit schema 1 under a schema-1 plan; new schema-2 envelopes carry explicit schema, digest and rows. |
+| Acknowledgement / outgoing receipt | Existing schema 1 preserves exact record/property order and hashes. Consumers verify the stored representation without sorting or normalization. |
+| SDK checkpoint | The public coordinator reads its own `schemaVersion`; original transaction ids include the unchanged plan digest. |
+
+A saved schema-1 exchange resumes its original journal. No implicit migration occurs. Unknown versions refuse; retain the original files and use a package supporting their version. [Released npm compatibility fixtures](test/fixtures/compat/README.md) exercise CLI and SDK exchanges with BMP, astral, private-use and combining identities, including interrupted checkpoints.

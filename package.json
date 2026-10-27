@@ -1,6 +1,6 @@
 {
   "name": "pm-beads",
-  "version": "2026.10.24",
+  "version": "2026.10.26",
   "description": "Beads JSONL import/export and three-way snapshot reconciliation for pm-cli",
   "repository": {
     "type": "git",
@@ -9,7 +9,7 @@
   "bugs": {
     "url": "https://github.com/unbraind/pm-beads/issues"
   },
-  "homepage": "https://github.com/unbraind/pm-beads#readme",
+  "homepage": "https://pm-cli.unbrained.dev/packages/pm-beads",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -45,9 +45,9 @@
   },
   "devDependencies": {
     "@types/node": "26.6.5",
-    "@unbrained/pm-cli": "2026.10.20",
-    "pm-changelog": "2026.10.20",
-    "pm-ops": "2026.10.20",
+    "@unbrained/pm-cli": "2026.10.23",
+    "pm-changelog": "2026.10.23",
+    "pm-ops": "2026.10.23",
     "typescript": "7.0.2",
     "yaml": "2.9.1"
   },
@@ -66,7 +66,10 @@
   "engines": {
     "node": ">=22.18.0"
   },
-  "author": "@unbraind",
+  "author": {
+    "name": "unbrained",
+    "url": "https://unbrained.dev/about"
+  },
   "pm": {
     "aliases": [
       "beads"
@@ -99,7 +102,8 @@
       "README.md",
       "examples/snapshot-reconciliation.md",
       "examples/unknown-field-sidecars.md",
-      "examples/dependency-closed-transfer.md"
+      "examples/dependency-closed-transfer.md",
+      "examples/acknowledged-outgoing-deltas.md"
     ]
   },
   "publishConfig": {

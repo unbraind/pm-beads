@@ -19,8 +19,8 @@
 // descriptions remain verbatim. Exact historical suffixes are a migration-only
 // fallback when that field is absent; body text never supplies identity.
 
-import { CommandError, EXIT_CODE, DIFF_FIELDS, type DiffField } from "./contracts.ts";
-export { CommandError, EXIT_CODE, DIFF_FIELDS, type DiffField } from "./contracts.ts";
+import { CommandError, EXIT_CODE, DIFF_FIELDS, isEncodableBeadId, type DiffField } from "./contracts.ts";
+export { CommandError, EXIT_CODE, DIFF_FIELDS, isEncodableBeadId, type DiffField } from "./contracts.ts";
 import type {
   CommandDefinition,
   CommandHandlerContext,
@@ -32,13 +32,17 @@ import type {
   Importer,
   SchemaFieldDefinition,
 } from "@unbrained/pm-cli/sdk/authoring";
+import { compareBeadsIdentities } from "./snapshot-schema.ts";
+export * from "./snapshot-schema.ts";
+import { registerOutgoingCommands } from "./outgoing.ts";
+export * from "./outgoing.ts";
 import { registerReconcileCommands } from "./reconcile.ts";
 export * from "./reconcile.ts";
 import { registerSidecarCommands } from "./sidecar.ts";
 export * from "./sidecar.ts";
 import { registerTransferCommands } from "./transfer.ts";
 export * from "./transfer.ts";
-import { PmClient, preserveMutationStdinTokenFields, suppressHostOutput, listAllItemMetadata, assertInitializedTracker, PmCliError, type PmClientFullMutationOptions } from "@unbrained/pm-cli/sdk";
+import { inspectCompleteListResult, PmClient, preserveMutationStdinTokenFields, suppressHostOutput, listAllItemMetadata, assertInitializedTracker, PmCliError, type PmClientFullMutationOptions } from "@unbrained/pm-cli/sdk";
 import { beadsMutationAuthor, sourceDependency } from "./mutation.ts";
 import { legacyBeadIdentity, reportLegacyBeadIdentities, registerIdentityMigrationCommand } from "./identity.ts";
 // Top-level SDK runtime import. This fleet once believed extensions could not
@@ -301,11 +305,6 @@ export function mapPriority(raw: number | string | undefined): string | undefine
   const n = typeof raw === "number" ? raw : parseInt(String(raw), 10);
   if (isNaN(n)) return undefined;
   return String(Math.min(4, Math.max(0, n)));
-}
-
-/** Validate the historical supported id range independently of description contents. */
-export function isEncodableBeadId(beadId: string): boolean {
-  return Boolean(beadId) && beadId.trim() === beadId && beadId.length <= 4097 && !/[\[\]\r\n]/.test(beadId);
 }
 
 /** Produce the historical envelope for compatibility fixtures; production writes use bead_id. */
@@ -663,7 +662,7 @@ export function detectDependencyCycles(adj: Map<string, string[]>): string[][] {
         const idx = pathIndex.get(next);
         if (idx !== undefined) {
           const cycle = path.slice(idx);
-          const key = [...cycle].sort().join("\u001f");
+          const key = [...cycle].sort(compareBeadsIdentities).join("\u001f");
           if (!seenCycleKeys.has(key)) {
             seenCycleKeys.add(key);
             cycles.push([...cycle, next]);
@@ -1397,7 +1396,7 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
       const tags = opts.tagsOverride
         ? opts.tagsOverride
         : labels.length
-          ? labels.join(",")
+          ? JSON.stringify(labels)
           : undefined;
       const beadId = opts.preserveIds ? normalizeBeadKey(item.id) : undefined;
       const baseDescription = typeof item.description === "string" ? item.description : title;
@@ -1729,7 +1728,9 @@ export interface ListAllEnvelope {
     omitted_field_groups?: unknown[];
   };
   /** Projection receipt proving the requested complete row shape. */
-  projection?: { mode?: unknown };
+  projection?: { mode?: unknown; fields?: unknown };
+  /** Whole-corpus scope and strict-read receipts required by the SDK. */
+  filters?: Record<string, unknown>;
   /** Universal output receipt proving the host did not compact the response. */
   read_output?: {
     contract_version?: unknown;
@@ -1747,179 +1748,28 @@ export interface ListAllEnvelope {
 }
 
 /**
- * Refuse an incomplete `pm list --all` envelope instead of consuming it.
- *
- * Reads `.items` without consulting the envelope's completeness receipt is how
- * this package once shipped a 10-item "successful" export from a 682-item
- * workspace: pm 2026.8.14 defaulted to a truncated list and nothing here
- * checked. The envelope carries independent incompleteness
- * signals, and any one of them means the rows in `items` are NOT the whole
- * workspace — so this throws (never returns a partial list, never logs and
- * continues) naming the signal that tripped plus the `count`/`total` figures:
- *
- * - pagination and count receipts prove every row is present exactly once;
- * - completeness receipts prove no item or directory was unreadable;
- * - projection and omission receipts prove every requested field is present;
- * - output receipts prove the response was not budget-compacted or omitted.
- *
- * Thrown errors are {@link CommandError} so pm's runtime turns them into a
- * clean nonzero exit. Paging is deliberately NOT attempted: this package has
- * no legitimate use for a partial page, so refusing loudly is both simpler and
- * safer than a paging loop that could itself silently drop rows.
- *
- * @param envelope - Parsed `pm list --all --json` output (any shape; non-envelope
- *                  input trips the completeness signal).
- * @throws {@link CommandError} naming the first tripped signal and the counts.
+ * Delegate whole-workspace certification to the SDK, retaining the package's
+ * clean nonzero error type, command context and count/total diagnostics.
+ * SDK finding codes and messages explain every violated receipt; callers must
+ * never consume rows after this throws. The synchronous subprocess boundary
+ * remains for buildBeadsFromWorkspace and legacy uninitialized hosts; initialized
+ * asynchronous workflows already use PmClient.listAllComplete.
  */
 export function assertListAllComplete(envelope: unknown): void {
-  if (typeof envelope !== "object" || envelope === null || Array.isArray(envelope)) {
+  const inspection = inspectCompleteListResult(envelope);
+  // Preserve the package's stricter compatibility policy: even an informational
+  // budget disclosure was historically refused. The SDK has no option requiring
+  // absence of disclosure keys, so this presence rule remains at the boundary.
+  const budgetDisclosure = typeof envelope === "object" && envelope !== null
+    && ("output_budget_truncation" in envelope || "output_budget_exceeded" in envelope);
+  if (!inspection.ok || budgetDisclosure) {
+    const env = envelope as ListAllEnvelope | null;
     throw new IncompleteWorkspaceReadError(
-      "Refusing unverifiable `pm list --all` answer: the response must be a top-level object with completeness receipts.",
+      `Refusing unverifiable \`pm list --all\` answer (count ${env?.count} of total ${env?.total}): `
+      + inspection.findings.map(finding => `${finding.code}: ${finding.message}`).join(" ")
+      + (budgetDisclosure ? " A budget truncation or omission disclosure was present." : "")
+      + " Retry with --all --full --strict-read --no-truncate --output-budget unbounded --output-limit unbounded.",
     );
-  }
-  const env = envelope as ListAllEnvelope;
-  const count = env.count;
-  const total = env.total;
-  const counts = `count ${count} of total ${total}`;
-  if (env.truncated !== false) {
-    throw new IncompleteWorkspaceReadError(
-      `Refusing incomplete \`pm list --all\` answer: truncated=${JSON.stringify(env.truncated) ?? "(missing)"} (${counts}). `
-      + "The item list was cut short (output budget or limit); a partial export "
-      + "would report success while missing items. Narrow the operation or "
-      + "raise the output budget, then retry.",
-    );
-  }
-  if (env.has_more !== false) {
-    throw new IncompleteWorkspaceReadError(
-      `Refusing incomplete \`pm list --all\` answer: has_more=${JSON.stringify(env.has_more) ?? "(missing)"} (${counts}). `
-      + "Rows exist beyond the returned page; consuming the page as the whole "
-      + "workspace would silently drop them.",
-    );
-  }
-  if (env.next_cursor !== null) {
-    throw new IncompleteWorkspaceReadError(
-      `Refusing unverifiable \`pm list --all\` answer: next_cursor must be exactly null; received ${JSON.stringify(env.next_cursor) ?? "(missing)"}.`,
-    );
-  }
-  if (env.completeness?.status !== "complete") {
-    const status = env.completeness?.status === undefined ? "(missing)" : JSON.stringify(env.completeness.status);
-    const unreadable = `unreadable_item_count=${env.completeness?.unreadable_item_count ?? 0}`
-      + `, unreadable_directory_count=${env.completeness?.unreadable_directory_count ?? 0}`;
-    throw new IncompleteWorkspaceReadError(
-      `Refusing incomplete \`pm list --all\` answer: completeness.status=${status} `
-      + `(${unreadable}; ${counts}). Some workspace items could not be read, so `
-      + "the returned list is not the whole workspace.",
-    );
-  }
-  if (env.completeness.unreadable_item_count !== 0) {
-    throw new IncompleteWorkspaceReadError(
-      "Refusing unverifiable `pm list --all` answer: completeness.unreadable_item_count must be exactly 0.",
-    );
-  }
-  if (env.completeness.unreadable_directory_count !== 0) {
-    throw new IncompleteWorkspaceReadError(
-      "Refusing unverifiable `pm list --all` answer: completeness.unreadable_directory_count must be exactly 0.",
-    );
-  }
-  if (typeof env.omission_receipt !== "object" || env.omission_receipt === null) {
-    throw new IncompleteWorkspaceReadError(
-      `Refusing unverifiable \`pm list --all\` answer: omission_receipt must be an object (${counts}).`,
-    );
-  }
-  if (env.omission_receipt.has_omissions !== false) {
-    const groups = Array.isArray(env.omission_receipt.omitted_field_groups)
-      ? env.omission_receipt.omitted_field_groups.map(String)
-      : [];
-    throw new IncompleteWorkspaceReadError(
-      `Refusing unverifiable \`pm list --all\` answer: omission_receipt.has_omissions must be exactly false; `
-      + `received ${JSON.stringify(env.omission_receipt.has_omissions) ?? "(missing)"}; `
-      + `omitted_field_groups: ${groups.length ? groups.join(", ") : "(none listed)"} (${counts}). `
-      + "Field groups were dropped from the projection, so the rows are present "
-      + "but degraded; re-read without the field-omitting options.",
-    );
-  }
-  if (env.omission_receipt.omitted_field_group_count !== 0) {
-    throw new IncompleteWorkspaceReadError(
-      "Refusing unverifiable `pm list --all` answer: omission_receipt.omitted_field_group_count must be exactly 0.",
-    );
-  }
-  if (!Array.isArray(env.omission_receipt.omitted_field_groups)
-    || env.omission_receipt.omitted_field_groups.length !== 0) {
-    throw new IncompleteWorkspaceReadError(
-      "Refusing unverifiable `pm list --all` answer: omission_receipt.omitted_field_groups must be an empty array.",
-    );
-  }
-  if (env.projection?.mode !== "full") {
-    throw new IncompleteWorkspaceReadError(
-      `Refusing unverifiable \`pm list --all\` answer: projection.mode must be exactly full; received ${JSON.stringify(env.projection?.mode) ?? "(missing)"}.`,
-    );
-  }
-  if (env.read_output?.contract_version !== 1) {
-    throw new IncompleteWorkspaceReadError(
-      "Refusing unverifiable `pm list --all` answer: read_output.contract_version must be exactly 1.",
-    );
-  }
-  if (env.read_output.command !== "list") {
-    throw new IncompleteWorkspaceReadError(
-      "Refusing unverifiable `pm list --all` answer: read_output.command must be exactly list.",
-    );
-  }
-  if (env.read_output.within_budget !== true) {
-    throw new IncompleteWorkspaceReadError(
-      "Refusing unverifiable `pm list --all` answer: read_output.within_budget must be exactly true.",
-    );
-  }
-  for (const field of ["strings_compacted", "rows_compacted", "result_omitted"] as const) {
-    if (env.read_output[field] !== false) {
-      throw new IncompleteWorkspaceReadError(
-        `Refusing unverifiable \`pm list --all\` answer: read_output.${field} must be exactly false.`,
-      );
-    }
-  }
-  const requestedDimensions = env.read_output.requested_dimensions;
-  if (!Array.isArray(requestedDimensions)
-    || !["include", "amount", "cost"].every((dimension) => requestedDimensions.includes(dimension))) {
-    throw new IncompleteWorkspaceReadError(
-      "Refusing unverifiable `pm list --all` answer: read_output.requested_dimensions must include include, amount, and cost.",
-    );
-  }
-  if ("output_budget_truncation" in env || "output_budget_exceeded" in env) {
-    throw new IncompleteWorkspaceReadError(
-      "Refusing unverifiable `pm list --all` answer: a budget truncation or omission disclosure was present.",
-    );
-  }
-  if (!Number.isSafeInteger(count) || (count as number) < 0) {
-    throw new IncompleteWorkspaceReadError(
-      `Refusing unverifiable \`pm list --all\` answer: count must be a non-negative safe integer; received ${JSON.stringify(count) ?? "(missing)"}.`,
-    );
-  }
-  if (!Number.isSafeInteger(total) || (total as number) < 0) {
-    throw new IncompleteWorkspaceReadError(
-      `Refusing unverifiable \`pm list --all\` answer: total must be a non-negative safe integer; received ${JSON.stringify(total) ?? "(missing)"}.`,
-    );
-  }
-  if (!Array.isArray(env.items)) {
-    throw new IncompleteWorkspaceReadError(
-      "Refusing unverifiable `pm list --all` answer: envelope `items` is not an array.",
-    );
-  }
-  if (count !== total) {
-    throw new IncompleteWorkspaceReadError(`Refusing incomplete \`pm list --all\` answer: count ${count} must equal total ${total}.`);
-  }
-  if (env.items.length !== count) {
-    throw new IncompleteWorkspaceReadError(`Refusing unverifiable \`pm list --all\` answer: items.length ${env.items.length} must equal count ${count}.`);
-  }
-  const ids = new Set<string>();
-  for (const [index, item] of env.items.entries()) {
-    if (typeof item !== "object" || item === null || Array.isArray(item)) {
-      throw new IncompleteWorkspaceReadError(`Refusing unverifiable \`pm list --all\` answer: item ${index} must be an object.`);
-    }
-    const id = (item as { id?: unknown }).id;
-    if (typeof id !== "string" || id.trim().length === 0) {
-      throw new IncompleteWorkspaceReadError(`Refusing unverifiable \`pm list --all\` answer: item ${index} must have a non-empty id.`);
-    }
-    if (ids.has(id)) throw new IncompleteWorkspaceReadError(`Refusing unverifiable \`pm list --all\` answer: duplicate item id ${id}.`);
-    ids.add(id);
   }
 }
 
@@ -1993,7 +1843,7 @@ function readPmItems(pmRoot: string, spawn: PmListAllSpawn = spawnPmListAll): Pm
   // than into a larger read. `opts.filter` is applied after this call, so the
   // ceiling would bound the rows read, not the rows kept.
   const result = spawn(
-    ["--path", pmRoot, "list", "--all", "--json", "--output-budget", "unbounded", "--output-limit", "unbounded", "--output-include", "full"],
+    ["--path", pmRoot, "list", "--all", "--json", "--strict-read", "--no-truncate", "--output-budget", "unbounded", "--output-limit", "unbounded", "--output-include", "full"],
     maxBuffer,
   );
   if (result.error) {
@@ -2208,7 +2058,7 @@ export function normalizeDiffField(bead: BeadsItem, field: DiffField): string {
       // Compare on the set of upstream blocker ids (order-insensitive). Reuses
       // the same edge-normalizer the importer/validator use, so the many Beads
       // edge spellings collapse to one canonical form.
-      return [...new Set(extractBlockerIds(bead))].sort().join(",");
+      return [...new Set(extractBlockerIds(bead))].sort(compareBeadsIdentities).join(",");
     }
     default: {
       const exhaustive: never = field;
@@ -2271,9 +2121,9 @@ export function diffBeads(a: BeadsItem[], b: BeadsItem[], filter?: RowFilter): B
     if (!aIndex.has(id)) added.push(id);
   }
 
-  added.sort();
-  removed.sort();
-  changed.sort((x, y) => x.id.localeCompare(y.id));
+  added.sort(compareBeadsIdentities);
+  removed.sort(compareBeadsIdentities);
+  changed.sort((x, y) => compareBeadsIdentities(x.id, y.id));
 
   const drift = added.length > 0 || removed.length > 0 || changed.length > 0;
   return {
@@ -2709,11 +2559,12 @@ const defineItemField = <TField extends SchemaFieldDefinition>(field: TField): T
 
 export default defineExtension({
   name: "pm-beads",
-  version: "2026.10.24",
+  version: "2026.10.26",
 
   activate(api: ExtensionApi) {
     registerIdentityMigrationCommand(api);
     registerReconcileCommands(api);
+    registerOutgoingCommands(api);
     registerSidecarCommands(api);
     registerTransferCommands(api);
     // -----------------------------------------------------------------------

@@ -1,0 +1,620 @@
+{
+  "schema": 1,
+  "producer": {
+    "package": "pm-beads",
+    "version": "2026.10.26",
+    "surface": "sdk",
+    "host": "@unbrained/pm-cli@2026.10.20"
+  },
+  "plan": {
+    "schema": 1,
+    "source": "compat-ack",
+    "baseRevision": "6f8c307d69df20f2ff51d9b62d059c53ca2ecfaefe600b531479bd7c9c35faa8",
+    "trackerRevision": "bd789ee69b57a069ed1bc3f9c1c2feca6bd042a35ad498f8a919186fe5daaea6",
+    "digest": "de6fd50fff809d472d4ce793b701aa07ba0df2b20005059fca53841f41413467",
+    "live": [
+      {
+        "id": "é",
+        "fields": {
+          "title": "Composed é",
+          "status": "open",
+          "type": "task",
+          "priority": "2",
+          "tags": "[]",
+          "assignee": "",
+          "parent": "",
+          "deadline": "",
+          "dependencies": "[]",
+          "description": "",
+          "sprint": "",
+          "release": ""
+        },
+        "pmId": "compat-w6ci",
+        "version": "247415e2770e5f2b6ba2e7edefe810c69d9ce5bcd59487ec6ddcb35ecd4a424b",
+        "updatedAt": "2026-10-26T22:37:35.977Z"
+      },
+      {
+        "id": "é",
+        "fields": {
+          "title": "Combining é",
+          "status": "open",
+          "type": "task",
+          "priority": "2",
+          "tags": "[]",
+          "assignee": "",
+          "parent": "",
+          "deadline": "",
+          "dependencies": "[]",
+          "description": "",
+          "sprint": "",
+          "release": ""
+        },
+        "pmId": "compat-n9f9",
+        "version": "8def0da5555b30a15a14594741f1cc0aba24654639d7722709e7e5c953899827",
+        "updatedAt": "2026-10-26T22:37:35.763Z"
+      },
+      {
+        "id": "Z",
+        "fields": {
+          "title": "BMP Z",
+          "status": "open",
+          "type": "task",
+          "priority": "2",
+          "tags": "[]",
+          "assignee": "",
+          "parent": "𐀀",
+          "deadline": "",
+          "dependencies": "[\"𐀀\",\"\"]",
+          "description": "",
+          "sprint": "",
+          "release": ""
+        },
+        "pmId": "compat-bm2z",
+        "version": "b58950876607302abd54169342d191bd89cc13a9272e6106ca4537164d7b1815",
+        "updatedAt": "2026-10-26T22:37:36.607Z"
+      },
+      {
+        "id": "𐀀",
+        "fields": {
+          "title": "Astral 𐀀 / BMP A / private  / é",
+          "status": "open",
+          "type": "task",
+          "priority": "1",
+          "tags": "[\"unicode\"]",
+          "assignee": "",
+          "parent": "",
+          "deadline": "",
+          "dependencies": "[]",
+          "description": "",
+          "sprint": "",
+          "release": ""
+        },
+        "pmId": "compat-gdb7",
+        "version": "0167f548c0feaa3a5e40b0608b3e51e3054a424c403ef0975a5a295c3ed46650",
+        "updatedAt": "2026-10-26T22:37:36.244Z"
+      },
+      {
+        "id": "",
+        "fields": {
+          "title": "Private  / astral 𐀀",
+          "status": "open",
+          "type": "task",
+          "priority": "2",
+          "tags": "[]",
+          "assignee": "",
+          "parent": "",
+          "deadline": "",
+          "dependencies": "[]",
+          "description": "",
+          "sprint": "",
+          "release": ""
+        },
+        "pmId": "compat-s7ov",
+        "version": "1f4ea3ac3f3fba17b52a077185c83707f7889495dde1af2370ffc32cbbe5f60f",
+        "updatedAt": "2026-10-26T22:37:36.416Z"
+      }
+    ],
+    "incoming": [
+      {
+        "id": "é",
+        "fields": {
+          "title": "Composed é",
+          "status": "open",
+          "type": "task",
+          "priority": "2",
+          "tags": "[]",
+          "assignee": "",
+          "parent": "",
+          "deadline": "",
+          "dependencies": "[]",
+          "description": "",
+          "sprint": "",
+          "release": ""
+        }
+      },
+      {
+        "id": "é",
+        "fields": {
+          "title": "Combining é",
+          "status": "open",
+          "type": "task",
+          "priority": "2",
+          "tags": "[]",
+          "assignee": "",
+          "parent": "",
+          "deadline": "",
+          "dependencies": "[]",
+          "description": "",
+          "sprint": "",
+          "release": ""
+        }
+      },
+      {
+        "id": "new𐀀é",
+        "fields": {
+          "title": "New 𐀀é",
+          "status": "open",
+          "type": "task",
+          "priority": "2",
+          "tags": "[]",
+          "assignee": "",
+          "parent": "",
+          "deadline": "",
+          "dependencies": "[\"𐀀\",\"\"]",
+          "description": "",
+          "sprint": "",
+          "release": ""
+        }
+      },
+      {
+        "id": "Z",
+        "fields": {
+          "title": "BMP Z",
+          "status": "open",
+          "type": "task",
+          "priority": "2",
+          "tags": "[]",
+          "assignee": "",
+          "parent": "𐀀",
+          "deadline": "",
+          "dependencies": "[\"𐀀\",\"\"]",
+          "description": "",
+          "sprint": "",
+          "release": ""
+        }
+      },
+      {
+        "id": "𐀀",
+        "fields": {
+          "title": "Astral 𐀀 / BMP A / private  / é",
+          "status": "open",
+          "type": "task",
+          "priority": "1",
+          "tags": "[\"unicode\"]",
+          "assignee": "",
+          "parent": "",
+          "deadline": "",
+          "dependencies": "[]",
+          "description": "",
+          "sprint": "",
+          "release": ""
+        }
+      },
+      {
+        "id": "",
+        "fields": {
+          "title": "Private  / astral 𐀀",
+          "status": "open",
+          "type": "task",
+          "priority": "2",
+          "tags": "[]",
+          "assignee": "",
+          "parent": "",
+          "deadline": "",
+          "dependencies": "[]",
+          "description": "",
+          "sprint": "",
+          "release": ""
+        }
+      }
+    ],
+    "changes": [
+      {
+        "id": "new𐀀é",
+        "kind": "create",
+        "fields": [
+          "title",
+          "status",
+          "type",
+          "priority",
+          "tags",
+          "assignee",
+          "parent",
+          "deadline",
+          "dependencies",
+          "description",
+          "sprint",
+          "release"
+        ]
+      }
+    ],
+    "conflicts": [],
+    "deletions": [],
+    "unchanged": 5,
+    "localOnly": 0
+  },
+  "baseline": {
+    "schema": 1,
+    "source": "compat-ack",
+    "previous": null,
+    "records": [
+      {
+        "id": "é",
+        "fields": {
+          "title": "Composed é",
+          "status": "open",
+          "type": "task",
+          "priority": "2",
+          "tags": "[]",
+          "assignee": "",
+          "parent": "",
+          "deadline": "",
+          "dependencies": "[]",
+          "description": "",
+          "sprint": "",
+          "release": ""
+        },
+        "pmId": "compat-w6ci",
+        "version": "247415e2770e5f2b6ba2e7edefe810c69d9ce5bcd59487ec6ddcb35ecd4a424b",
+        "updatedAt": "2026-10-26T22:37:35.977Z"
+      },
+      {
+        "id": "é",
+        "fields": {
+          "title": "Combining é",
+          "status": "open",
+          "type": "task",
+          "priority": "2",
+          "tags": "[]",
+          "assignee": "",
+          "parent": "",
+          "deadline": "",
+          "dependencies": "[]",
+          "description": "",
+          "sprint": "",
+          "release": ""
+        },
+        "pmId": "compat-n9f9",
+        "version": "8def0da5555b30a15a14594741f1cc0aba24654639d7722709e7e5c953899827",
+        "updatedAt": "2026-10-26T22:37:35.763Z"
+      },
+      {
+        "id": "Z",
+        "fields": {
+          "title": "BMP Z",
+          "status": "open",
+          "type": "task",
+          "priority": "2",
+          "tags": "[]",
+          "assignee": "",
+          "parent": "𐀀",
+          "deadline": "",
+          "dependencies": "[\"𐀀\",\"\"]",
+          "description": "",
+          "sprint": "",
+          "release": ""
+        },
+        "pmId": "compat-bm2z",
+        "version": "b58950876607302abd54169342d191bd89cc13a9272e6106ca4537164d7b1815",
+        "updatedAt": "2026-10-26T22:37:36.607Z"
+      },
+      {
+        "id": "𐀀",
+        "fields": {
+          "title": "Astral 𐀀 / BMP A / private  / é",
+          "status": "open",
+          "type": "task",
+          "priority": "1",
+          "tags": "[\"unicode\"]",
+          "assignee": "",
+          "parent": "",
+          "deadline": "",
+          "dependencies": "[]",
+          "description": "",
+          "sprint": "",
+          "release": ""
+        },
+        "pmId": "compat-gdb7",
+        "version": "0167f548c0feaa3a5e40b0608b3e51e3054a424c403ef0975a5a295c3ed46650",
+        "updatedAt": "2026-10-26T22:37:36.244Z"
+      },
+      {
+        "id": "",
+        "fields": {
+          "title": "Private  / astral 𐀀",
+          "status": "open",
+          "type": "task",
+          "priority": "2",
+          "tags": "[]",
+          "assignee": "",
+          "parent": "",
+          "deadline": "",
+          "dependencies": "[]",
+          "description": "",
+          "sprint": "",
+          "release": ""
+        },
+        "pmId": "compat-s7ov",
+        "version": "1f4ea3ac3f3fba17b52a077185c83707f7889495dde1af2370ffc32cbbe5f60f",
+        "updatedAt": "2026-10-26T22:37:36.416Z"
+      }
+    ],
+    "bindings": {
+      "é": "compat-w6ci",
+      "é": "compat-n9f9",
+      "Z": "compat-bm2z",
+      "𐀀": "compat-gdb7",
+      "": "compat-s7ov"
+    },
+    "revision": "6f8c307d69df20f2ff51d9b62d059c53ca2ecfaefe600b531479bd7c9c35faa8"
+  },
+  "tracker": {
+    "beads/74d69d198786e0a76974a12140434dd3c41040f9b5e4be77232e46a75d55316c.json": "{\"schema\":1,\"source\":\"compat-ack\",\"previous\":null,\"records\":[{\"id\":\"é\",\"fields\":{\"title\":\"Composed é\",\"status\":\"open\",\"type\":\"task\",\"priority\":\"2\",\"tags\":\"[]\",\"assignee\":\"\",\"parent\":\"\",\"deadline\":\"\",\"dependencies\":\"[]\",\"description\":\"\",\"sprint\":\"\",\"release\":\"\"},\"pmId\":\"compat-w6ci\",\"version\":\"247415e2770e5f2b6ba2e7edefe810c69d9ce5bcd59487ec6ddcb35ecd4a424b\",\"updatedAt\":\"2026-10-26T22:37:35.977Z\"},{\"id\":\"é\",\"fields\":{\"title\":\"Combining é\",\"status\":\"open\",\"type\":\"task\",\"priority\":\"2\",\"tags\":\"[]\",\"assignee\":\"\",\"parent\":\"\",\"deadline\":\"\",\"dependencies\":\"[]\",\"description\":\"\",\"sprint\":\"\",\"release\":\"\"},\"pmId\":\"compat-n9f9\",\"version\":\"8def0da5555b30a15a14594741f1cc0aba24654639d7722709e7e5c953899827\",\"updatedAt\":\"2026-10-26T22:37:35.763Z\"},{\"id\":\"Z\",\"fields\":{\"title\":\"BMP Z\",\"status\":\"open\",\"type\":\"task\",\"priority\":\"2\",\"tags\":\"[]\",\"assignee\":\"\",\"parent\":\"𐀀\",\"deadline\":\"\",\"dependencies\":\"[\\\"𐀀\\\",\\\"\\\"]\",\"description\":\"\",\"sprint\":\"\",\"release\":\"\"},\"pmId\":\"compat-bm2z\",\"version\":\"b58950876607302abd54169342d191bd89cc13a9272e6106ca4537164d7b1815\",\"updatedAt\":\"2026-10-26T22:37:36.607Z\"},{\"id\":\"𐀀\",\"fields\":{\"title\":\"Astral 𐀀 / BMP A / private  / é\",\"status\":\"open\",\"type\":\"task\",\"priority\":\"1\",\"tags\":\"[\\\"unicode\\\"]\",\"assignee\":\"\",\"parent\":\"\",\"deadline\":\"\",\"dependencies\":\"[]\",\"description\":\"\",\"sprint\":\"\",\"release\":\"\"},\"pmId\":\"compat-gdb7\",\"version\":\"0167f548c0feaa3a5e40b0608b3e51e3054a424c403ef0975a5a295c3ed46650\",\"updatedAt\":\"2026-10-26T22:37:36.244Z\"},{\"id\":\"\",\"fields\":{\"title\":\"Private  / astral 𐀀\",\"status\":\"open\",\"type\":\"task\",\"priority\":\"2\",\"tags\":\"[]\",\"assignee\":\"\",\"parent\":\"\",\"deadline\":\"\",\"dependencies\":\"[]\",\"description\":\"\",\"sprint\":\"\",\"release\":\"\"},\"pmId\":\"compat-s7ov\",\"version\":\"1f4ea3ac3f3fba17b52a077185c83707f7889495dde1af2370ffc32cbbe5f60f\",\"updatedAt\":\"2026-10-26T22:37:36.416Z\"}],\"bindings\":{\"é\":\"compat-w6ci\",\"é\":\"compat-n9f9\",\"Z\":\"compat-bm2z\",\"𐀀\":\"compat-gdb7\",\"\":\"compat-s7ov\"},\"revision\":\"6f8c307d69df20f2ff51d9b62d059c53ca2ecfaefe600b531479bd7c9c35faa8\"}\n",
+    "history/_workspace.jsonl": "{\"hash_algorithm\":\"sha256\",\"ts\":\"2026-10-26T22:37:35.390Z\",\"author\":\"compat-test\",\"author_source\":\"asserted\",\"agent_harness\":\"codex\",\"agent_model\":\"gpt-6.1-sol\",\"agent_model_source\":\"probe\",\"agent_instance\":\"901fa08c0c7da17a2da53886\",\"agent_provenance\":{\"model\":{\"value\":\"gpt-6.1-sol\",\"source\":\"probe\"},\"effort\":{\"value\":\"high\",\"source\":\"probe\"},\"role\":null,\"topic\":null},\"op\":\"schema:add-field\",\"patch\":[{\"op\":\"add\",\"path\":\"/metadata/id\",\"value\":\"_workspace\"},{\"op\":\"add\",\"path\":\"/metadata/title\",\"value\":\"Workspace state\"},{\"op\":\"add\",\"path\":\"/metadata/description\",\"value\":\"Audited singleton workspace document state.\"},{\"op\":\"add\",\"path\":\"/metadata/type\",\"value\":\"Chore\"},{\"op\":\"add\",\"path\":\"/metadata/status\",\"value\":\"open\"},{\"op\":\"add\",\"path\":\"/metadata/priority\",\"value\":2},{\"op\":\"add\",\"path\":\"/metadata/tags\",\"value\":[\"workspace-history\"]},{\"op\":\"add\",\"path\":\"/metadata/created_at\",\"value\":\"2026-10-26T22:37:35.390Z\"},{\"op\":\"add\",\"path\":\"/metadata/updated_at\",\"value\":\"2026-10-26T22:37:35.390Z\"},{\"op\":\"add\",\"path\":\"/metadata/documents\",\"value\":{\"schema/fields.json\":{\"fields\":[{\"key\":\"bead_id\",\"type\":\"string\",\"commands\":[\"create\",\"update\"]}]}}}],\"before_hash\":\"3cc22dff72be7b14824654a7a64ea62b04799939b2fee54c1b5f52ca60bf6df0\",\"after_hash\":\"e2e1f7f894406dcf9b00dae8dbb62d98c66c217341dbf48323a8192244aef46c\",\"item_hash_version\":3,\"context\":{\"agent_provenance_outcomes\":{\"model\":{\"status\":\"resolved\",\"resolver\":\"codex_session_file\",\"rule_version\":\"v1\"},\"effort\":{\"status\":\"resolved\",\"resolver\":\"codex_session_file\",\"rule_version\":\"v1\"},\"version\":{\"status\":\"unavailable\",\"reason\":\"harness_unavailable\",\"resolver\":\"ai_agent_version\",\"rule_version\":\"v1\"}}},\"event_class\":\"substantive\",\"record_hash_version\":1,\"record_hash\":\"6320b5358c4eeecd0a97c1b478b1374867464cc665fca56f0667deffa172eaae\"}\n",
+    "history/compat-bm2z.jsonl": "{\"hash_algorithm\":\"sha256\",\"ts\":\"2026-10-26T22:37:36.607Z\",\"author\":\"compat-test\",\"author_source\":\"asserted\",\"agent_harness\":\"codex\",\"agent_model\":\"gpt-6.1-sol\",\"agent_model_source\":\"probe\",\"agent_instance\":\"901fa08c0c7da17a2da53886\",\"agent_provenance\":{\"model\":{\"value\":\"gpt-6.1-sol\",\"source\":\"probe\"},\"effort\":{\"value\":\"high\",\"source\":\"probe\"},\"role\":null,\"topic\":null},\"op\":\"create\",\"patch\":[{\"op\":\"add\",\"path\":\"/metadata/id\",\"value\":\"compat-bm2z\"},{\"op\":\"add\",\"path\":\"/metadata/title\",\"value\":\"BMP Z\"},{\"op\":\"add\",\"path\":\"/metadata/description\",\"value\":\"\"},{\"op\":\"add\",\"path\":\"/metadata/type\",\"value\":\"Task\"},{\"op\":\"add\",\"path\":\"/metadata/status\",\"value\":\"open\"},{\"op\":\"add\",\"path\":\"/metadata/priority\",\"value\":2},{\"op\":\"add\",\"path\":\"/metadata/tags\",\"value\":[]},{\"op\":\"add\",\"path\":\"/metadata/created_at\",\"value\":\"2026-10-26T22:37:36.607Z\"},{\"op\":\"add\",\"path\":\"/metadata/updated_at\",\"value\":\"2026-10-26T22:37:36.607Z\"},{\"op\":\"add\",\"path\":\"/metadata/author\",\"value\":\"compat-test\"},{\"op\":\"add\",\"path\":\"/metadata/parent\",\"value\":\"compat-gdb7\"},{\"op\":\"add\",\"path\":\"/metadata/dependencies\",\"value\":[{\"id\":\"compat-gdb7\",\"kind\":\"blocked_by\",\"created_at\":\"2026-10-26T22:37:36.607Z\",\"author\":\"compat-test\",\"source_kind\":\"cli:create:dep\",\"author_source\":\"asserted\"},{\"id\":\"compat-s7ov\",\"kind\":\"blocked_by\",\"created_at\":\"2026-10-26T22:37:36.607Z\",\"author\":\"compat-test\",\"source_kind\":\"cli:create:dep\",\"author_source\":\"asserted\"}]},{\"op\":\"add\",\"path\":\"/metadata/bead_id\",\"value\":\"Z\"}],\"before_hash\":\"3cc22dff72be7b14824654a7a64ea62b04799939b2fee54c1b5f52ca60bf6df0\",\"after_hash\":\"b58950876607302abd54169342d191bd89cc13a9272e6106ca4537164d7b1815\",\"item_hash_version\":3,\"message\":\"beads-transfer:d12910bb30882829098892ea5f476f745ba7470bc3e6cdd214cb25a98a498ecb:468bcc9e8c2c33fb07e7a3b88170dd5e81a8a0ba85d03d58c82a3fa161477c3b | explicit_unset=assignee,deadline,release,sprint\",\"context\":{\"agent_provenance_outcomes\":{\"model\":{\"status\":\"resolved\",\"resolver\":\"codex_session_file\",\"rule_version\":\"v1\"},\"effort\":{\"status\":\"resolved\",\"resolver\":\"codex_session_file\",\"rule_version\":\"v1\"},\"version\":{\"status\":\"unavailable\",\"reason\":\"harness_unavailable\",\"resolver\":\"ai_agent_version\",\"rule_version\":\"v1\"}}},\"event_class\":\"substantive\",\"record_hash_version\":1,\"record_hash\":\"30ab8dd42dec57d0a9ecaa8e317b648fcaa7f719c671a0cb600d980363c1e192\"}\n",
+    "history/compat-gdb7.jsonl": "{\"hash_algorithm\":\"sha256\",\"ts\":\"2026-10-26T22:37:36.244Z\",\"author\":\"compat-test\",\"author_source\":\"asserted\",\"agent_harness\":\"codex\",\"agent_model\":\"gpt-6.1-sol\",\"agent_model_source\":\"probe\",\"agent_instance\":\"901fa08c0c7da17a2da53886\",\"agent_provenance\":{\"model\":{\"value\":\"gpt-6.1-sol\",\"source\":\"probe\"},\"effort\":{\"value\":\"high\",\"source\":\"probe\"},\"role\":null,\"topic\":null},\"op\":\"create\",\"patch\":[{\"op\":\"add\",\"path\":\"/metadata/id\",\"value\":\"compat-gdb7\"},{\"op\":\"add\",\"path\":\"/metadata/title\",\"value\":\"Astral 𐀀 / BMP A / private  / é\"},{\"op\":\"add\",\"path\":\"/metadata/description\",\"value\":\"\"},{\"op\":\"add\",\"path\":\"/metadata/type\",\"value\":\"Task\"},{\"op\":\"add\",\"path\":\"/metadata/status\",\"value\":\"open\"},{\"op\":\"add\",\"path\":\"/metadata/priority\",\"value\":1},{\"op\":\"add\",\"path\":\"/metadata/tags\",\"value\":[\"unicode\"]},{\"op\":\"add\",\"path\":\"/metadata/created_at\",\"value\":\"2026-10-26T22:37:36.244Z\"},{\"op\":\"add\",\"path\":\"/metadata/updated_at\",\"value\":\"2026-10-26T22:37:36.244Z\"},{\"op\":\"add\",\"path\":\"/metadata/author\",\"value\":\"compat-test\"},{\"op\":\"add\",\"path\":\"/metadata/bead_id\",\"value\":\"𐀀\"}],\"before_hash\":\"3cc22dff72be7b14824654a7a64ea62b04799939b2fee54c1b5f52ca60bf6df0\",\"after_hash\":\"0167f548c0feaa3a5e40b0608b3e51e3054a424c403ef0975a5a295c3ed46650\",\"item_hash_version\":3,\"message\":\"beads-transfer:d12910bb30882829098892ea5f476f745ba7470bc3e6cdd214cb25a98a498ecb:80066806fcc52478beec53a2ac42bc6a6324eb67c1161136649a669c15d4b7bf | explicit_unset=assignee,deadline,parent,release,sprint\",\"context\":{\"agent_provenance_outcomes\":{\"model\":{\"status\":\"resolved\",\"resolver\":\"codex_session_file\",\"rule_version\":\"v1\"},\"effort\":{\"status\":\"resolved\",\"resolver\":\"codex_session_file\",\"rule_version\":\"v1\"},\"version\":{\"status\":\"unavailable\",\"reason\":\"harness_unavailable\",\"resolver\":\"ai_agent_version\",\"rule_version\":\"v1\"}}},\"event_class\":\"substantive\",\"record_hash_version\":1,\"record_hash\":\"0ae20e7b2d6085e0b15f45b15e229985d369ebb9eaecc5b1c5d891ed7bd1f45e\"}\n",
+    "history/compat-n9f9.jsonl": "{\"hash_algorithm\":\"sha256\",\"ts\":\"2026-10-26T22:37:35.763Z\",\"author\":\"compat-test\",\"author_source\":\"asserted\",\"agent_harness\":\"codex\",\"agent_model\":\"gpt-6.1-sol\",\"agent_model_source\":\"probe\",\"agent_instance\":\"901fa08c0c7da17a2da53886\",\"agent_provenance\":{\"model\":{\"value\":\"gpt-6.1-sol\",\"source\":\"probe\"},\"effort\":{\"value\":\"high\",\"source\":\"probe\"},\"role\":null,\"topic\":null},\"op\":\"create\",\"patch\":[{\"op\":\"add\",\"path\":\"/metadata/id\",\"value\":\"compat-n9f9\"},{\"op\":\"add\",\"path\":\"/metadata/title\",\"value\":\"Combining é\"},{\"op\":\"add\",\"path\":\"/metadata/description\",\"value\":\"\"},{\"op\":\"add\",\"path\":\"/metadata/type\",\"value\":\"Task\"},{\"op\":\"add\",\"path\":\"/metadata/status\",\"value\":\"open\"},{\"op\":\"add\",\"path\":\"/metadata/priority\",\"value\":2},{\"op\":\"add\",\"path\":\"/metadata/tags\",\"value\":[]},{\"op\":\"add\",\"path\":\"/metadata/created_at\",\"value\":\"2026-10-26T22:37:35.763Z\"},{\"op\":\"add\",\"path\":\"/metadata/updated_at\",\"value\":\"2026-10-26T22:37:35.763Z\"},{\"op\":\"add\",\"path\":\"/metadata/author\",\"value\":\"compat-test\"},{\"op\":\"add\",\"path\":\"/metadata/bead_id\",\"value\":\"é\"}],\"before_hash\":\"3cc22dff72be7b14824654a7a64ea62b04799939b2fee54c1b5f52ca60bf6df0\",\"after_hash\":\"8def0da5555b30a15a14594741f1cc0aba24654639d7722709e7e5c953899827\",\"item_hash_version\":3,\"message\":\"beads-transfer:d12910bb30882829098892ea5f476f745ba7470bc3e6cdd214cb25a98a498ecb:3d68ce21f2899a475713cdbe7562ba9bdb6b1dfde8af1f221bdff4a0935b53b2 | explicit_unset=assignee,deadline,parent,release,sprint\",\"context\":{\"agent_provenance_outcomes\":{\"model\":{\"status\":\"resolved\",\"resolver\":\"codex_session_file\",\"rule_version\":\"v1\"},\"effort\":{\"status\":\"resolved\",\"resolver\":\"codex_session_file\",\"rule_version\":\"v1\"},\"version\":{\"status\":\"unavailable\",\"reason\":\"harness_unavailable\",\"resolver\":\"ai_agent_version\",\"rule_version\":\"v1\"}}},\"event_class\":\"substantive\",\"record_hash_version\":1,\"record_hash\":\"a91d48f6e30883a3795035bba82b0831e236cbdae8b9a8ab7d18d7cd02966abe\"}\n",
+    "history/compat-s7ov.jsonl": "{\"hash_algorithm\":\"sha256\",\"ts\":\"2026-10-26T22:37:36.416Z\",\"author\":\"compat-test\",\"author_source\":\"asserted\",\"agent_harness\":\"codex\",\"agent_model\":\"gpt-6.1-sol\",\"agent_model_source\":\"probe\",\"agent_instance\":\"901fa08c0c7da17a2da53886\",\"agent_provenance\":{\"model\":{\"value\":\"gpt-6.1-sol\",\"source\":\"probe\"},\"effort\":{\"value\":\"high\",\"source\":\"probe\"},\"role\":null,\"topic\":null},\"op\":\"create\",\"patch\":[{\"op\":\"add\",\"path\":\"/metadata/id\",\"value\":\"compat-s7ov\"},{\"op\":\"add\",\"path\":\"/metadata/title\",\"value\":\"Private  / astral 𐀀\"},{\"op\":\"add\",\"path\":\"/metadata/description\",\"value\":\"\"},{\"op\":\"add\",\"path\":\"/metadata/type\",\"value\":\"Task\"},{\"op\":\"add\",\"path\":\"/metadata/status\",\"value\":\"open\"},{\"op\":\"add\",\"path\":\"/metadata/priority\",\"value\":2},{\"op\":\"add\",\"path\":\"/metadata/tags\",\"value\":[]},{\"op\":\"add\",\"path\":\"/metadata/created_at\",\"value\":\"2026-10-26T22:37:36.416Z\"},{\"op\":\"add\",\"path\":\"/metadata/updated_at\",\"value\":\"2026-10-26T22:37:36.416Z\"},{\"op\":\"add\",\"path\":\"/metadata/author\",\"value\":\"compat-test\"},{\"op\":\"add\",\"path\":\"/metadata/bead_id\",\"value\":\"\"}],\"before_hash\":\"3cc22dff72be7b14824654a7a64ea62b04799939b2fee54c1b5f52ca60bf6df0\",\"after_hash\":\"1f4ea3ac3f3fba17b52a077185c83707f7889495dde1af2370ffc32cbbe5f60f\",\"item_hash_version\":3,\"message\":\"beads-transfer:d12910bb30882829098892ea5f476f745ba7470bc3e6cdd214cb25a98a498ecb:2ae420786f133698ee38ccf4ade214858eafd2b2ac71c63f118b19df9aebed6b | explicit_unset=assignee,deadline,parent,release,sprint\",\"context\":{\"agent_provenance_outcomes\":{\"model\":{\"status\":\"resolved\",\"resolver\":\"codex_session_file\",\"rule_version\":\"v1\"},\"effort\":{\"status\":\"resolved\",\"resolver\":\"codex_session_file\",\"rule_version\":\"v1\"},\"version\":{\"status\":\"unavailable\",\"reason\":\"harness_unavailable\",\"resolver\":\"ai_agent_version\",\"rule_version\":\"v1\"}}},\"event_class\":\"substantive\",\"record_hash_version\":1,\"record_hash\":\"6986d9d27cbe28eb0209cbbe9f3505f4535222bb42c88a87cb5e04d7895c6bd6\"}\n",
+    "history/compat-w6ci.jsonl": "{\"hash_algorithm\":\"sha256\",\"ts\":\"2026-10-26T22:37:35.977Z\",\"author\":\"compat-test\",\"author_source\":\"asserted\",\"agent_harness\":\"codex\",\"agent_model\":\"gpt-6.1-sol\",\"agent_model_source\":\"probe\",\"agent_instance\":\"901fa08c0c7da17a2da53886\",\"agent_provenance\":{\"model\":{\"value\":\"gpt-6.1-sol\",\"source\":\"probe\"},\"effort\":{\"value\":\"high\",\"source\":\"probe\"},\"role\":null,\"topic\":null},\"op\":\"create\",\"patch\":[{\"op\":\"add\",\"path\":\"/metadata/id\",\"value\":\"compat-w6ci\"},{\"op\":\"add\",\"path\":\"/metadata/title\",\"value\":\"Composed é\"},{\"op\":\"add\",\"path\":\"/metadata/description\",\"value\":\"\"},{\"op\":\"add\",\"path\":\"/metadata/type\",\"value\":\"Task\"},{\"op\":\"add\",\"path\":\"/metadata/status\",\"value\":\"open\"},{\"op\":\"add\",\"path\":\"/metadata/priority\",\"value\":2},{\"op\":\"add\",\"path\":\"/metadata/tags\",\"value\":[]},{\"op\":\"add\",\"path\":\"/metadata/created_at\",\"value\":\"2026-10-26T22:37:35.977Z\"},{\"op\":\"add\",\"path\":\"/metadata/updated_at\",\"value\":\"2026-10-26T22:37:35.977Z\"},{\"op\":\"add\",\"path\":\"/metadata/author\",\"value\":\"compat-test\"},{\"op\":\"add\",\"path\":\"/metadata/bead_id\",\"value\":\"é\"}],\"before_hash\":\"3cc22dff72be7b14824654a7a64ea62b04799939b2fee54c1b5f52ca60bf6df0\",\"after_hash\":\"247415e2770e5f2b6ba2e7edefe810c69d9ce5bcd59487ec6ddcb35ecd4a424b\",\"item_hash_version\":3,\"message\":\"beads-transfer:d12910bb30882829098892ea5f476f745ba7470bc3e6cdd214cb25a98a498ecb:f2886017e9c7abacf804b54d64787dce2b611c9544ba21f3affdd126a6e50086 | explicit_unset=assignee,deadline,parent,release,sprint\",\"context\":{\"agent_provenance_outcomes\":{\"model\":{\"status\":\"resolved\",\"resolver\":\"codex_session_file\",\"rule_version\":\"v1\"},\"effort\":{\"status\":\"resolved\",\"resolver\":\"codex_session_file\",\"rule_version\":\"v1\"},\"version\":{\"status\":\"unavailable\",\"reason\":\"harness_unavailable\",\"resolver\":\"ai_agent_version\",\"rule_version\":\"v1\"}}},\"event_class\":\"substantive\",\"record_hash_version\":1,\"record_hash\":\"01f8e7e4704d53446c67dbb3b67aa71bcc66e1f608db9a6f4bd726727f294abd\"}\n",
+    "schema/fields.json": "{\n  \"fields\": [\n    {\n      \"key\": \"bead_id\",\n      \"type\": \"string\",\n      \"commands\": [\n        \"create\",\n        \"update\"\n      ]\n    }\n  ]\n}\n",
+    "schema/statuses.json": "{\n  \"statuses\": [\n    {\n      \"id\": \"draft\",\n      \"roles\": [\n        \"draft\"\n      ]\n    },\n    {\n      \"id\": \"open\",\n      \"roles\": [\n        \"active\",\n        \"default_open\"\n      ]\n    },\n    {\n      \"id\": \"in_progress\",\n      \"aliases\": [\n        \"in-progress\"\n      ],\n      \"roles\": [\n        \"active\"\n      ]\n    },\n    {\n      \"id\": \"blocked\",\n      \"roles\": [\n        \"blocked\"\n      ]\n    },\n    {\n      \"id\": \"closed\",\n      \"roles\": [\n        \"terminal\",\n        \"terminal_done\",\n        \"default_close\"\n      ]\n    },\n    {\n      \"id\": \"canceled\",\n      \"aliases\": [\n        \"cancelled\"\n      ],\n      \"roles\": [\n        \"terminal\",\n        \"terminal_canceled\",\n        \"default_cancel\"\n      ]\n    }\n  ]\n}\n",
+    "schema/types.json": "{\n  \"definitions\": []\n}\n",
+    "schema/workflows.json": "{\n  \"workflow\": {\n    \"draft_status\": \"draft\",\n    \"open_status\": \"open\",\n    \"in_progress_status\": \"in_progress\",\n    \"blocked_status\": \"blocked\",\n    \"close_status\": \"closed\",\n    \"canceled_status\": \"canceled\"\n  }\n}\n",
+    "settings.json": "{\n  \"version\": 1,\n  \"id_prefix\": \"compat-\",\n  \"ids\": {\n    \"token_length\": 4\n  },\n  \"author_default\": \"compat-test\",\n  \"agent_identity\": {\n    \"probes_enabled\": true,\n    \"identity_vocabulary\": {\n      \"version\": 1,\n      \"aliases\": {}\n    },\n    \"harness_signals\": []\n  },\n  \"mutation_guard\": {\n    \"require_attributed_author\": false,\n    \"secret_guard\": \"advise\",\n    \"stale_in_progress_hours\": 72\n  },\n  \"item_format\": \"toon\",\n  \"locks\": {\n    \"ttl_seconds\": 1800,\n    \"wait_ms\": 3000\n  },\n  \"checkpoints\": {\n    \"retention_days\": 14\n  },\n  \"output\": {\n    \"default_format\": \"toon\"\n  },\n  \"ux\": {\n    \"deprecation_hints\": true\n  },\n  \"history\": {\n    \"missing_stream\": \"auto_create\",\n    \"compact_policy\": {\n      \"enabled\": false,\n      \"max_entries\": 500,\n      \"trigger\": \"health_warn\"\n    }\n  },\n  \"validation\": {\n    \"sprint_release_format\": \"warn\",\n    \"parent_reference\": \"strict_error\",\n    \"metadata_profile\": \"core\",\n    \"metadata_required_fields\": [],\n    \"lifecycle_stale_blocker_reason_patterns\": [\n      \"no active blocker\",\n      \"ready for planned execution sequencing\",\n      \"work completed\",\n      \"work is closed\"\n    ],\n    \"lifecycle_closure_like_blocked_reason_patterns\": [\n      \"no active blocker because work is closed\",\n      \"work is closed\"\n    ],\n    \"lifecycle_closure_like_resolution_patterns\": [\n      \"closed with implementation evidence\",\n      \"closed with verification evidence\",\n      \"work completed and recorded\",\n      \"work is closed\"\n    ],\n    \"lifecycle_closure_like_actual_result_patterns\": [\n      \"closed and recorded\",\n      \"work completed\",\n      \"work completed and recorded\"\n    ],\n    \"estimate_defaults_by_type\": {}\n  },\n  \"governance\": {\n    \"preset\": \"minimal\",\n    \"duplicate_detection_mode\": \"off\",\n    \"duplicate_detection_threshold\": 0.8,\n    \"duplicate_detection_limit\": 3\n  },\n  \"workflow\": {\n    \"definition_of_done\": []\n  },\n  \"testing\": {\n    \"record_results_to_items\": false,\n    \"allow_untrusted_linked_tests\": false\n  },\n  \"telemetry\": {\n    \"enabled\": true,\n    \"first_run_prompt_completed\": false,\n    \"capture_level\": \"redacted\",\n    \"endpoint\": \"https://pm-cli.unbrained.dev/v1/events\",\n    \"installation_id\": \"\",\n    \"retention_days\": 365\n  },\n  \"agent_guidance\": {\n    \"prompt_completed\": false,\n    \"declined\": false,\n    \"declined_at\": \"\",\n    \"template_version\": 1,\n    \"last_checked_files\": []\n  },\n  \"item_types\": {\n    \"definitions\": []\n  },\n  \"schema\": {\n    \"version\": 1,\n    \"files\": {\n      \"types\": \"schema/types.json\",\n      \"statuses\": \"schema/statuses.json\",\n      \"fields\": \"schema/fields.json\",\n      \"workflows\": \"schema/workflows.json\"\n    },\n    \"statuses\": [\n      {\n        \"id\": \"draft\",\n        \"roles\": [\n          \"draft\"\n        ],\n        \"order\": 0\n      },\n      {\n        \"id\": \"open\",\n        \"roles\": [\n          \"active\",\n          \"default_open\"\n        ],\n        \"order\": 1\n      },\n      {\n        \"id\": \"in_progress\",\n        \"aliases\": [\n          \"in_progress\"\n        ],\n        \"roles\": [\n          \"active\"\n        ],\n        \"order\": 2\n      },\n      {\n        \"id\": \"blocked\",\n        \"roles\": [\n          \"blocked\"\n        ],\n        \"order\": 3\n      },\n      {\n        \"id\": \"closed\",\n        \"roles\": [\n          \"default_close\",\n          \"terminal\",\n          \"terminal_done\"\n        ],\n        \"order\": 4\n      },\n      {\n        \"id\": \"canceled\",\n        \"aliases\": [\n          \"cancelled\"\n        ],\n        \"roles\": [\n          \"default_cancel\",\n          \"terminal\",\n          \"terminal_canceled\"\n        ],\n        \"order\": 5\n      }\n    ],\n    \"fields\": [],\n    \"workflow\": {\n      \"draft_status\": \"draft\",\n      \"open_status\": \"open\",\n      \"in_progress_status\": \"in_progress\",\n      \"blocked_status\": \"blocked\",\n      \"close_status\": \"closed\",\n      \"canceled_status\": \"canceled\"\n    },\n    \"unknown_field_policy\": \"allow\"\n  },\n  \"context\": {\n    \"default_depth\": \"brief\",\n    \"activity_limit\": 10,\n    \"stale_threshold_days\": 7,\n    \"sections\": {\n      \"hierarchy\": true,\n      \"activity\": true,\n      \"progress\": true,\n      \"blockers\": true,\n      \"files\": true,\n      \"workload\": true,\n      \"staleness\": true,\n      \"tests\": true,\n      \"recently_created\": true,\n      \"unparented\": true\n    }\n  },\n  \"extensions\": {\n    \"enabled\": [],\n    \"disabled\": [],\n    \"policy\": {\n      \"mode\": \"off\",\n      \"trust_mode\": \"off\",\n      \"require_provenance\": false,\n      \"trusted_extensions\": [],\n      \"default_sandbox_profile\": \"none\",\n      \"allowed_extensions\": [],\n      \"blocked_extensions\": [],\n      \"allowed_capabilities\": [],\n      \"blocked_capabilities\": [],\n      \"allowed_surfaces\": [],\n      \"blocked_surfaces\": [],\n      \"allowed_commands\": [],\n      \"blocked_commands\": [],\n      \"allowed_actions\": [],\n      \"blocked_actions\": [],\n      \"allowed_services\": [],\n      \"blocked_services\": [],\n      \"extension_overrides\": []\n    }\n  },\n  \"search\": {\n    \"score_threshold\": 0,\n    \"hybrid_semantic_weight\": 0.7,\n    \"max_results\": 50,\n    \"embedding_model\": \"\",\n    \"embedding_batch_size\": 32,\n    \"embedding_timeout_ms\": 30000,\n    \"scanner_max_batch_retries\": 3,\n    \"provider\": \"\",\n    \"default_mode\": \"auto\",\n    \"mutation_refresh_policy\": \"semantic_configured\",\n    \"query_expansion\": {\n      \"enabled\": false,\n      \"provider\": \"\"\n    },\n    \"rerank\": {\n      \"enabled\": false,\n      \"model\": \"\",\n      \"top_k\": 20\n    }\n  },\n  \"providers\": {\n    \"openai\": {\n      \"base_url\": \"\",\n      \"api_key\": \"\",\n      \"model\": \"\"\n    },\n    \"ollama\": {\n      \"base_url\": \"\",\n      \"model\": \"\"\n    }\n  },\n  \"vector_store\": {\n    \"adapter\": \"\",\n    \"collection_name\": \"pm_items\",\n    \"qdrant\": {\n      \"url\": \"\",\n      \"api_key\": \"\"\n    },\n    \"lancedb\": {\n      \"path\": \"\"\n    }\n  }\n}\n",
+    "tasks/compat-bm2z.toon": "id: compat-bm2z\ntitle: BMP Z\ndescription: \"\"\ntype: Task\nstatus: open\npriority: 2\ntags: []\ncreated_at: \"2026-10-26T22:37:36.607Z\"\nupdated_at: \"2026-10-26T22:37:36.607Z\"\nauthor: compat-test\nparent: compat-gdb7\ndependencies[2]{id,kind,created_at,author,source_kind,author_source}:\n  compat-gdb7,blocked_by,\"2026-10-26T22:37:36.607Z\",compat-test,\"cli:create:dep\",asserted\n  compat-s7ov,blocked_by,\"2026-10-26T22:37:36.607Z\",compat-test,\"cli:create:dep\",asserted\nbead_id: Z\nbody: \"\"\n",
+    "tasks/compat-gdb7.toon": "id: compat-gdb7\ntitle: Astral 𐀀 / BMP A / private  / é\ndescription: \"\"\ntype: Task\nstatus: open\npriority: 1\ntags[1]: unicode\ncreated_at: \"2026-10-26T22:37:36.244Z\"\nupdated_at: \"2026-10-26T22:37:36.244Z\"\nauthor: compat-test\nbead_id: 𐀀\nbody: \"\"\n",
+    "tasks/compat-n9f9.toon": "id: compat-n9f9\ntitle: Combining é\ndescription: \"\"\ntype: Task\nstatus: open\npriority: 2\ntags: []\ncreated_at: \"2026-10-26T22:37:35.763Z\"\nupdated_at: \"2026-10-26T22:37:35.763Z\"\nauthor: compat-test\nbead_id: é\nbody: \"\"\n",
+    "tasks/compat-s7ov.toon": "id: compat-s7ov\ntitle: Private  / astral 𐀀\ndescription: \"\"\ntype: Task\nstatus: open\npriority: 2\ntags: []\ncreated_at: \"2026-10-26T22:37:36.416Z\"\nupdated_at: \"2026-10-26T22:37:36.416Z\"\nauthor: compat-test\nbead_id: \nbody: \"\"\n",
+    "tasks/compat-w6ci.toon": "id: compat-w6ci\ntitle: Composed é\ndescription: \"\"\ntype: Task\nstatus: open\npriority: 2\ntags: []\ncreated_at: \"2026-10-26T22:37:35.977Z\"\nupdated_at: \"2026-10-26T22:37:35.977Z\"\nauthor: compat-test\nbead_id: é\nbody: \"\"\n",
+    "transactions/beads-reconcile/de6fd50fff809d472d4ce793b701aa07ba0df2b20005059fca53841f41413467.json": "{\"new𐀀é\":\"compat-fewf\"}\n",
+    "transactions/beads-transfer/d12910bb30882829098892ea5f476f745ba7470bc3e6cdd214cb25a98a498ecb.json": "{\"schema\":1,\"digest\":\"d12910bb30882829098892ea5f476f745ba7470bc3e6cdd214cb25a98a498ecb\",\"rows\":{\"é\":{\"pmId\":\"compat-n9f9\",\"itemHash\":\"8def0da5555b30a15a14594741f1cc0aba24654639d7722709e7e5c953899827\",\"hashKind\":\"sdk\"},\"é\":{\"pmId\":\"compat-w6ci\",\"itemHash\":\"247415e2770e5f2b6ba2e7edefe810c69d9ce5bcd59487ec6ddcb35ecd4a424b\",\"hashKind\":\"sdk\"},\"𐀀\":{\"pmId\":\"compat-gdb7\",\"itemHash\":\"0167f548c0feaa3a5e40b0608b3e51e3054a424c403ef0975a5a295c3ed46650\",\"hashKind\":\"sdk\"},\"\":{\"pmId\":\"compat-s7ov\",\"itemHash\":\"1f4ea3ac3f3fba17b52a077185c83707f7889495dde1af2370ffc32cbbe5f60f\",\"hashKind\":\"sdk\"},\"Z\":{\"pmId\":\"compat-bm2z\",\"itemHash\":\"b58950876607302abd54169342d191bd89cc13a9272e6106ca4537164d7b1815\",\"hashKind\":\"sdk\"}}}\n",
+    "transactions/sdk/beads-ack-07326da5-6135-49e8-97f4-d21a820a0f27.json": "{\n  \"schemaVersion\": 1,\n  \"transactionId\": \"beads-ack-07326da5-6135-49e8-97f4-d21a820a0f27\",\n  \"author\": \"compat-test\",\n  \"status\": \"committed\",\n  \"attempt\": 1,\n  \"createdAt\": \"2026-10-26T22:37:37.212Z\",\n  \"updatedAt\": \"2026-10-26T22:37:37.671Z\",\n  \"stepIds\": [\n    \"acknowledge\"\n  ],\n  \"startedStepIds\": [\n    \"acknowledge\"\n  ],\n  \"completedStepIds\": [\n    \"acknowledge\"\n  ],\n  \"results\": {\n    \"acknowledge\": \"6f8c307d69df20f2ff51d9b62d059c53ca2ecfaefe600b531479bd7c9c35faa8\"\n  },\n  \"compensationData\": {}\n}\n",
+    "transactions/sdk/beads-reconcile-de6fd50fff809d472d4ce793b701aa07ba0df2b20005059fca53841f41413467-identity.json": "{\n  \"schemaVersion\": 1,\n  \"transactionId\": \"beads-reconcile-de6fd50fff809d472d4ce793b701aa07ba0df2b20005059fca53841f41413467-identity\",\n  \"author\": \"compat-test\",\n  \"status\": \"committed\",\n  \"attempt\": 1,\n  \"createdAt\": \"2026-10-26T22:37:37.984Z\",\n  \"updatedAt\": \"2026-10-26T22:37:38.000Z\",\n  \"stepIds\": [\n    \"identities\"\n  ],\n  \"startedStepIds\": [\n    \"identities\"\n  ],\n  \"completedStepIds\": [\n    \"identities\"\n  ],\n  \"results\": {},\n  \"compensationData\": {}\n}\n",
+    "transactions/sdk/beads-reconcile-de6fd50fff809d472d4ce793b701aa07ba0df2b20005059fca53841f41413467.json": "{\n  \"schemaVersion\": 1,\n  \"transactionId\": \"beads-reconcile-de6fd50fff809d472d4ce793b701aa07ba0df2b20005059fca53841f41413467\",\n  \"author\": \"compat-test\",\n  \"status\": \"applying\",\n  \"attempt\": 1,\n  \"createdAt\": \"2026-10-26T22:37:38.032Z\",\n  \"updatedAt\": \"2026-10-26T22:37:38.032Z\",\n  \"stepIds\": [\n    \"item-0\",\n    \"item-1\",\n    \"acknowledge\"\n  ],\n  \"startedStepIds\": [],\n  \"completedStepIds\": [],\n  \"results\": {},\n  \"compensationData\": {}\n}\n",
+    "transactions/sdk/beads-transfer-d12910bb30882829098892ea5f476f745ba7470bc3e6cdd214cb25a98a498ecb-0.json": "{\n  \"schemaVersion\": 1,\n  \"transactionId\": \"beads-transfer-d12910bb30882829098892ea5f476f745ba7470bc3e6cdd214cb25a98a498ecb-0\",\n  \"author\": \"compat-test\",\n  \"status\": \"committed\",\n  \"attempt\": 1,\n  \"createdAt\": \"2026-10-26T22:37:35.613Z\",\n  \"updatedAt\": \"2026-10-26T22:37:36.859Z\",\n  \"stepIds\": [\n    \"row-3d68ce21f2899a475713cdbe7562ba9bdb6b1dfde8af1f221bdff4a0935b53b2\",\n    \"row-f2886017e9c7abacf804b54d64787dce2b611c9544ba21f3affdd126a6e50086\",\n    \"row-80066806fcc52478beec53a2ac42bc6a6324eb67c1161136649a669c15d4b7bf\",\n    \"row-2ae420786f133698ee38ccf4ade214858eafd2b2ac71c63f118b19df9aebed6b\",\n    \"row-468bcc9e8c2c33fb07e7a3b88170dd5e81a8a0ba85d03d58c82a3fa161477c3b\"\n  ],\n  \"startedStepIds\": [\n    \"row-3d68ce21f2899a475713cdbe7562ba9bdb6b1dfde8af1f221bdff4a0935b53b2\",\n    \"row-f2886017e9c7abacf804b54d64787dce2b611c9544ba21f3affdd126a6e50086\",\n    \"row-80066806fcc52478beec53a2ac42bc6a6324eb67c1161136649a669c15d4b7bf\",\n    \"row-2ae420786f133698ee38ccf4ade214858eafd2b2ac71c63f118b19df9aebed6b\",\n    \"row-468bcc9e8c2c33fb07e7a3b88170dd5e81a8a0ba85d03d58c82a3fa161477c3b\"\n  ],\n  \"completedStepIds\": [\n    \"row-3d68ce21f2899a475713cdbe7562ba9bdb6b1dfde8af1f221bdff4a0935b53b2\",\n    \"row-f2886017e9c7abacf804b54d64787dce2b611c9544ba21f3affdd126a6e50086\",\n    \"row-80066806fcc52478beec53a2ac42bc6a6324eb67c1161136649a669c15d4b7bf\",\n    \"row-2ae420786f133698ee38ccf4ade214858eafd2b2ac71c63f118b19df9aebed6b\",\n    \"row-468bcc9e8c2c33fb07e7a3b88170dd5e81a8a0ba85d03d58c82a3fa161477c3b\"\n  ],\n  \"results\": {\n    \"row-3d68ce21f2899a475713cdbe7562ba9bdb6b1dfde8af1f221bdff4a0935b53b2\": {\n      \"id\": \"é\",\n      \"pmId\": \"compat-n9f9\",\n      \"outcome\": \"transferred\",\n      \"reason\": \"owned_creation\"\n    },\n    \"row-f2886017e9c7abacf804b54d64787dce2b611c9544ba21f3affdd126a6e50086\": {\n      \"id\": \"é\",\n      \"pmId\": \"compat-w6ci\",\n      \"outcome\": \"transferred\",\n      \"reason\": \"owned_creation\"\n    },\n    \"row-80066806fcc52478beec53a2ac42bc6a6324eb67c1161136649a669c15d4b7bf\": {\n      \"id\": \"𐀀\",\n      \"pmId\": \"compat-gdb7\",\n      \"outcome\": \"transferred\",\n      \"reason\": \"owned_creation\"\n    },\n    \"row-2ae420786f133698ee38ccf4ade214858eafd2b2ac71c63f118b19df9aebed6b\": {\n      \"id\": \"\",\n      \"pmId\": \"compat-s7ov\",\n      \"outcome\": \"transferred\",\n      \"reason\": \"owned_creation\"\n    },\n    \"row-468bcc9e8c2c33fb07e7a3b88170dd5e81a8a0ba85d03d58c82a3fa161477c3b\": {\n      \"id\": \"Z\",\n      \"pmId\": \"compat-bm2z\",\n      \"outcome\": \"transferred\",\n      \"reason\": \"owned_creation\"\n    }\n  },\n  \"compensationData\": {}\n}\n",
+    "transactions/sdk/beads-transfer-d12910bb30882829098892ea5f476f745ba7470bc3e6cdd214cb25a98a498ecb-identity.json": "{\n  \"schemaVersion\": 1,\n  \"transactionId\": \"beads-transfer-d12910bb30882829098892ea5f476f745ba7470bc3e6cdd214cb25a98a498ecb-identity\",\n  \"author\": \"compat-test\",\n  \"status\": \"committed\",\n  \"attempt\": 1,\n  \"createdAt\": \"2026-10-26T22:37:35.481Z\",\n  \"updatedAt\": \"2026-10-26T22:37:35.564Z\",\n  \"stepIds\": [\n    \"identity\"\n  ],\n  \"startedStepIds\": [\n    \"identity\"\n  ],\n  \"completedStepIds\": [\n    \"identity\"\n  ],\n  \"results\": {},\n  \"compensationData\": {}\n}\n"
+  },
+  "expected": [
+    {
+      "id": "é",
+      "fields": {
+        "title": "Composed é",
+        "status": "open",
+        "type": "task",
+        "priority": "2",
+        "tags": "[]",
+        "assignee": "",
+        "parent": "",
+        "deadline": "",
+        "dependencies": "[]",
+        "description": "",
+        "sprint": "",
+        "release": ""
+      },
+      "pmId": "compat-w6ci"
+    },
+    {
+      "id": "é",
+      "fields": {
+        "title": "Combining é",
+        "status": "open",
+        "type": "task",
+        "priority": "2",
+        "tags": "[]",
+        "assignee": "",
+        "parent": "",
+        "deadline": "",
+        "dependencies": "[]",
+        "description": "",
+        "sprint": "",
+        "release": ""
+      },
+      "pmId": "compat-n9f9"
+    },
+    {
+      "id": "new𐀀é",
+      "fields": {
+        "title": "New 𐀀é",
+        "status": "open",
+        "type": "task",
+        "priority": "2",
+        "tags": "[]",
+        "assignee": "",
+        "parent": "",
+        "deadline": "",
+        "dependencies": "[\"𐀀\",\"\"]",
+        "description": "",
+        "sprint": "",
+        "release": ""
+      },
+      "pmId": "compat-fewf"
+    },
+    {
+      "id": "Z",
+      "fields": {
+        "title": "BMP Z",
+        "status": "open",
+        "type": "task",
+        "priority": "2",
+        "tags": "[]",
+        "assignee": "",
+        "parent": "𐀀",
+        "deadline": "",
+        "dependencies": "[\"𐀀\",\"\"]",
+        "description": "",
+        "sprint": "",
+        "release": ""
+      },
+      "pmId": "compat-bm2z"
+    },
+    {
+      "id": "𐀀",
+      "fields": {
+        "title": "Astral 𐀀 / BMP A / private  / é",
+        "status": "open",
+        "type": "task",
+        "priority": "1",
+        "tags": "[\"unicode\"]",
+        "assignee": "",
+        "parent": "",
+        "deadline": "",
+        "dependencies": "[]",
+        "description": "",
+        "sprint": "",
+        "release": ""
+      },
+      "pmId": "compat-gdb7"
+    },
+    {
+      "id": "",
+      "fields": {
+        "title": "Private  / astral 𐀀",
+        "status": "open",
+        "type": "task",
+        "priority": "2",
+        "tags": "[]",
+        "assignee": "",
+        "parent": "",
+        "deadline": "",
+        "dependencies": "[]",
+        "description": "",
+        "sprint": "",
+        "release": ""
+      },
+      "pmId": "compat-s7ov"
+    }
+  ],
+  "acknowledgement": {
+    "schema": 1,
+    "source": "compat-ack",
+    "previous": "6f8c307d69df20f2ff51d9b62d059c53ca2ecfaefe600b531479bd7c9c35faa8",
+    "records": [
+      {
+        "id": "é",
+        "fields": {
+          "title": "Composed é",
+          "status": "open",
+          "type": "task",
+          "priority": "2",
+          "tags": "[]",
+          "assignee": "",
+          "parent": "",
+          "deadline": "",
+          "dependencies": "[]",
+          "description": "",
+          "sprint": "",
+          "release": ""
+        }
+      },
+      {
+        "id": "é",
+        "fields": {
+          "title": "Combining é",
+          "status": "open",
+          "type": "task",
+          "priority": "2",
+          "tags": "[]",
+          "assignee": "",
+          "parent": "",
+          "deadline": "",
+          "dependencies": "[]",
+          "description": "",
+          "sprint": "",
+          "release": ""
+        }
+      },
+      {
+        "id": "new𐀀é",
+        "fields": {
+          "title": "New 𐀀é",
+          "status": "open",
+          "type": "task",
+          "priority": "2",
+          "tags": "[]",
+          "assignee": "",
+          "parent": "",
+          "deadline": "",
+          "dependencies": "[\"𐀀\",\"\"]",
+          "description": "",
+          "sprint": "",
+          "release": ""
+        }
+      },
+      {
+        "id": "Z",
+        "fields": {
+          "title": "BMP Z",
+          "status": "open",
+          "type": "task",
+          "priority": "2",
+          "tags": "[]",
+          "assignee": "",
+          "parent": "𐀀",
+          "deadline": "",
+          "dependencies": "[\"𐀀\",\"\"]",
+          "description": "",
+          "sprint": "",
+          "release": ""
+        }
+      },
+      {
+        "id": "𐀀",
+        "fields": {
+          "title": "Astral 𐀀 / BMP A / private  / é",
+          "status": "open",
+          "type": "task",
+          "priority": "1",
+          "tags": "[\"unicode\"]",
+          "assignee": "",
+          "parent": "",
+          "deadline": "",
+          "dependencies": "[]",
+          "description": "",
+          "sprint": "",
+          "release": ""
+        }
+      },
+      {
+        "id": "",
+        "fields": {
+          "title": "Private  / astral 𐀀",
+          "status": "open",
+          "type": "task",
+          "priority": "2",
+          "tags": "[]",
+          "assignee": "",
+          "parent": "",
+          "deadline": "",
+          "dependencies": "[]",
+          "description": "",
+          "sprint": "",
+          "release": ""
+        }
+      }
+    ],
+    "bindings": {
+      "é": "compat-w6ci",
+      "é": "compat-n9f9",
+      "new𐀀é": "compat-fewf",
+      "Z": "compat-bm2z",
+      "𐀀": "compat-gdb7",
+      "": "compat-s7ov"
+    },
+    "revision": "038e0b6b4c3a483d079f24fcc41e4877e697b08937bf4315da4d697f625bd79f"
+  },
+  "result": {
+    "applied": 1,
+    "baseRevision": "038e0b6b4c3a483d079f24fcc41e4877e697b08937bf4315da4d697f625bd79f",
+    "deletionProposals": 0
+  }
+}

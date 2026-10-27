@@ -19,22 +19,9 @@ import {
   optionString, readBoolOption, resolveImportInputFile, type BeadsItem, type PmItem,
 } from "./index.ts";
 
-/** Fields reconciled independently; annotation collections and timestamps stay local. */
-export const RECONCILE_FIELDS = [...DIFF_FIELDS, "description", "sprint", "release"] as const;
-/** A single supported Beads field. */
-export type ReconcileField = typeof RECONCILE_FIELDS[number];
-/** Canonical field values, retaining set boundaries instead of joining with commas. */
-export type SnapshotFields = Record<ReconcileField, string>;
-/** One canonical external record. Missing optional fields mean empty values in a full snapshot. */
-export interface SnapshotRecord { id: string; fields: SnapshotFields }
-/** Persisted external base; revision changes on every successful acknowledgement. */
-export interface BeadsAcknowledgement {
-  schema: 1; source: string; revision: string; previous: string | null; records: SnapshotRecord[];
-  /** Durable external-to-core identities owned by this source; absent in legacy bases. */
-  bindings?: Record<string, string>;
-}
-/** A live record bound to its pm identity and core history version. */
-export interface LiveSnapshotRecord extends SnapshotRecord { pmId: string; version: string; updatedAt: string }
+import { RECONCILE_FIELDS, compareBeadsIdentities, checkBeadsSchema, BEADS_RECORDS_SCHEMA, BEADS_ACKNOWLEDGEMENT_SCHEMA,
+  type ReconcileField, type SnapshotFields, type SnapshotRecord, type BeadsAcknowledgement, type LiveSnapshotRecord } from "./snapshot-schema.ts";
+export { RECONCILE_FIELDS, type ReconcileField, type SnapshotFields, type SnapshotRecord, type BeadsAcknowledgement, type LiveSnapshotRecord } from "./snapshot-schema.ts";
 /** Field conflict with all three canonical values; null denotes item absence. */
 export interface BeadsFieldConflict {
   id: string; field: ReconcileField | "$item"; base: string | null; local: string | null; incoming: string | null;
@@ -43,7 +30,7 @@ export interface BeadsFieldConflict {
 export interface BeadsChange { id: string; kind: "create" | "update"; fields: ReconcileField[] }
 /** Immutable-by-convention plan; apply revalidates its digest and base. */
 export interface BeadsReconcilePlan {
-  schema: 1; source: string; baseRevision: string; trackerRevision: string; digest: string;
+  schema: 1 | 2; source: string; baseRevision: string; trackerRevision: string; digest: string;
   live: LiveSnapshotRecord[]; incoming: SnapshotRecord[]; changes: BeadsChange[]; conflicts: BeadsFieldConflict[];
   deletions: Array<{ id: string; pmId: string; locallyChanged: boolean }>;
   unchanged: number; localOnly: number;
@@ -85,63 +72,51 @@ function normalizeSnapshotFields(fields: SnapshotFields): SnapshotFields {
   return { ...fields, type: (resolveTypeSynonym(fields.type) ?? fields.type).toLowerCase(), deadline: raw ? new Date(raw).toISOString() : "" };
 }
 /** Normalize one record with the existing Beads alias and mapping rules. */
-export function canonicalBeadsRecord(bead: BeadsItem): SnapshotRecord {
+export function canonicalBeadsRecord(bead: BeadsItem, schema: 1 | 2 = 2): SnapshotRecord {
   const id = bead.id;
   if (typeof id !== "string" || !isEncodableBeadId(id)) refuse("invalid_snapshot", "Give every record a stable, unique, encodable Beads id.");
   const fields = {} as SnapshotFields;
   for (const field of RECONCILE_FIELDS) {
     if (field === "description") fields[field] = bead.description ?? "";
     else if (field === "sprint" || field === "release") fields[field] = String(bead[field] ?? "");
-    else if (field === "dependencies") fields[field] = JSON.stringify([...new Set(extractBlockerIds(bead))].sort());
+    else if (field === "dependencies") fields[field] = JSON.stringify([...new Set(extractBlockerIds(bead))].sort(schema === 1 ? undefined : compareBeadsIdentities));
     else if (field === "tags") fields[field] = JSON.stringify(parseTags(JSON.stringify(bead.labels ?? bead.tags ?? [])));
     else fields[field] = normalizeDiffField(bead, field);
   }
-  return { id, fields: normalizeSnapshotFields(fields) };
+  const record = { id, fields: normalizeSnapshotFields(fields) };
+  assertRecords([record]);
+  return record;
 }
 /** Validate a complete JSONL snapshot before any acknowledgement or mutation. */
-export function parseBeadsSnapshot(text: string): SnapshotRecord[] {
+export function parseBeadsSnapshot(text: string, schema: 1 | 2 = 2): SnapshotRecord[] {
   const report = validateBeadsText(text);
   if (!report.valid || report.issues.some(issue => issue.code === "unknown_status")) refuse("invalid_snapshot", "Run beads validate and fix structural errors before reconciling a full snapshot.");
-  const records = text.split("\n").filter(line => line.trim()).map(line => canonicalBeadsRecord(JSON.parse(line) as BeadsItem));
+  const records = text.split("\n").filter(line => line.trim()).map(line => canonicalBeadsRecord(JSON.parse(line) as BeadsItem, schema));
   assertRecords(records);
-  return records.sort((a, b) => a.id.localeCompare(b.id, "en"));
+  return records.sort((a, b) => compareSnapshotIds(a.id, b.id, schema));
 }
-/** Check the JSON representation of a canonical tag or dependency collection. */
-function isJsonStringArray(value: string): boolean {
-  try {
-    const parsed: unknown = JSON.parse(value);
-    return Array.isArray(parsed) && parsed.every((item: unknown) => typeof item === "string");
-  } catch {
-    return false;
-  }
+/** Apply the shared producer/consumer schema using the reconciliation refusal contract. */
+function assertRecords(records: unknown): asserts records is SnapshotRecord[] {
+  if (!checkBeadsSchema(records, BEADS_RECORDS_SCHEMA)) refuse("invalid_snapshot", "Supply records matching the shared Beads snapshot schema.");
 }
-/** Reject malformed or duplicate canonical records, including forged persisted bases. */
-function assertRecords(records: SnapshotRecord[]): void {
-  if (!Array.isArray(records)) refuse("invalid_snapshot", "Supply a canonical full snapshot array.");
-  const ids = new Set<string>();
-  for (const row of records) {
-    if (!row || typeof row.id !== "string" || !isEncodableBeadId(row.id) || ids.has(row.id) ||
-        !row.fields || RECONCILE_FIELDS.some(field => typeof row.fields[field] !== "string") ||
-        !isJsonStringArray(row.fields.tags) || !isJsonStringArray(row.fields.dependencies)) {
-      refuse("invalid_snapshot", "Repair duplicate identities or malformed canonical fields, including JSON string arrays for tags and dependencies; then preview again.");
-    }
-    ids.add(row.id);
-  }
+/** Preserve released schema-1 snapshot collation solely when validating or resuming old plans. */
+function compareSnapshotIds(left: string, right: string, schema: 1 | 2): number {
+  return schema === 1 ? left.localeCompare(right, "en") : compareBeadsIdentities(left, right);
 }
 /** Build a deterministic three-way plan without writing tracker data. */
-export function reconcileBeadsSnapshots(base: BeadsAcknowledgement, incoming: SnapshotRecord[], live: LiveSnapshotRecord[]): BeadsReconcilePlan {
+export function reconcileBeadsSnapshots(base: BeadsAcknowledgement, incoming: SnapshotRecord[], live: LiveSnapshotRecord[], schema: 1 | 2 = 2): BeadsReconcilePlan {
   assertRecords(base.records); assertRecords(incoming); assertRecords(live);
   base = { ...base, records: base.records.map(row => ({ ...row, fields: normalizeSnapshotFields(row.fields) })) };
-  incoming = structuredClone(incoming).map(row => ({ ...row, fields: normalizeSnapshotFields(row.fields) })).sort((a, b) => a.id.localeCompare(b.id, "en"));
-  live = live.map(row => ({ ...row, fields: normalizeSnapshotFields(row.fields) })).sort((a, b) => a.id.localeCompare(b.id, "en"));
+  incoming = structuredClone(incoming).map(row => ({ ...row, fields: normalizeSnapshotFields(row.fields) })).sort((a, b) => compareSnapshotIds(a.id, b.id, schema));
+  live = live.map(row => ({ ...row, fields: normalizeSnapshotFields(row.fields) })).sort((a, b) => compareSnapshotIds(a.id, b.id, schema));
   const old = new Map(base.records.map(row => [row.id, row]));
   const next = new Map(incoming.map(row => [row.id, row]));
   const local = new Map(live.map(row => [row.id, row]));
   const plan: BeadsReconcilePlan = {
-    schema: 1, source: base.source, baseRevision: base.revision, trackerRevision: digest(live), digest: "",
+    schema, source: base.source, baseRevision: base.revision, trackerRevision: digest(live), digest: "",
     live: structuredClone(live), incoming, changes: [], conflicts: [], deletions: [], unchanged: 0, localOnly: 0,
   };
-  for (const id of [...new Set([...old.keys(), ...next.keys()])].sort()) {
+  for (const id of [...new Set([...old.keys(), ...next.keys()])].sort(schema === 1 ? undefined : compareBeadsIdentities)) {
     const b = old.get(id), n = next.get(id), l = local.get(id);
     if (!n) {
       if (l) plan.deletions.push({ id, pmId: l.pmId, locallyChanged: RECONCILE_FIELDS.some(field => b!.fields[field] !== l.fields[field]) });
@@ -169,6 +144,10 @@ export function reconcileBeadsSnapshots(base: BeadsAcknowledgement, incoming: Sn
   plan.digest = digest({ ...plan, digest: "" });
   return plan;
 }
+/** Compute the existing acknowledgement receipt using its exact persisted field order. */
+export function beadsAcknowledgementDigest(state: Omit<BeadsAcknowledgement, "schema" | "revision">): string {
+  return digest({ source: state.source, previous: state.previous, records: state.records, ...(state.bindings ? { bindings: state.bindings } : {}) });
+}
 /** Resolve one source-owned state file without interpolating external ids into paths. */
 function statePath(pmRoot: string, source: string): string {
   if (!source.trim()) refuse("invalid_snapshot", "Choose a nonempty source name and reuse it for the same external tracker.");
@@ -189,8 +168,9 @@ export async function readBeadsAcknowledgement(pmRoot: string, source: string): 
   let state: BeadsAcknowledgement;
   try { state = JSON.parse(raw) as BeadsAcknowledgement; }
   catch { return refuse("invalid_snapshot", "Restore a valid acknowledged base; do not silently reset source history."); }
-  if (!state || state.schema !== 1 || state.source !== source ||
-      state.revision !== digest({ source, previous: state.previous, records: state.records, ...(state.bindings ? { bindings: state.bindings } : {}) })) {
+  if (!checkBeadsSchema(state, BEADS_ACKNOWLEDGEMENT_SCHEMA)) refuse("invalid_snapshot", "Restore an acknowledgement matching the shared Beads schema.");
+  if (state.source !== source ||
+      state.revision !== beadsAcknowledgementDigest(state)) {
     refuse("invalid_snapshot", "Restore a valid acknowledged base; its revision or source does not match.");
   }
   assertRecords(state.records);
@@ -239,7 +219,7 @@ async function sourceIdentities(pmRoot: string, source: string, records: readonl
   return translated;
 }
 /** Read the certified corpus and bind source aliases to core identities and history versions. */
-export async function readLiveBeadsSnapshot(pmRoot: string, source?: string, records: readonly SnapshotRecord[] = [], bindings: Readonly<Record<string, string>> = {}, author?: string): Promise<LiveSnapshotRecord[]> {
+export async function readLiveBeadsSnapshot(pmRoot: string, source?: string, records: readonly SnapshotRecord[] = [], bindings: Readonly<Record<string, string>> = {}, author?: string, schema: 1 | 2 = 2): Promise<LiveSnapshotRecord[]> {
   const client = new PmClient({ pmRoot, noExtensions: true, author: beadsMutationAuthor(author) });
   const { items } = await client.listAllComplete();
   reportLegacyBeadIdentities(items);
@@ -253,15 +233,16 @@ export async function readLiveBeadsSnapshot(pmRoot: string, source?: string, rec
     if (typeof version !== "string") refuse("invalid_snapshot", "Repair missing core history versions before reconciling this tracker.");
     const bead = pmItemToBead(item as PmItem, translated, true);
     bead.id = translated.get(item.id)!;
-    live.push({ ...canonicalBeadsRecord(bead), pmId: item.id, version, updatedAt: String(item.updated_at) });
+    live.push({ ...canonicalBeadsRecord(bead, schema), pmId: item.id, version, updatedAt: String(item.updated_at) });
   }
-  live.sort((a, b) => a.id.localeCompare(b.id, "en"));
+  live.sort((a, b) => compareSnapshotIds(a.id, b.id, schema));
   assertRecords(live);
   return live;
 }
 /** Persist a source base atomically; omitted records stay pending until separately resolved. */
 async function saveBase(pmRoot: string, source: string, previous: string | null, records: SnapshotRecord[], bindings: Record<string, string>): Promise<BeadsAcknowledgement> {
-  const state: BeadsAcknowledgement = { schema: 1, source, previous, records, bindings, revision: digest({ source, previous, records, bindings }) };
+  const state: BeadsAcknowledgement = { schema: 1, source, previous, records, bindings, revision: beadsAcknowledgementDigest({ source, previous, records, bindings }) };
+  if (!checkBeadsSchema(state, BEADS_ACKNOWLEDGEMENT_SCHEMA)) refuse("invalid_snapshot", "Supply an acknowledgement matching the shared Beads schema and size limits.");
   await mkdir(join(pmRoot, "beads"), { recursive: true });
   await writeFileAtomic(statePath(pmRoot, source), JSON.stringify(state) + "\n");
   return state;
@@ -269,7 +250,7 @@ async function saveBase(pmRoot: string, source: string, previous: string | null,
 /** Acknowledge matching live data or add explicit bindings to an unchanged legacy base; never reset it. */
 export async function acknowledgeBeadsSnapshot(pmRoot: string, source: string, records: SnapshotRecord[], author: string, options: BeadsAcknowledgeOptions = {}): Promise<BeadsAcknowledgement> {
   assertRecords(records);
-  records = records.map(row => ({ ...row, fields: normalizeSnapshotFields(row.fields) }));
+  records = records.map(row => ({ ...row, fields: normalizeSnapshotFields(row.fields) })).sort((a, b) => compareBeadsIdentities(a.id, b.id));
   const existing = await readBeadsAcknowledgement(pmRoot, source);
   const migrating = existing !== null && existing.bindings === undefined && options.bindings !== undefined;
   if (existing && !migrating) refuse("base_exists", "Use reconcile against the existing base; choose another source only for a different tracker.");
@@ -351,13 +332,13 @@ export interface BeadsAcknowledgeOptions extends BeadsApplyOptions { bindings?: 
 export interface BeadsApplyOptions { onTransition?: CommitWorkspaceTransactionOptions["onTransition"] }
 /** Apply a reviewed plan with workspace transactions and per-item history checks. Never delete omissions. */
 export async function applyBeadsReconciliation(pmRoot: string, plan: BeadsReconcilePlan, author: string, options: BeadsApplyOptions = {}): Promise<{ applied: number; baseRevision: string; deletionProposals: number }> {
-  if (plan.digest !== digest({ ...plan, digest: "" })) refuse("invalid_plan", "Generate a fresh plan; do not edit plan files.");
+  if ((plan.schema !== 1 && plan.schema !== 2) || plan.digest !== digest({ ...plan, digest: "" })) refuse("invalid_plan", "Generate a fresh plan; do not edit plan files.");
   if (plan.conflicts.length) refuse("conflicts", "Resolve reported field conflicts in the source or tracker and preview again.");
   const base = await readBeadsAcknowledgement(pmRoot, plan.source);
   if (!base || base.revision !== plan.baseRevision) refuse("stale_base", "The acknowledged base advanced; preview again against the current base.");
   const live = plan.live;
   assertRecords(live);
-  const currentLive = await readLiveBeadsSnapshot(pmRoot, plan.source, [...base.records, ...plan.incoming], base.bindings, author);
+  const currentLive = await readLiveBeadsSnapshot(pmRoot, plan.source, [...base.records, ...plan.incoming], base.bindings, author, plan.schema);
   const transactionId = `beads-reconcile-${plan.digest}`;
   // A crashed attempt may already own some forward writes. Only exact latest
   // journal markers permit replay; unrelated edits still invalidate the plan.
@@ -372,7 +353,7 @@ export async function applyBeadsReconciliation(pmRoot: string, plan: BeadsReconc
     } else comparable.push(record);
   }
   if (digest(comparable) !== plan.trackerRevision) refuse("stale_tracker", "The tracker changed since preview; generate a fresh reconciliation plan.");
-  const fresh = reconcileBeadsSnapshots(base, plan.incoming, live);
+  const fresh = reconcileBeadsSnapshots(base, plan.incoming, live, plan.schema);
   if (fresh.digest !== plan.digest) refuse("invalid_plan", "Generate a fresh plan from the original incoming snapshot.");
   const ids = new Map([...Object.entries(base.bindings ?? {}), ...live.map(row => [row.id, row.pmId] as const)]);
   // A separate SDK transaction durably pins generated identities before any row
@@ -381,7 +362,9 @@ export async function applyBeadsReconciliation(pmRoot: string, plan: BeadsReconc
   const creates = plan.changes.filter(change => change.kind === "create");
   /** Validate retained reservations on fresh and committed-bootstrap replay alike. */
   const readReserved = async (): Promise<Record<string, string>> => {
-    const saved = JSON.parse(await readFile(identityPath, "utf8")) as Record<string, string>;
+    const envelope = JSON.parse(await readFile(identityPath, "utf8")) as { schema: number; digest: string; rows: Record<string, string> };
+    if (plan.schema === 2 && (!envelope || envelope.schema !== 2 || envelope.digest !== plan.digest)) refuse("invalid_snapshot", "Restore the versioned reconciliation identity ledger before resuming.");
+    const saved = plan.schema === 1 ? envelope as unknown as Record<string, string> : envelope.rows;
     if (!saved || typeof saved !== "object" || Array.isArray(saved) || Object.keys(saved).length !== creates.length ||
         creates.some(change => typeof saved[change.id] !== "string" || !saved[change.id]) ||
         new Set(Object.values(saved)).size !== creates.length) refuse("invalid_snapshot", "Restore the reconciliation identity ledger before resuming.");
@@ -401,7 +384,7 @@ export async function applyBeadsReconciliation(pmRoot: string, plan: BeadsReconc
         saved[change.id] = await allocateBeadsItemId(pmRoot, allocated); ids.set(change.id, saved[change.id]);
       }
       await mkdir(join(pmRoot, "transactions", "beads-reconcile"), { recursive: true });
-      await writeFileAtomic(identityPath, JSON.stringify(saved) + "\n");
+      await writeFileAtomic(identityPath, JSON.stringify(plan.schema === 1 ? saved : { schema: 2, digest: plan.digest, rows: saved }) + "\n");
     }, compensate: preserveBeadsProgress,
   }] });
   const reserved = await readReserved();
@@ -466,7 +449,7 @@ export async function applyBeadsReconciliation(pmRoot: string, plan: BeadsReconc
     };
   });
   const retained = base.records.filter(row => !rows.has(row.id));
-  const records = [...plan.incoming, ...retained].map(row => ({ ...row, fields: normalizeSnapshotFields(row.fields) })).sort((a, b) => a.id.localeCompare(b.id, "en"));
+  const records = [...plan.incoming, ...retained].map(row => ({ ...row, fields: normalizeSnapshotFields(row.fields) })).sort((a, b) => compareSnapshotIds(a.id, b.id, plan.schema));
   const bindings = Object.fromEntries(records.filter(row => ids.has(row.id)).map(row => [row.id, ids.get(row.id)!]));
   const expected = digest({ source: plan.source, previous: base.revision, records, bindings });
   steps.push({ id: "acknowledge", async inspect() {
@@ -485,7 +468,7 @@ export async function applyBeadsReconciliation(pmRoot: string, plan: BeadsReconc
       if (context.transition === "prepared") {
         const current = await readBeadsAcknowledgement(pmRoot, plan.source);
         if (current?.revision !== base.revision) refuse("stale_base", "The base advanced while waiting for the writer lock; preview again.");
-        if (digest(await readLiveBeadsSnapshot(pmRoot, plan.source, [...base.records, ...plan.incoming], base.bindings, author)) !== plan.trackerRevision) refuse("stale_tracker", "The tracker changed while waiting for the writer lock; preview again.");
+        if (digest(await readLiveBeadsSnapshot(pmRoot, plan.source, [...base.records, ...plan.incoming], base.bindings, author, plan.schema)) !== plan.trackerRevision) refuse("stale_tracker", "The tracker changed while waiting for the writer lock; preview again.");
       }
     },
   });
