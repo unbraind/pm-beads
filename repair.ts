@@ -6,6 +6,7 @@ import { createRequire } from "node:module";
 import type * as PmGraphSdk from "@unbrained/pm-cli/sdk/graph";
 import type { CommandHandlerContext, ExtensionApi } from "@unbrained/pm-cli/sdk/authoring";
 import { CommandError } from "./contracts.ts";
+import { jsonSourceEntries, replaceJsonField } from "./json-source.ts";
 import { beadTitle, extractBlockerIds, normalizeBeadKey, validateBeadsText, type BeadsItem } from "./index.ts";
 
 /** Default integer work and payload budgets; exceeding a bound never implies validity. */
@@ -107,12 +108,12 @@ function dependencyShape(item: BeadsItem): boolean {
       [dep.id, dep.depends_on_id, dep.issue_id, dep.kind, dep.type].every(value => value === undefined || identity(value));
   });
 }
-/** JSON permits overflowing exponents; reject those and excessive nesting before invoking producers. */
+/** Bound nesting; opaque numeric lexemes are retained in source, while native numeric inputs must be finite. */
 function finiteJson(value: unknown): boolean {
   const pending = [{ value, depth: 0 }];
   while (pending.length) {
     const entry = pending.pop()!;
-    if (entry.depth > 64 || (typeof entry.value === "number" && !Number.isFinite(entry.value))) return false;
+    if (entry.depth > 64) return false;
     if (entry.value && typeof entry.value === "object") for (const child of Object.values(entry.value)) pending.push({ value: child, depth: entry.depth + 1 });
   }
   return true;
@@ -131,6 +132,7 @@ function parse(text: string, limits: BeadsRepairLimits): Parsed {
     catch { gaps.push({ line: index + 1, code: "invalid_json" }); continue; }
     if (!value || typeof value !== "object" || Array.isArray(value) || !finiteJson(value)) { gaps.push({ line: index + 1, code: "invalid_record" }); continue; }
     const item = value as BeadsItem;
+    if (typeof item.priority === "number" && !Number.isFinite(item.priority)) { gaps.push({ line: index + 1, code: "invalid_record" }); continue; }
     if ([item.title, item.name].some(title => title !== undefined && typeof title !== "string")) { gaps.push({ line: index + 1, code: "invalid_record" }); continue; }
     if (!dependencyShape(item)) { gaps.push({ line: index + 1, code: "malformed_dependency" }); continue; }
     const id = normalizeBeadKey(item.id);
@@ -182,21 +184,27 @@ function witnesses(parsed: Parsed, cycles: string[][]): BeadsDependencyRepairPac
   return result;
 }
 /** Remove a semantic blocker from all accepted aliases without normalizing unrelated native fields. */
-function removeEdge(item: BeadsItem, blocker: string): BeadsItem {
-  const result = { ...item };
-  if (result.dependencies) result.dependencies = result.dependencies.filter(dep => !extractBlockerIds({ dependencies: [dep] }).includes(blocker));
-  if (Array.isArray(result.blocked_by)) result.blocked_by = result.blocked_by.filter(id => normalizeBeadKey(id) !== blocker);
-  else if (normalizeBeadKey(result.blocked_by) === blocker) delete result.blocked_by;
-  return result;
+function removeEdge(text: string, blocker: string): string {
+  for (const field of ["dependencies", "blocked_by"]) {
+    const member = jsonSourceEntries(text).filter(entry => entry.key === field).at(-1);
+    if (!member) continue;
+    if (text[member.valueStart] === "[") {
+      const entries = jsonSourceEntries(text, member.valueStart);
+      const kept = entries.filter(entry => {
+        const value = JSON.parse(text.slice(entry.valueStart, entry.end)) as NonNullable<BeadsItem["dependencies"]>[number];
+        return field === "dependencies" ? !extractBlockerIds({ dependencies: [value] }).includes(blocker) : normalizeBeadKey(value) !== blocker;
+      });
+      if (kept.length !== entries.length) text = replaceJsonField(text, field, `[${kept.map(entry => text.slice(entry.valueStart, entry.end)).join(",")}]`);
+    } else if (normalizeBeadKey(JSON.parse(text.slice(member.valueStart, member.end))) === blocker) text = replaceJsonField(text, field, undefined);
+  }
+  return text;
 }
 /** Evaluate a proposal entirely in memory; each edited row preserves its other native fields. */
 function editedText(parsed: Parsed, remove: BeadsRepairEdge[]): string {
-  const lines = [...parsed.lines], changed = new Map<number, BeadsItem>();
+  const lines = [...parsed.lines];
   for (const edge of remove) {
-    const item = changed.get(edge.line) ?? JSON.parse(lines[edge.line - 1]) as BeadsItem;
-    changed.set(edge.line, removeEdge(item, edge.blocker));
+    lines[edge.line - 1] = removeEdge(lines[edge.line - 1], edge.blocker);
   }
-  for (const [line, item] of changed) lines[line - 1] = JSON.stringify(item);
   return lines.join("\n");
 }
 /** Produce a deterministic feedback-edge proposal, rechecking core topology after each edit round. */

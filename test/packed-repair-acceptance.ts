@@ -5,7 +5,11 @@ import { createHash } from "node:crypto";
 import { cp, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { createRequire } from "node:module";
 import { PmClient } from "@unbrained/pm-cli/sdk";
+import { decodeToon } from "@unbrained/pm-cli/sdk/testing";
+import type * as RepairSdk from "../repair.ts";
+const require = createRequire(import.meta.url);
 const root = resolve(import.meta.dirname, ".."), scratch = await mkdtemp(join(tmpdir(), "beads-repair-pack-"));
 const childEnv = { ...process.env, NPM_CONFIG_USERCONFIG: "/dev/null", npm_config_userconfig: "/dev/null", GIT_CEILING_DIRECTORIES: scratch,
   NPM_CONFIG_CACHE: join(scratch, "npm-cache"), npm_config_cache: join(scratch, "npm-cache"), npm_config_prefer_offline: "true" };
@@ -24,21 +28,27 @@ async function accept(name: string, packageDir: string, bin: string, prefix: str
   for (const entry of ["dist", "manifest.json", "package.json"]) await cp(join(packageDir, entry), join(extension, entry), { recursive: true });
   await symlink(resolve(packageDir, ".."), join(extension, "node_modules"), "junction");
   const file = join(scratch, "source.jsonl");
-  const args = [...prefix, "--path", pmRoot, "--json", "beads", "repair", file];
-  const output = spawnSync(bin, args, { cwd: scratch, env: { ...childEnv, ...extra }, encoding: "utf8", timeout: 240_000, maxBuffer: 1024 * 1024 });
-  assert.equal(output.status, 1, `${name}: ${output.error?.message ?? output.signal ?? ""} ${output.stderr}`);
-  const packet = JSON.parse(output.stdout); assert.equal(packet.cycles.length, 1); assert.equal(packet.candidates.length, 1); assert.equal(packet.cycles[0].rows.length, 3);
+  const source = await readFile(file, "utf8"), sdk = require(join(packageDir, "dist/index.js")) as typeof RepairSdk;
+  for (const format of ["json", "toon"]) {
+    const args = [...prefix, "--path", pmRoot, ...(format === "json" ? ["--json"] : []), "beads", "repair", file];
+    const output = spawnSync(bin, args, { cwd: scratch, env: { ...childEnv, ...extra }, encoding: "utf8", timeout: 240_000, maxBuffer: 1024 * 1024 });
+    assert.equal(output.status, 1, `${name}: ${output.error?.message ?? output.signal ?? ""} ${output.stderr}`);
+    const packet = format === "json" ? JSON.parse(output.stdout) : decodeToon(output.stdout);
+    assert.equal(packet.cycles.length, 1); assert.equal(packet.candidates.length, 1); assert.equal(packet.cycles[0].rows.length, 3);
+    assert.equal(sdk.previewBeadsDependencyRepair(source, packet.candidates[0]), source.replace('"dependencies":["b"]', '"dependencies":[]'));
+  }
+  assert.equal(await readFile(file, "utf8"), source);
   assert.equal((await client.listAllComplete()).items.length, 0);
-  results.push({ launcher: name, rows: 3, cycleEdges: 3, candidates: 1, exitCode: output.status, sdkResolved: true, nonGit: true });
+  results.push({ launcher: name, rows: 3, cycleEdges: 3, candidates: 1, exitCode: 1, sdkResolved: true, nonGit: true });
   process.stderr.write(`Packed acceptance passed: ${name}\n`);
 }
 const results: { launcher: string; rows: number; cycleEdges: number; candidates: number; exitCode: number; sdkResolved: boolean; nonGit: boolean }[] = [];
 try {
   const packed = JSON.parse(run("npm", ["pack", "--ignore-scripts", "--json", "--pack-destination", scratch], root)) as { filename: string; files: { path: string }[] }[];
   const artifact = join(scratch, packed[0].filename), digest = createHash("sha256").update(await readFile(artifact)).digest("hex");
-  for (const file of ["dist/repair.js", "dist/repair.d.ts", "examples/dependency-error-repair-packets.md"]) assert(packed[0].files.some(entry => entry.path === file));
+  for (const file of ["dist/repair.js", "dist/repair.d.ts", "dist/json-source.js", "examples/dependency-error-repair-packets.md"]) assert(packed[0].files.some(entry => entry.path === file));
   const host = "@unbrained/pm-cli@2026.10.28";
-  await writeFile(join(scratch, "source.jsonl"), '{"id":"a","title":"A","dependencies":["b"]}\n{"id":"b","title":"B","dependencies":["c"]}\n{"id":"c","title":"C","dependencies":["a"]}\n');
+  await writeFile(join(scratch, "source.jsonl"), ' {"id":"a","title":"A","foreign_revision":9007199254740993,"zero":-0,"overflow":1e400,"decimal":0.12345678901234567890123456789,"dup":1,"dup":2,"dependencies":["b"] }\r\n{"id":"b","title":"B","dependencies":["c"]}\r\n{"id":"c","title":"C","dependencies":["a"]}\r\n');
   const npmGlobal = join(scratch, "npm-global");
   run("npm", ["install", "--global", "--prefix", npmGlobal, "--ignore-scripts", "--no-audit", "--no-fund", host, artifact]);
   await accept("npm-global", join(npmGlobal, "lib/node_modules/pm-beads"), join(npmGlobal, "bin/pm"));

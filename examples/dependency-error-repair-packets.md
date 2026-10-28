@@ -75,9 +75,14 @@ Only positive safe integers in these domains are accepted. Input and output
 limits refuse the entire packet, with no silently truncated success. Exhausting
 the proposal work budget returns complete witnesses with no candidate and a
 remedy. Numeric output is checked for safe, finite nonnegative integers. The CLI
-reads a regular UTF-8 file up to its byte budget plus one byte. Unknown native
-fields are preserved by preview; JSON nesting beyond 64 levels and nonfinite
-JSON exponents are explicit row gaps. Returned rows omit titles and descriptions;
+reads a regular UTF-8 file up to its byte budget plus one byte. Preview replaces
+only the edited dependency field values, retaining all other row bytes and the
+original text of surviving dependency objects. This includes duplicate foreign
+keys, integers beyond 2^53, `-0`, `1e400` and arbitrarily long decimals. Duplicate
+dependency fields follow JSON's last-key rule; deleting a scalar alias removes
+every occurrence so a masked dependency cannot reappear. JSON nesting beyond
+64 levels and nonfinite native priority values are explicit row gaps.
+Returned rows omit titles and descriptions;
 the unchanged input can contain sensitive source data, so keep it local.
 
 Regression acceptance bounds the three-of-10,000 scenario, including preview

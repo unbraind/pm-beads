@@ -477,6 +477,9 @@ pm beads sidecar exported.jsonl --restore extensions.json --output restored.json
 
 Versioned sidecars preserve nested JSON values without flattening. Compact TOON
 or JSON receipts report preserved and dropped unknown top-level field counts.
+Restore retains the source text of existing fields. The typed version 1 envelope
+refuses numeric literals it cannot emit exactly; encode those extension values as
+strings before capture. Equivalent decimal spellings such as `0.5000` remain valid.
 Native field selection, differing overlays, unknown versions, missing identities,
 oversized payloads and sensitive extensions refuse before any output write.
 Capture must succeed **before import**; sidecars stay separate from item metadata
@@ -613,6 +616,10 @@ replacement identities. Default TOON and JSON receipts omit unrelated payloads.
 The typed SDK exports `explainBeadsDependencies`, `previewBeadsDependencyRepair`,
 `BeadsRepairRefusal` and their packet/limit types. Preview re-reads supplied text,
 checks its exact byte revision, and regenerates the same proposal in memory.
+Only edited dependency fields change: every other byte in an edited row stays
+as supplied, including whitespace, duplicate keys, large integers, negative zero,
+overflowing foreign exponents and long decimals. Surviving dependency objects
+also retain their original value text.
 Defaults support 10,000 rows, 40,000 edges and 32 KiB of pretty JSON output; excess
 input/output refuses with a remedy, while proposal work exhaustion retains
 witnesses with no candidate. See the [worked example and all bounds](examples/dependency-error-repair-packets.md).
