@@ -6,7 +6,7 @@ import { createRequire } from "node:module";
 import type * as PmGraphSdk from "@unbrained/pm-cli/sdk/graph";
 import type { CommandHandlerContext, ExtensionApi } from "@unbrained/pm-cli/sdk/authoring";
 import { CommandError } from "./contracts.ts";
-import { extractBlockerIds, normalizeBeadKey, validateBeadsText, type BeadsItem } from "./index.ts";
+import { beadTitle, extractBlockerIds, normalizeBeadKey, validateBeadsText, type BeadsItem } from "./index.ts";
 
 /** Default integer work and payload budgets; exceeding a bound never implies validity. */
 export const BEADS_REPAIR_LIMITS = {
@@ -154,9 +154,8 @@ function parse(text: string, limits: BeadsRepairLimits): Parsed {
       else edges.push({ line: row.line, id: row.id, blocker, blockerLine: target.line });
     }
   }
-  // Structural diagnostics reuse the import validator; cycle and dangling evidence is already structured above.
-  const safeText = rows.map(row => JSON.stringify(row.item)).join("\n");
-  for (const issue of validateBeadsText(safeText).issues) if (issue.severity === "error" && issue.code !== "dependency_cycle" && issue.code !== "dangling_dependency") gaps.push({ line: rows[issue.line - 1].line, code: issue.code });
+  // Share the producer's title rule without running legacy cycle enumeration on an invalid graph.
+  for (const row of rows) if (!beadTitle(row.item)) gaps.push({ line: row.line, code: "missing_title" });
   return { lines, rows, edges, gaps };
 }
 /** Ask core for exact cycle components over opaque tokens, preserving external case and punctuation. */

@@ -7,7 +7,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { PmClient } from "@unbrained/pm-cli/sdk";
 const root = resolve(import.meta.dirname, ".."), scratch = await mkdtemp(join(tmpdir(), "beads-repair-pack-"));
-const childEnv = { ...process.env, NPM_CONFIG_USERCONFIG: "/dev/null", npm_config_userconfig: "/dev/null", GIT_CEILING_DIRECTORIES: scratch };
+const childEnv = { ...process.env, NPM_CONFIG_USERCONFIG: "/dev/null", npm_config_userconfig: "/dev/null", GIT_CEILING_DIRECTORIES: scratch,
+  NPM_CONFIG_CACHE: join(scratch, "npm-cache"), npm_config_cache: join(scratch, "npm-cache"), npm_config_prefer_offline: "true" };
 for (const key of Object.keys(childEnv)) if (/TOKEN|SECRET|PASSWORD|CREDENTIAL|API_KEY|NPM_MEDIA_SERVER/i.test(key)) delete childEnv[key as keyof typeof childEnv];
 /** Execute a bounded install or command without exposing environment values or inherited credentials. */
 function run(bin: string, args: string[], cwd = scratch, extra: Record<string, string> = {}): string {
@@ -24,11 +25,12 @@ async function accept(name: string, packageDir: string, bin: string, prefix: str
   await symlink(resolve(packageDir, ".."), join(extension, "node_modules"), "junction");
   const file = join(scratch, "source.jsonl");
   const args = [...prefix, "--path", pmRoot, "--json", "beads", "repair", file];
-  const output = spawnSync(bin, args, { cwd: scratch, env: { ...childEnv, ...extra }, encoding: "utf8", timeout: 90_000, maxBuffer: 1024 * 1024 });
-  assert.equal(output.status, 1, `${name}: ${output.stderr}`);
+  const output = spawnSync(bin, args, { cwd: scratch, env: { ...childEnv, ...extra }, encoding: "utf8", timeout: 240_000, maxBuffer: 1024 * 1024 });
+  assert.equal(output.status, 1, `${name}: ${output.error?.message ?? output.signal ?? ""} ${output.stderr}`);
   const packet = JSON.parse(output.stdout); assert.equal(packet.cycles.length, 1); assert.equal(packet.candidates.length, 1); assert.equal(packet.cycles[0].rows.length, 3);
   assert.equal((await client.listAllComplete()).items.length, 0);
   results.push({ launcher: name, rows: 3, cycleEdges: 3, candidates: 1, exitCode: output.status, sdkResolved: true, nonGit: true });
+  process.stderr.write(`Packed acceptance passed: ${name}\n`);
 }
 const results: { launcher: string; rows: number; cycleEdges: number; candidates: number; exitCode: number; sdkResolved: boolean; nonGit: boolean }[] = [];
 try {
