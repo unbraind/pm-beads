@@ -1,0 +1,13 @@
+id: pm-beads-4kw8
+title: Isolate malformed title aliases in existing Beads validation
+description: "Synthetic reproduction: validateBeadsText on a row whose title is an object with a non-callable toString throws TypeError instead of returning a row-level validation issue. The new repair boundary validates title/name types and retains this as an isolated invalid_record gap; existing validate/import coercion behavior remains a separate follow-up. Align the existing producer and validator schema before changing compatibility."
+type: Issue
+status: open
+priority: 2
+tags: []
+created_at: "2026-10-28T20:02:19.800Z"
+updated_at: "2026-10-28T20:04:12.782Z"
+author: codex-agent
+files[1]{path,scope}:
+  index.ts,project
+body: ""

@@ -6,6 +6,7 @@ import { basename, dirname, resolve } from "node:path";
 import { writeFileAtomic } from "@unbrained/pm-cli/sdk";
 import type { CommandHandlerContext, ExtensionApi } from "@unbrained/pm-cli/sdk/authoring";
 import { CommandError } from "./contracts.ts";
+import { hasLossyJsonNumbers, replaceJsonField } from "./json-source.ts";
 import { isEncodableBeadId, optionString, resolveImportInputFile, validateBeadsText } from "./index.ts";
 
 /** Hard ceilings apply equally to SDK calls, capture, and restore; callers cannot disable them. */
@@ -108,6 +109,7 @@ function parseJson(text: string, code: BeadsSidecarRefusalCode): unknown {
   let parsed: unknown;
   try { parsed = JSON.parse(text); }
   catch { return refuse(code, "Use complete, valid JSON without a byte-order mark."); }
+  if (hasLossyJsonNumbers(text)) refuse("invalid_input", "Encode numbers that cannot round-trip exactly in a typed sidecar as strings before capture or restore.");
   const stack: Array<Set<string> | null> = [];
   let key = "";
   // JSON.parse has validated syntax. Consume each string once, skipping escaped
@@ -269,14 +271,18 @@ export function restoreBeadsExtensions(text: string, envelope: BeadsExtensionSid
   const records = parseRecords(text);
   const extensions = new Map(sidecar.records.map(row => [row.id, row.fields]));
   if (records.length !== extensions.size || records.some(row => !extensions.has(row.id))) refuse("identity_mismatch", "Export the same complete record set with preserved ids; use a separate sidecar for each filtered snapshot.");
-  for (const row of records) {
+  const lines = text.split("\n").filter(line => /[^\t\r ]/.test(line));
+  for (const [index, row] of records.entries()) {
     for (const [key, value] of Object.entries(extensions.get(row.id)!)) {
       if (Object.hasOwn(row, key)) safeValue(row[key]);
       if (Object.hasOwn(row, key) && canonical(row[key]) !== canonical(value)) refuse("field_conflict", "Resolve the conflicting extension values explicitly and recapture; restore never overwrites differing values.");
+      if (!Object.hasOwn(row, key)) lines[index] = replaceJsonField(lines[index], key, JSON.stringify(value));
       row[key] = value;
     }
   }
-  const restored = serializeRecords(records);
+  serializeRecords(records);
+  const restored = lines.join("\n") + (lines.length ? "\n" : "");
+  bounded(restored);
   return { text: restored, loss: sidecar.loss };
 }
 /** Read one bounded input with a sanitized filesystem refusal. */

@@ -308,6 +308,13 @@ test("a nonzero pm exit surfaces the child's stderr verbatim", () => {
   );
 });
 
+test("a silent nonzero pm exit remains a typed failure with actionable context", () => {
+  assert.throws(
+    () => buildBeadsFromWorkspace(PM_ROOT, { preserveIds: false, filter: {} }, () => ({ status: 2, stdout: "", stderr: "" })),
+    (err: unknown) => err instanceof CommandError && err.message === "pm list failed" && err.exitCode !== 0,
+  );
+});
+
 test("unparseable pm stdout is refused as a parse failure, not consumed as zero items", () => {
   assert.throws(
     () => buildBeadsFromWorkspace(PM_ROOT, { preserveIds: false, filter: {} }, okSpawn("{not json")),
