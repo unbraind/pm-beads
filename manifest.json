@@ -1,6 +1,6 @@
 {
   "name": "pm-beads",
-  "version": "2026.10.27",
+  "version": "2026.10.28",
   "description": "Beads JSONL import/export and three-way snapshot reconciliation. Preserve ids and dependency edges, preview concurrent field conflicts and deletion proposals, and apply plans against an acknowledged source base.",
   "author": "@unbraind",
   "entry": "./dist/index.js",
