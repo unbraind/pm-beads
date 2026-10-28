@@ -602,7 +602,25 @@ Typed refusals carry a code, remedy and exit status 2. Status names remain opaqu
 transport data; lifecycle decisions belong to the SDK registry. See the
 [worked SDK/CLI example, protocol limits and recovery remedies](examples/acknowledged-outgoing-deltas.md).
 
+## Dependency error repair packets
+
+`pm beads repair snapshot.jsonl --json` explains dependency errors without
+changing the source or tracker. It returns physical line numbers, exact external
+IDs, cycle edges, explicit malformed/unresolved gaps, and a bounded candidate
+edge-removal set that passes the existing Beads validator. Titles never supply
+replacement identities. Default TOON and JSON receipts omit unrelated payloads.
+
+The typed SDK exports `explainBeadsDependencies`, `previewBeadsDependencyRepair`,
+`BeadsRepairRefusal` and their packet/limit types. Preview re-reads supplied text,
+checks its exact byte revision, and regenerates the same proposal in memory.
+Defaults support 10,000 rows, 40,000 edges and 32 KiB of pretty JSON output; excess
+input/output refuses with a remedy, while proposal work exhaustion retains
+witnesses with no candidate. See the [worked example and all bounds](examples/dependency-error-repair-packets.md).
+
 ## Without git
+
+Dependency repair packets inspect JSONL files everywhere, including non-git
+directories with no git executable. They never access tracker state.
 
 Import, export, validate, diff, sidecar capture/restore, snapshot reconciliation
 and resumable transfer work in a plain pm tracker without a git executable.

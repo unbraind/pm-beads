@@ -103,7 +103,8 @@
       "examples/snapshot-reconciliation.md",
       "examples/unknown-field-sidecars.md",
       "examples/dependency-closed-transfer.md",
-      "examples/acknowledged-outgoing-deltas.md"
+      "examples/acknowledged-outgoing-deltas.md",
+      "examples/dependency-error-repair-packets.md"
     ]
   },
   "publishConfig": {

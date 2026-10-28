@@ -42,6 +42,8 @@ import { registerSidecarCommands } from "./sidecar.ts";
 export * from "./sidecar.ts";
 import { registerTransferCommands } from "./transfer.ts";
 export * from "./transfer.ts";
+import { registerRepairCommands } from "./repair.ts";
+export * from "./repair.ts";
 import { inspectCompleteListResult, PmClient, preserveMutationStdinTokenFields, suppressHostOutput, listAllItemMetadata, assertInitializedTracker, PmCliError, type PmClientFullMutationOptions } from "@unbrained/pm-cli/sdk";
 import { beadsMutationAuthor, sourceDependency } from "./mutation.ts";
 import { legacyBeadIdentity, reportLegacyBeadIdentities, registerIdentityMigrationCommand } from "./identity.ts";
@@ -2567,6 +2569,7 @@ export default defineExtension({
     registerOutgoingCommands(api);
     registerSidecarCommands(api);
     registerTransferCommands(api);
+    registerRepairCommands(api);
     // -----------------------------------------------------------------------
     // schema — declare the bead_id provenance field
     // -----------------------------------------------------------------------

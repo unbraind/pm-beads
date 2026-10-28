@@ -1,0 +1,13 @@
+id: pm-beads-np1y
+title: Clarify blocks-only Beads dependency import semantics
+description: "The extractBlockerIds docstring claims blocks support, but the released extractor consumes only dependencies and blocked_by. A blocks-only record currently validates without creating its outgoing relationship. Repair packets explicitly mark this representation as an unsupported_blocks gap rather than inferring direction or silently claiming validity. Follow-up: define provider direction and add shared producer/import/validation coverage before changing existing semantics."
+type: Issue
+status: open
+priority: 2
+tags: []
+created_at: "2026-10-28T19:47:38.015Z"
+updated_at: "2026-10-28T19:49:04.726Z"
+author: codex-agent
+files[1]{path,scope}:
+  index.ts,project
+body: ""
