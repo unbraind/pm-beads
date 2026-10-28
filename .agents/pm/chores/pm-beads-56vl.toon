@@ -1,0 +1,23 @@
+id: pm-beads-56vl
+title: Verify Dependabot sync workflow update in PR 169
+description: "Inspect the failed CI job, verify the timing regression once on the original head, and validate the workflow dependency update on current main without changing thresholds."
+type: Chore
+status: in_progress
+priority: 2
+tags[3]: ci,dependabot,"gh:unbraind/pm-beads#169"
+created_at: "2026-10-28T19:27:09.500Z"
+updated_at: "2026-10-28T19:46:28.086Z"
+author: codex-agent
+comments[4]{created_at,author,text}:
+  "2026-10-28T19:28:02.872Z",codex-agent,"Original failure: the Node 22 polynomial-redos timing regression measured 8.43x against its unchanged 8x bound; no workflow contract assertion failed. Requested exactly one rerun of job 122183401263 at https://github.com/unbraind/pm-beads/actions/runs/40502498772 (attempt 2). Current main merged with a two-parent merge; the focused timing test passes locally. No implementation or threshold change is justified pending the rerun."
+  "2026-10-28T19:35:10.695Z",codex-agent,"Cause class: stale CHANGELOG on the behind branch. The single original-head rerun at https://github.com/unbraind/pm-beads/actions/runs/40502498772/attempts/2 passed the original timing assertion but failed changelog:check because the newer release tag adds the missing release section. Current main supplies that section and regenerated changelog:check passes. This is not classified as a flaky job. No production code or test threshold changed; behavioral revert is not applicable to main synchronization and generated documentation."
+  "2026-10-28T19:38:39.753Z",codex-agent,"Focused regression passed 1/1 through pm test. Regenerated changelog:check passed. Repair CI evidence: https://github.com/unbraind/pm-beads/actions/runs/40755989509; this run exercises npm and Bun release:check on Node 22 and 26. Completion requires observing the final pushed head green; local release checking is still running."
+  "2026-10-28T19:46:28.085Z",codex-agent,"Local isolated npm run release:check passed typecheck, workflow verification, build and docstrings, then the existing coverage runner reached its unchanged 15-minute timeout under shared host load. No local full-gate pass is claimed and no background test process remains. Focused timing and changelog checks passed. The final-head CI run remains queued; CI must supply npm and Bun release evidence at unchanged thresholds."
+files[2]{path,scope}:
+  .github/workflows/pm-github-sync.yml,project
+  test/smoke.test.ts,project
+tests[1]{command,scope,provenance{author,created_at,source_kind,source_ref}}:
+  "node --test --test-concurrency=2 --test-name-pattern=\"every BEAD_ID_MARKER call site stays linear\" test/smoke.test.ts",project,codex-agent,"2026-10-28T19:28:24.678Z",local_mutation,dependabot/github_actions/unbraind/pm-github/dot-github/workflows/pm-github-sync.yml-2026.10.19
+docs[1]{path,scope}:
+  "https://github.com/unbraind/pm-beads/actions/runs/40502498772",project
+body: ""
