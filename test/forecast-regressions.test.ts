@@ -8,9 +8,10 @@ import { PmClient, type PmClientFullMutationOptions } from "@unbrained/pm-cli/sd
 import { assertBeadsExtensionCustody, captureBeadsExtensions, restoreBeadsExtensions, BeadsSidecarRefusal } from "../sidecar.ts";
 import { assertBeadsDialectImportable, BeadsDialectRefusal, type BeadsProducerContract } from "../forecast.ts";
 import { assertBeadsParentGraph, BeadsParentRefusal, beadsParentRefusalIssue } from "../parents.ts";
+import { allocateBeadsItemId } from "../item-access.ts";
 import { ensureBeadIdentityField } from "../identity.ts";
 import { pmItemToBead, readAndValidateBeads, assertBeadsImportable, type PmItem } from "../index.ts";
-import { acknowledgeBeadsSnapshot, readLiveBeadsSnapshot, planBeadsReconciliation, applyBeadsReconciliation } from "../reconcile.ts";
+import { acknowledgeBeadsSnapshot, readLiveBeadsSnapshot, planBeadsReconciliation, applyBeadsReconciliation, readBeadsAcknowledgement, reconcileBeadsSnapshots } from "../reconcile.ts";
 import { harness, runCommand, runImport, runExport } from "./helpers.ts";
 
 /** Supply registered extension fields through the SDK full mutation options contract. */
@@ -187,5 +188,104 @@ test("acyclic parent rewires preserve every link across all input orders and bot
     const result=command==="native"?await runImport(ext,{pmRoot,args:[file],options}):await runCommand(ext,{command,pmRoot,args:[file],options});
     assert.equal((result as {parents:number}).parents,2,`${command}: ${order.join(",")}`);
     assert.equal((await client.get(a)).item.parent,c);assert.equal((await client.get(b)).item.parent,a);assert.equal((await client.get(c)).item.parent,undefined);
+  }
+});
+
+
+test("duplicate target rows compose deferred parent and blocker replacements against SDK reference state, seed 0x190d002",async t=>{
+  const {dir,pmRoot,client,ext}=await receiver(t),file=join(dir,"duplicates.jsonl"),next=random(0x190d002);
+  const b=(await create(client,{title:"B",type:"Task",beadId:"b",unset:["parent"]})).item.id;
+  const c=(await create(client,{title:"C",type:"Task",beadId:"c",unset:["parent"]})).item.id;
+  const a=(await create(client,{title:"A",type:"Task",beadId:"a",unset:["parent"]})).item.id;
+  const reference=(await create(client,{title:"Reference",type:"Task",unset:["parent"]})).item.id;
+  const choices=["b","c","","omit","null"] as const;
+  for(let sequence=0;sequence<64;sequence++){
+    await client.update(a,{unset:["parent"]});await client.update(reference,{unset:["parent"]});
+    const edits=sequence===0?["b",""] as const:sequence===1?["b","omit"] as const:Array.from({length:2+next()%3},()=>choices[next()%choices.length]);
+    const rows=[];
+    for(const edit of edits){
+      const parent=edit==="b"?b:edit==="c"?c:undefined;
+      rows.push({id:sequence%2?" a ":"a",title:"A",...(edit==="omit"?{}:{parent:edit==="null"?null:edit?` ${edit} `:"  "}),blocked_by:["b"]});
+      if(edit!=="omit"&&edit!=="null")await client.update(reference,parent?{parent}:{unset:["parent"]});
+    }
+    await writeFile(file,jsonl(rows,sequence%2===0));
+    const command=sequence%2?"beads-import":"native",options={upsert:true,"no-preserve-timestamps":true},global={json:sequence%4<2};
+    if(sequence%8===0){const preview=command==="native"?await runImport(ext,{pmRoot,args:[file],options:{...options,"validate-only":true},global}):await runCommand(ext,{command,pmRoot,args:[file],options:{...options,"validate-only":true},global});assert.equal((preview as {valid:boolean}).valid,true);}
+    const result=command==="native"?await runImport(ext,{pmRoot,args:[file],options,global}):await runCommand(ext,{command,pmRoot,args:[file],options,global});
+    const actual=(await client.get(a)).item,expected=(await client.get(reference)).item;
+    assert.equal(actual.parent,expected.parent,`sequence ${sequence}: ${edits.join(",")}`);
+    assert.equal((result as {parents:number}).parents,expected.parent?1:0);
+    assert.equal((result as {dependencies:number}).dependencies,1,"only the effective blocker replacement is reported");
+    assert.deepEqual(actual.dependencies?.map(edge=>edge.id),[b]);
+  }
+  // A target created by the first duplicate follows the same composition rule.
+  await writeFile(file,jsonl([{id:"new-duplicate",title:"New",parent:"b"},{id:"new-duplicate",title:"New",parent:""}]));
+  await runImport(ext,{pmRoot,args:[file],options:{upsert:true}});
+  assert.equal((await client.listAllComplete()).items.find(item=>item.bead_id==="new-duplicate")!.parent,undefined);
+});
+
+test("reconciliation keeps external relationship identities through colliding native ids, retained links, both schemas and CLI aliases",async t=>{
+  const {dir,pmRoot,client,ext}=await receiver(t),file=join(dir,"collision.jsonl"),planFile=join(dir,"collision-plan.json");
+  const a=(await create(client,{title:"A",type:"Task",beadId:"external-a",unset:["parent"]})).item.id;
+  const b=(await create(client,{title:"B",type:"Task",beadId:a,unset:["parent"]})).item.id;
+  const initial=(await readLiveBeadsSnapshot(pmRoot)).map(({id,fields})=>({id,fields}));
+  await acknowledgeBeadsSnapshot(pmRoot,"collisions",initial,"review-test");
+  for(let sequence=0;sequence<8;sequence++){
+    const live=await readLiveBeadsSnapshot(pmRoot,"collisions",initial),incoming=live.map(({id,fields})=>({id,fields:{...fields}}));
+    const target=incoming.find(row=>row.id==="external-a")!;
+    if(sequence%2===0)target.fields.parent=sequence%4===0?a:"";
+    incoming.find(row=>row.id===a)!.fields.title=`B ${sequence}`;
+    if(sequence<4){
+      const base=await readBeadsAcknowledgement(pmRoot,"collisions");
+      const plan=reconcileBeadsSnapshots(base!,incoming,live,sequence%2?1:2);
+      await applyBeadsReconciliation(pmRoot,plan,"review-test");
+    }else{
+      await writeFile(file,jsonl(incoming.map(row=>({id:row.id,title:row.fields.title,...(row.fields.parent?{parent:row.fields.parent}:{})})),sequence%2===0));
+      const command=sequence%2?"beads-reconcile":"beads reconcile",global={json:sequence%2===0,author:"review-test"};
+      await runCommand(ext,{command,pmRoot,args:[file],options:{source:"collisions","plan-out":planFile},global});
+      await runCommand(ext,{command,pmRoot,options:{source:"collisions","apply-plan":planFile},global});
+    }
+    assert.equal((await client.get(a)).item.parent,target.fields.parent?b:undefined,`sequence ${sequence}`);
+    const unchanged=await planBeadsReconciliation(pmRoot,"collisions",incoming);assert.equal(unchanged.changes.length,0);
+  }
+});
+
+
+test("512 duplicate parent graphs validate effective patches rather than superseded edges",()=>{
+  const next=random(0x190d0c),ids=["a","b","c"],parents=[...ids,"","missing",undefined,null];
+  for(let sequence=0;sequence<512;sequence++){
+    const rows: Array<{id:string;parent?:string|null}> = ids.map(id=>({id}));
+    const model=new Map<string,string|undefined>(ids.map(id=>[id,undefined]));
+    for(let operation=0;operation<9;operation++){
+      const id=ids[next()%ids.length],parent=parents[next()%parents.length];rows.push({id,parent});
+      if(parent!==undefined&&parent!==null)model.set(id,parent||undefined);
+    }
+    let valid=true;
+    for(const id of ids){const seen=new Set<string>();let cursor:string|undefined=id;while(cursor){if(seen.has(cursor)||!model.has(cursor)){valid=false;break;}seen.add(cursor);cursor=model.get(cursor);}}
+    if(valid)assertBeadsParentGraph(rows);else assert.throws(()=>assertBeadsParentGraph(rows),error=>error instanceof BeadsParentRefusal);
+  }
+  assertBeadsParentGraph([{id:"a",parent:"b"},{id:"a",parent:""},{id:"b",parent:"a"}]);
+});
+
+test("import parent namespaces prefer external aliases in either receiver order and superseded cycles clear before linking",async t=>{
+  const {dir,pmRoot,client,ext}=await receiver(t),file=join(dir,"namespace.jsonl");
+  for(let sequence=0;sequence<2;sequence++){
+    const native=await allocateBeadsItemId(pmRoot),external=`external-${sequence}`;
+    const createA=()=>create(client,{id:native,title:`A ${sequence}`,type:"Task",beadId:external,unset:["parent"]});
+    const createB=()=>create(client,{title:`B ${sequence}`,type:"Feature",beadId:native,unset:["parent"]});
+    let b:string;
+    if(sequence){await createA();b=(await createB()).item.id;}else{b=(await createB()).item.id;await createA();}
+    for(const command of ["native","beads-import"]){
+      await writeFile(file,jsonl([{id:external,title:`A ${sequence}`,parent:native}]));
+      const options={upsert:true};
+      if(command==="native")await runImport(ext,{pmRoot,args:[file],options});else await runCommand(ext,{command,pmRoot,args:[file],options});
+      assert.equal((await client.get(native)).item.parent,b);
+      await client.update(native,{unset:["parent"]});
+      await writeFile(file,jsonl([{id:external,title:`A ${sequence}`,parent:native},{id:external,title:`A ${sequence}`,parent:""},{id:native,title:`B ${sequence}`,parent:external}]));
+      const preview=command==="native"?await runImport(ext,{pmRoot,args:[file],options:{...options,"validate-only":true}}):await runCommand(ext,{command,pmRoot,args:[file],options:{...options,"validate-only":true}});assert.equal((preview as {valid:boolean}).valid,true);
+      if(command==="native")await runImport(ext,{pmRoot,args:[file],options});else await runCommand(ext,{command,pmRoot,args:[file],options});
+      assert.equal((await client.get(native)).item.parent,undefined);assert.equal((await client.get(b)).item.parent,native);
+      await client.update(b,{unset:["parent"]});
+    }
   }
 });

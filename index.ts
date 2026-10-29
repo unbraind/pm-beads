@@ -976,10 +976,10 @@ function assertImportParentGraph(records: BeadsItem[], items: PmItem[], existing
   for (const item of items) {
     const token = tokens.get(item.id!)!;
     identities.set(item.id!, token);
-    const external = normalizeBeadKey(decodeBeadId(item));
-    if (external) identities.set(external, token);
     parents.set(token, item.parent ? tokens.get(item.parent) : undefined);
   }
+  // Input references are external first; native fallback cannot overwrite an external alias.
+  for (const [external, item] of buildBeadIndex(items)) identities.set(external, tokens.get(item.pmId)!);
   const targets = new Map([...existing].map(([id, item]) => [id, tokens.get(item.pmId)!]));
   const edits: Array<{ token: string; row: BeadsItem; create: boolean }> = [];
   for (const [index, row] of records.entries()) {
@@ -1362,9 +1362,8 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
   const beadToPm = new Map<string, string>();
   for (const item of relationshipItems) {
     beadToPm.set(item.id!, item.id!);
-    const beadId = normalizeBeadKey(decodeBeadId(item));
-    if (beadId) beadToPm.set(beadId, item.id!);
   }
+  for (const [external, item] of buildBeadIndex(relationshipItems)) beadToPm.set(external, item.pmId);
 
   const touched: Array<{ beadId?: string; pmId: string; blockers: string[]; upserted: boolean; bead: BeadsItem }> = [];
   let imported = 0;
@@ -1652,7 +1651,12 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
   let edges = 0;
   let parents = 0;
   if (!opts.dryRun) {
-    for (const entry of touched) {
+    // Scalar rows have already composed in order. Deferred replacements must
+    // use the final edit per native target too; omitted parents retain the
+    // last explicit edit, whereas an explicit empty parent cancels it.
+    const relationshipEdits = new Map(touched.map(entry => [entry.pmId, entry]));
+    const parentEdits = new Map(touched.filter(entry => typeof entry.bead.parent === "string").map(entry => [entry.pmId, entry]));
+    for (const entry of relationshipEdits.values()) {
       const resolvedBlockers = entry.blockers
         .map((b) => ({ bead: b, pm: beadToPm.get(b) }))
         .filter((b) => {
@@ -1681,7 +1685,9 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
           else console.error(`  dep failed: ${entry.pmId} -> ${b.pm}: ${dep.stderr?.trim()}`);
         }
       }
+    }
 
+    for (const entry of parentEdits.values()) {
       const parentId = resolveParentId(entry.bead.parent, beadToPm);
       if (parentId) {
         const parent = await mutateImportedItem(

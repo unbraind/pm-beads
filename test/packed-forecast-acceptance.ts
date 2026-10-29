@@ -6,7 +6,7 @@ import { cp, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/pr
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createRequire } from "node:module";
-import { PmClient } from "@unbrained/pm-cli/sdk";
+import { PmClient, type PmClientFullMutationOptions } from "@unbrained/pm-cli/sdk";
 import { decodeToon } from "@unbrained/pm-cli/sdk/testing";
 import type * as ForecastSdk from "../index.ts";
 const require = createRequire(import.meta.url);
@@ -72,10 +72,32 @@ async function accept(name: string, packageDir: string, bin: string, prefix: str
   outcome=launch(["beads-import",sourceFile,"--upsert","--dialect",contractFile,"--no-preserve-timestamps"]);assert.equal(outcome.status,0,outcome.stderr);
   const rewired=(await client.listAllComplete()).items,b=rewired.find(row=>row.bead_id==="b")!,c=rewired.find(row=>row.bead_id==="c")!;
   assert.equal((await client.get(id)).item.parent,c.id);assert.equal(b.parent,id);assert.equal(c.parent,undefined);
-  results.push({ launcher: name, fields:4,formats:2,sdkResolved:true,nonGit:true,reviewClasses:3,acyclicRewire:true });
+  for(const command of [["beads","import"],["beads-import"]])for(const format of ["json","toon"]){
+    await writeFile(sourceFile,[{id:"a",title:"A",parent:"b"},{id:"a",title:"A",parent:""}].map(row=>JSON.stringify(row)).join("\r\n"));
+    outcome=launch([...command,sourceFile,"--upsert","--no-preserve-timestamps"],format);assert.equal(outcome.status,0,outcome.stderr);
+    assert.equal((await client.get(id)).item.parent,undefined,`${name}: final duplicate clear`);
+  }
+  const collisionOptions:PmClientFullMutationOptions={title:"Collision",type:"Task",beadId:id,unset:["parent"]};
+  const collision=(await client.create(collisionOptions)).item.id;
+  const baseline=(await sdk.readLiveBeadsSnapshot(pmRoot)).map(({id,fields})=>({id,fields}));
+  await sdk.acknowledgeBeadsSnapshot(pmRoot,"packed-collision",baseline,"packed-acceptance");
+  const incoming=structuredClone(baseline);incoming.find(row=>row.id==="a")!.fields.parent=id;
+  await sdk.applyBeadsReconciliation(pmRoot,await sdk.planBeadsReconciliation(pmRoot,"packed-collision",incoming),"packed-acceptance");
+  assert.equal((await client.get(id)).item.parent,collision);
+  const planFile=join(scratch,name,"collision-plan.json");
+  for(const command of [["beads","reconcile"],["beads-reconcile"]])for(const format of ["json","toon"]){
+    outcome=launch(["beads","export","--output",exportFile]);assert.equal(outcome.status,0,outcome.stderr);
+    const rows=(await readFile(exportFile,"utf8")).split("\n").filter(Boolean).map(line=>JSON.parse(line) as Record<string,unknown>);
+    rows.find(row=>row.id===id)!.title=`Collision ${command.length} ${format}`;
+    await writeFile(sourceFile,rows.map(row=>JSON.stringify(row)).join("\r\n"));
+    outcome=launch([...command,sourceFile,"--source","packed-collision","--plan-out",planFile],format);assert.equal(outcome.status,0,outcome.stderr);
+    outcome=launch([...command,"--source","packed-collision","--apply-plan",planFile],format);assert.equal(outcome.status,0,outcome.stderr);
+    assert.equal((await client.get(id)).item.parent,collision,`${name}: retained external parent`);
+  }
+  results.push({ launcher: name, fields:4,formats:2,sdkResolved:true,nonGit:true,reviewClasses:5,acyclicRewire:true,duplicateTargets:true,identityCollisions:true });
   process.stderr.write(`Packed acceptance passed: ${name}\n`);
 }
-const results: { launcher: string; fields:number; formats:number; sdkResolved: boolean; nonGit: boolean; reviewClasses:number; acyclicRewire:boolean }[] = [];
+const results: { launcher: string; fields:number; formats:number; sdkResolved: boolean; nonGit: boolean; reviewClasses:number; acyclicRewire:boolean; duplicateTargets:boolean; identityCollisions:boolean }[] = [];
 try {
   const packed = JSON.parse(run("npm", ["pack", "--ignore-scripts", "--json", "--pack-destination", scratch], root)) as { filename: string; files: { path: string }[] }[];
   const artifact = join(scratch, packed[0].filename), digest = createHash("sha256").update(await readFile(artifact)).digest("hex");

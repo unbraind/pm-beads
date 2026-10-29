@@ -14,12 +14,20 @@ export class BeadsParentRefusal extends CommandError {
 /** Verify normalized source parent identities; only explicit known receiver identities may leave the source snapshot. */
 export function assertBeadsParentGraph(rows: readonly { id?: unknown; parent?: unknown }[], externalIds: ReadonlySet<string> = new Set()): void {
   const selected = rows.map((row, index) => ({ id: normalizeBeadKey(row.id), parent: typeof row.parent === "string" ? normalizeBeadKey(row.parent) : undefined,
+    supplied: row.parent !== undefined && row.parent !== null,
     malformed: row.parent !== undefined && row.parent !== null && typeof row.parent !== "string", token: `row${index}` }));
   if (selected.some(row => row.malformed)) throw new BeadsParentRefusal();
   if (!selected.some(row => row.parent)) return;
   const byId = new Map(selected.filter(row => row.id).map(row => [row.id!, row.token]));
-  const edges: Array<{ source: string; target: string; kind: string }> = [];
+  // Duplicate upsert rows compose as patches: a clear replaces an earlier
+  // link, while an omitted/null parent leaves the last explicit edit intact.
+  const effective = new Map<string, typeof selected[number]>();
   for (const row of selected) {
+    const token = row.id ? byId.get(row.id)! : row.token;
+    if (!effective.has(token) || row.supplied) effective.set(token, row);
+  }
+  const edges: Array<{ source: string; target: string; kind: string }> = [];
+  for (const row of effective.values()) {
     if (!row.parent) continue;
     const target = byId.get(row.parent);
     if (target) edges.push({ source: row.id ? byId.get(row.id)! : row.token, target, kind: "blocked_by" });

@@ -359,8 +359,9 @@ export async function applyBeadsReconciliation(pmRoot: string, plan: BeadsReconc
   const ids = new Map([...Object.entries(base.bindings ?? {}), ...live.map(row => [row.id, row.pmId] as const)]);
   const parents = new Map(live.map(row => [row.id, row.fields.parent]));
   for (const change of plan.changes) if (change.fields.includes("parent")) parents.set(change.id, plan.incoming.find(row => row.id === change.id)!.fields.parent);
-  const nativeToExternal = new Map([...ids].map(([external, native]) => [native, external]));
-  assertBeadsParentGraph([...parents].map(([id, parent]) => ({ id, parent: nativeToExternal.get(parent) ?? parent })));
+  // SDK reads are translated by readLiveBeadsSnapshot already; incoming
+  // canonical parents are external too. Translate only at mutationOptions.
+  assertBeadsParentGraph([...parents].map(([id, parent]) => ({ id, parent })));
   // A separate SDK transaction durably pins generated identities before any row
   // mutation. Its ledger is package state, never a tracker item storage path.
   const identityPath = join(pmRoot, "transactions", "beads-reconcile", `${plan.digest}.json`);
