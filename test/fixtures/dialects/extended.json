@@ -1,0 +1,1 @@
+{"schema":1,"producer":"nested-producer/v2","fields":[{"name":"id","kind":"text"},{"name":"title","kind":"json"},{"name":"vendor","kind":"json"},{"name":"status","kind":"text"},{"name":"created_at","kind":"text"},{"name":"planning.parent","kind":"text"}]}

@@ -12,6 +12,7 @@ import type { ExtensionApi, CommandHandlerContext } from "@unbrained/pm-cli/sdk/
 import { allocateBeadsItemId, readBeadsItemHistory } from "./item-access.ts";
 import { beadsMutationAuthor, sourceCreateOptions, sourceDependency, preserveBeadsProgress } from "./mutation.ts";
 import { ensureBeadIdentityField, reportLegacyBeadIdentities, legacyBeadIdentity } from "./identity.ts";
+import { assertBeadsParentGraph } from "./parents.ts";
 import { CommandError, DIFF_FIELDS } from "./contracts.ts";
 import {
   normalizeDiffField, extractBlockerIds,
@@ -356,6 +357,11 @@ export async function applyBeadsReconciliation(pmRoot: string, plan: BeadsReconc
   const fresh = reconcileBeadsSnapshots(base, plan.incoming, live, plan.schema);
   if (fresh.digest !== plan.digest) refuse("invalid_plan", "Generate a fresh plan from the original incoming snapshot.");
   const ids = new Map([...Object.entries(base.bindings ?? {}), ...live.map(row => [row.id, row.pmId] as const)]);
+  const parents = new Map(live.map(row => [row.id, row.fields.parent]));
+  for (const change of plan.changes) if (change.fields.includes("parent")) parents.set(change.id, plan.incoming.find(row => row.id === change.id)!.fields.parent);
+  // SDK reads are translated by readLiveBeadsSnapshot already; incoming
+  // canonical parents are external too. Translate only at mutationOptions.
+  assertBeadsParentGraph([...parents].map(([id, parent]) => ({ id, parent })));
   // A separate SDK transaction durably pins generated identities before any row
   // mutation. Its ledger is package state, never a tracker item storage path.
   const identityPath = join(pmRoot, "transactions", "beads-reconcile", `${plan.digest}.json`);

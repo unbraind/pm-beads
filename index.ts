@@ -42,6 +42,10 @@ import { registerSidecarCommands } from "./sidecar.ts";
 export * from "./sidecar.ts";
 import { registerTransferCommands } from "./transfer.ts";
 export * from "./transfer.ts";
+import { assertBeadsParentGraph, BeadsParentRefusal, beadsParentRefusalIssue } from "./parents.ts";
+export * from "./parents.ts";
+import { registerForecastCommands, assertBeadsDialectImportable, readBeadsProducerContract, BeadsDialectRefusal } from "./forecast.ts";
+export * from "./forecast.ts";
 import { registerRepairCommands } from "./repair.ts";
 export * from "./repair.ts";
 import { inspectCompleteListResult, PmClient, preserveMutationStdinTokenFields, suppressHostOutput, listAllItemMetadata, assertInitializedTracker, PmCliError, type PmClientFullMutationOptions } from "@unbrained/pm-cli/sdk";
@@ -500,25 +504,31 @@ function beadDeadline(item: BeadsItem): string | undefined {
 /**
  * Append the planning-related pm CLI args derived from a Beads record.
  *
- * Adds `--deadline`, `--assignee`, `--sprint`, and `--release` only when the
- * record carries a value for each, mutating `args` in place.
+ * Adds present planning values; replacement updates explicitly unset empty
+ * optional values and parents while preserving omitted fields.
  *
  * @param args - The argv array being built (mutated).
  * @param item - The Beads record to source values from.
+ * @param replace - Whether explicit empty values clear existing receiver fields.
  */
-function appendPlanningArgs(args: string[], item: BeadsItem): void {
-  const deadline = beadDeadline(item);
-  if (deadline) args.push("--deadline", deadline);
-  const assignee = beadAssignee(item);
-  if (assignee) args.push("--assignee", assignee);
-  if (item.sprint) args.push("--sprint", String(item.sprint));
-  if (item.release) args.push("--release", String(item.release));
+function appendPlanningArgs(args: string[], item: BeadsItem, replace = false): void {
+  const slots = [
+    { name: "deadline", aliases: ["deadline", "due_date", "due_at"], value: beadDeadline(item) },
+    { name: "assignee", aliases: ["assignee", "owner"], value: beadAssignee(item) },
+    { name: "sprint", aliases: ["sprint"], value: scalarString(item.sprint) },
+    { name: "release", aliases: ["release"], value: scalarString(item.release) },
+  ];
+  for (const slot of slots) {
+    if (slot.value) args.push(`--${slot.name}`, slot.value);
+    else if (replace && slot.aliases.some(alias => typeof item[alias] === "string")) args.push("--unset", slot.name);
+  }
+  // Clear supplied parents before pass 2: retained links can create transient cycles during a valid rewire.
+  if (replace && typeof item.parent === "string") args.push("--unset", "parent");
 }
 
 function resolveParentId(parent: unknown, beadToPm: Map<string, string>): string | undefined {
   if (typeof parent !== "string" || !parent.trim()) return undefined;
-  const raw = parent.trim();
-  return beadToPm.get(raw) ?? raw;
+  return beadToPm.get(parent.trim());
 }
 
 // ---------------------------------------------------------------------------
@@ -888,12 +898,7 @@ async function runValidate(
   if (!filePath) {
     throw new CommandError("Usage: pm beads validate <file> [--json] [--no-workspace]", EXIT_CODE.USAGE);
   }
-  const absolutePath = resolve(filePath);
-  const raw = readFileOrThrow(absolutePath);
-
-  const workspaceBeadIds =
-    opts.workspace && opts.pmRoot ? await readWorkspaceBeadIds(opts.pmRoot) : undefined;
-  const report = validateBeadsText(raw, absolutePath, workspaceBeadIds);
+  const report = await readAndValidateBeads(filePath, opts.workspace ? opts.pmRoot : undefined);
   const errors = report.issues.filter((i) => i.severity === "error").length;
 
   if (opts.json) {
@@ -955,10 +960,51 @@ interface ImportOptions {
   upsert: boolean;
   mergeStrategy: MergeStrategy;
   batchSize?: number;
+  dialect?: string;
   typeOverride?: string;
   priorityOverride?: string;
   tagsOverride?: string;
   filter: RowFilter;
+}
+
+/** Validate the effective parent graph, combining explicit source edits with receiver relationships before any write. */
+function assertImportParentGraph(records: BeadsItem[], items: PmItem[], existing: Map<string, ExistingBeadItem>, legacy: ReadonlySet<string | undefined>, opts: ImportOptions): void {
+  if (!records.some(row => row.parent !== undefined && row.parent !== null)) return;
+  const tokens = new Map(items.map((item, index) => [item.id!, `existing${index}`]));
+  const identities = new Map<string, string>();
+  const parents = new Map<string, string | undefined>();
+  for (const item of items) {
+    const token = tokens.get(item.id!)!;
+    identities.set(item.id!, token);
+    parents.set(token, item.parent ? tokens.get(item.parent) : undefined);
+  }
+  // Input references are external first; native fallback cannot overwrite an external alias.
+  for (const [external, item] of buildBeadIndex(items)) identities.set(external, tokens.get(item.pmId)!);
+  const targets = new Map([...existing].map(([id, item]) => [id, tokens.get(item.pmId)!]));
+  const edits: Array<{ token: string; row: BeadsItem; create: boolean }> = [];
+  for (const [index, row] of records.entries()) {
+    if (!beadPassesFilter(row, opts.typeOverride, opts.filter)) continue;
+    const id = opts.preserveIds ? normalizeBeadKey(row.id) : undefined;
+    const matched = opts.upsert && id ? targets.get(id) : undefined;
+    if (matched && (opts.mergeStrategy === "skip" || legacy.has(existing.get(id!)?.pmId ?? ""))) continue;
+    const token = matched ?? `incoming${index}`;
+    if (id) { identities.set(id, token); if (opts.upsert) targets.set(id, token); }
+    edits.push({ token, row, create: !matched });
+  }
+  const changed = new Set<string>();
+  for (const { token, row, create } of edits) {
+    if (!create && (row.parent === undefined || row.parent === null)) continue;
+    const parent = normalizeBeadKey(row.parent);
+    if (parent && !identities.has(parent)) throw new BeadsParentRefusal();
+    parents.set(token, parent ? identities.get(parent) : undefined); changed.add(token);
+  }
+  // Inspect only changed ancestry: unrelated foreign tracker records are not this import's to repair.
+  const reachable = new Set<string>(), pending = [...changed];
+  for (let index = 0; index < pending.length; index++) {
+    const token = pending[index]; if (reachable.has(token)) continue;
+    reachable.add(token); const parent = parents.get(token); if (parent) pending.push(parent);
+  }
+  assertBeadsParentGraph([...reachable].map(id => ({ id, parent: parents.get(id) })));
 }
 
 /**
@@ -1087,8 +1133,10 @@ type ParsedBeadsRecord = BeadsItem & { __invalid?: boolean };
  * uncovered.
  */
 export function parseBeadsFile(filePath: string): ParsedBeadsRecord[] {
-  const absolutePath = resolve(filePath);
-  const raw = readFileOrThrow(absolutePath);
+  return parseBeadsText(readFileOrThrow(resolve(filePath)));
+}
+/** Parse the exact source text already validated by the importer, retaining legacy defensive sentinels. */
+export function parseBeadsText(raw: string): ParsedBeadsRecord[] {
   const lines = raw.split("\n").filter((l) => l.trim());
   const items: ParsedBeadsRecord[] = [];
   for (let i = 0; i < lines.length; i++) {
@@ -1136,7 +1184,10 @@ export function buildBeadIndex(items: PmItem[]): Map<string, ExistingBeadItem> {
 // both the fail-fast import gate and `--validate-only` can share it.
 export async function readAndValidateBeads(filePath: string, pmRoot?: string): Promise<ValidationReport> {
   const absolutePath = resolve(filePath);
-  const raw = readFileOrThrow(absolutePath);
+  return validateBeadsImportText(readFileOrThrow(absolutePath), pmRoot, absolutePath);
+}
+/** Validate one immutable source string for imports and previews, including the same parent and workspace rules. */
+export async function validateBeadsImportText(raw: string, pmRoot?: string, file?: string): Promise<ValidationReport> {
 
   // Cross-check dependency edges against bead ids already in the workspace so
   // a reference that resolves at import time (a prior import) stays a warning,
@@ -1148,7 +1199,19 @@ export async function readAndValidateBeads(filePath: string, pmRoot?: string): P
   // a valid file with a false `dangling_dependency`.
   const workspaceBeadIds = pmRoot ? await readWorkspaceBeadIds(pmRoot) : undefined;
 
-  return validateBeadsText(raw, absolutePath, workspaceBeadIds);
+  const report = validateBeadsText(raw, file, workspaceBeadIds);
+  if (report.valid) {
+    const rows = raw.split("\n").filter(line => line.trim()).map(line => JSON.parse(line) as BeadsItem);
+    const parentIds = new Set(workspaceBeadIds);
+    if (pmRoot && rows.some(row => row.parent !== undefined) && existsSync(pmRoot)) {
+      for (const item of await readWorkspaceItems(pmRoot, true)) parentIds.add(item.id!);
+    }
+    try { assertBeadsParentGraph(rows, parentIds); }
+    catch (error) {
+      report.valid = false; report.issues.push({ line: 0, severity: "error", ...beadsParentRefusalIssue(error) });
+    }
+  }
+  return report;
 }
 
 // Fail-fast import gate: structurally validate the whole file (same rules as
@@ -1157,8 +1220,10 @@ export async function readAndValidateBeads(filePath: string, pmRoot?: string): P
 // Lives in the import path itself — NOT on the single-winner preflight
 // override surface — so it holds even when another package owns preflight.
 export async function assertBeadsImportable(filePath: string, pmRoot?: string): Promise<void> {
-  const absolutePath = resolve(filePath);
-  const report = await readAndValidateBeads(filePath, pmRoot);
+  assertBeadsReportImportable(await readAndValidateBeads(filePath, pmRoot));
+}
+/** Apply one refusal formatter to both file-based SDK validation and the importer's pinned source. */
+function assertBeadsReportImportable(report: ValidationReport): void {
   const errors = report.issues.filter((i) => i.severity === "error");
   if (errors.length === 0) return;
 
@@ -1168,7 +1233,7 @@ export async function assertBeadsImportable(filePath: string, pmRoot?: string): 
     .join("\n");
   const more = errors.length > 10 ? `\n  …and ${errors.length - 10} more error(s)` : "";
   throw new CommandError(
-    `Beads JSONL validation failed for ${absolutePath} — ${errors.length} structural error(s); ` +
+    `Beads JSONL validation failed for ${report.file} — ${errors.length} structural error(s); ` +
       `nothing was imported. Fix the file (or run \`pm beads validate <file>\`) and retry:\n${detail}${more}`,
     EXIT_CODE.GENERIC_FAILURE,
   );
@@ -1220,12 +1285,23 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
     );
   }
 
+  const dialectText = opts.dialect ? readFileOrThrow(filePath) : undefined;
+  if (opts.dialect) assertBeadsDialectImportable(dialectText!, await readBeadsProducerContract(opts.dialect));
+
   // --validate-only: run the fail-fast gate, surface the report, then stop —
   // no parsing, no create/update, no dependency wiring. Behaves like
   // `pm beads validate` but is scoped to the import path so a CI job can gate
   // an import on a single command.
   if (opts.validateOnly) {
-    const report = await readAndValidateBeads(filePath, pmRoot);
+    const source = dialectText ?? readFileOrThrow(filePath);
+    const report = await validateBeadsImportText(source, pmRoot, resolve(filePath));
+    if (report.valid && parseBeadsText(source).some(row => row.parent !== undefined)) {
+      const records = parseBeadsText(source), items = await readWorkspaceItems(pmRoot, true);
+      const existing = opts.upsert ? buildBeadIndex(items) : new Map<string, ExistingBeadItem>();
+      const legacy = new Set(items.filter(item => item.bead_id === undefined && legacyBeadIdentity(item.description)).map(item => item.id));
+      try { assertImportParentGraph(records, items, existing, legacy, opts); }
+      catch (error) { report.valid = false; report.issues.push({ line: 0, severity: "error", ...beadsParentRefusalIssue(error) }); }
+    }
     const errors = report.issues.filter((i) => i.severity === "error").length;
     if (report.issues.length === 0) {
       console.error(`OK (validate-only): ${report.records} record(s), no issues.`);
@@ -1257,12 +1333,13 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
   }
 
   // Authoritative fail-fast gate: abort on structural errors before ANY write.
-  await assertBeadsImportable(filePath, pmRoot);
+  const sourceText = dialectText ?? readFileOrThrow(filePath);
+  assertBeadsReportImportable(await validateBeadsImportText(sourceText, pmRoot, resolve(filePath)));
 
   const absolutePath = resolve(filePath);
   console.error(`Parsing Beads JSONL from: ${absolutePath}`);
 
-  const parsed = parseBeadsFile(filePath);
+  const parsed = parseBeadsText(sourceText);
   const records = parsed.filter((r) => !r.__invalid);
   let skipped = parsed.length - records.length;
   let failed = skipped;
@@ -1275,13 +1352,19 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
   // With --upsert, look up existing items so a matching bead id updates the
   // prior item instead of creating a duplicate. Built once, up front (also in
   // dry-run, so the preview reports create vs. update accurately).
-  const existingItems = opts.upsert ? await readWorkspaceItems(pmRoot) : [];
+  const relationshipItems = opts.upsert || records.some(item => item.parent !== undefined) ? await readWorkspaceItems(pmRoot) : [];
+  const existingItems = opts.upsert ? relationshipItems : [];
   const existingIndex = opts.upsert
     ? buildBeadIndex(existingItems)
     : new Map<string, ExistingBeadItem>();
 
   // Map of original bead id -> the pm id we created/updated for it (wires deps).
   const beadToPm = new Map<string, string>();
+  for (const item of relationshipItems) {
+    beadToPm.set(item.id!, item.id!);
+  }
+  for (const [external, item] of buildBeadIndex(relationshipItems)) beadToPm.set(external, item.pmId);
+
   const touched: Array<{ beadId?: string; pmId: string; blockers: string[]; upserted: boolean; bead: BeadsItem }> = [];
   let imported = 0;
   let updated = 0;
@@ -1369,6 +1452,7 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
   }
 
   const legacyItems = new Set(existingItems.filter(item => item.bead_id === undefined && legacyBeadIdentity(item.description)).map(item => item.id));
+  assertImportParentGraph(records, relationshipItems, existingIndex, legacyItems, opts);
 
   for (let batchIdx = 0; batchIdx < batchCount; batchIdx++) {
     const batchStart = batchIdx * batchSize;
@@ -1397,7 +1481,7 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
       const labels = beadLabels(item);
       const tags = opts.tagsOverride
         ? opts.tagsOverride
-        : labels.length
+        : Array.isArray(item.labels) || Array.isArray(item.tags)
           ? JSON.stringify(labels)
           : undefined;
       const beadId = opts.preserveIds ? normalizeBeadKey(item.id) : undefined;
@@ -1474,7 +1558,7 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
           }
           if (priority) updArgs.push("--priority", priority);
           if (tags) updArgs.push("--tags", tags); // --tags replaces; idempotent re-import
-          appendPlanningArgs(updArgs, item);
+          appendPlanningArgs(updArgs, item, true);
           // A matched upsert necessarily has the normalized source id used by the index.
           updArgs.push("--bead-id", beadId!);
           let result = await mutateImportedItem(updArgs, pmRoot, description, opts.author);
@@ -1567,7 +1651,12 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
   let edges = 0;
   let parents = 0;
   if (!opts.dryRun) {
-    for (const entry of touched) {
+    // Scalar rows have already composed in order. Deferred replacements must
+    // use the final edit per native target too; omitted parents retain the
+    // last explicit edit, whereas an explicit empty parent cancels it.
+    const relationshipEdits = new Map(touched.map(entry => [entry.pmId, entry]));
+    const parentEdits = new Map(touched.filter(entry => typeof entry.bead.parent === "string").map(entry => [entry.pmId, entry]));
+    for (const entry of relationshipEdits.values()) {
       const resolvedBlockers = entry.blockers
         .map((b) => ({ bead: b, pm: beadToPm.get(b) }))
         .filter((b) => {
@@ -1596,7 +1685,9 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
           else console.error(`  dep failed: ${entry.pmId} -> ${b.pm}: ${dep.stderr?.trim()}`);
         }
       }
+    }
 
+    for (const entry of parentEdits.values()) {
       const parentId = resolveParentId(entry.bead.parent, beadToPm);
       if (parentId) {
         const parent = await mutateImportedItem(
@@ -1898,7 +1989,7 @@ export function pmItemToBead(item: PmItem, pmToBead: Map<string, string>, preser
     issue_type: String(item.type ?? "Task").trim().toLowerCase(),
   };
   if (item.priority !== undefined && item.priority !== null) bead.priority = Number(item.priority);
-  if (Array.isArray(item.tags) && item.tags.length) bead.labels = item.tags;
+  if (Array.isArray(item.tags)) bead.labels = item.tags;
   if (item.assignee) {
     bead.assignee = item.assignee;
     bead.owner = item.assignee;
@@ -1933,11 +2024,12 @@ export function buildBeadsFromWorkspace(
   return buildBeadsFromItems(readPmItems(pmRoot, spawn), opts);
 }
 
-/** Read certified full rows through the SDK; retain CLI compatibility for legacy uninitialized hosts. */
-async function readWorkspaceItems(pmRoot: string): Promise<PmItem[]> {
+/** Read certified SDK rows; optional read-only checks tolerate uninitialized trackers, while imports retain the legacy CLI fallback. */
+async function readWorkspaceItems(pmRoot: string, optional = false): Promise<PmItem[]> {
   try { await assertInitializedTracker(pmRoot); }
   catch (error) {
     if (!(error instanceof PmCliError) || error.exitCode !== EXIT_CODE.NOT_FOUND) throw error;
+    if (optional) return [];
     return readPmItems(pmRoot);
   }
   return (await new PmClient({ pmRoot, noExtensions: true }).listAllComplete()).items as PmItem[];
@@ -2279,6 +2371,7 @@ async function runDiff(args: string[], opts: DiffOptions) {
 // `--priority` deliberately stays a string flag: the override is forwarded
 // verbatim to `pm create/update --priority`, which does its own validation.
 const IMPORT_FLAGS: FlagDefinition[] = [
+  { long: "--dialect", value_name: "file", value_type: "string", description: "Refuse incompatible producer contracts and snapshot shapes before any import write; sidecar-dependent contracts use the SDK guard." },
   { long: "--dry-run", value_type: "boolean", description: "Preview create/update/skip counts without writing" },
   { long: "--validate-only", value_type: "boolean", description: "Validate the input file then exit without importing (like `pm beads validate`, scoped to import)" },
   { long: "--upsert", value_type: "boolean", description: "Update existing items matched by their Beads id instead of creating duplicates" },
@@ -2471,6 +2564,14 @@ export function parseExportOptions(options: Record<string, unknown>): ExportOpti
   };
 }
 
+/** Refuse a supplied but unusable dialect guard instead of silently disabling it. */
+function parseDialectOption(options: Record<string, unknown>): string | undefined {
+  if (!Object.hasOwn(options, "dialect")) return undefined;
+  const value = options.dialect;
+  if (typeof value !== "string" || !value.trim()) throw new BeadsDialectRefusal("invalid_contract", "Pass a nonempty producer contract file to --dialect.");
+  return value;
+}
+
 function parseImportOptions(options: Record<string, unknown>, author: string): ImportOptions {
   return {
     author,
@@ -2479,6 +2580,7 @@ function parseImportOptions(options: Record<string, unknown>, author: string): I
     upsert: readBoolOption(options, "upsert"),
     mergeStrategy: parseMergeStrategy(options),
     batchSize: parsePositiveIntOption(options, "batch-size", "batchSize"),
+    dialect: parseDialectOption(options),
     preserveIds: resolvePreserveIds(options),
     preserveTimestamps: resolvePreserveTimestamps(options),
     typeOverride: optionString(options, "type"),
@@ -2518,7 +2620,7 @@ export function resolveImportInputFile(args: unknown, extraValueFlags: readonly 
   const valueFlags = new Set([
     "--type", "--priority", "--tags",
     "--filter", "--filter-status", "--filter-type",
-    "--merge-strategy", "--batch-size", "--file",
+    "--merge-strategy", "--batch-size", "--file", "--dialect",
     ...extraValueFlags,
   ]);
   for (let i = 0; i < args.length; i++) {
@@ -2570,6 +2672,7 @@ export default defineExtension({
     registerSidecarCommands(api);
     registerTransferCommands(api);
     registerRepairCommands(api);
+    registerForecastCommands(api);
     // -----------------------------------------------------------------------
     // schema — declare the bead_id provenance field
     // -----------------------------------------------------------------------

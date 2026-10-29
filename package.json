@@ -104,7 +104,8 @@
       "examples/unknown-field-sidecars.md",
       "examples/dependency-closed-transfer.md",
       "examples/acknowledged-outgoing-deltas.md",
-      "examples/dependency-error-repair-packets.md"
+      "examples/dependency-error-repair-packets.md",
+      "examples/dialect-conversion-forecasts.md"
     ]
   },
   "publishConfig": {

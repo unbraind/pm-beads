@@ -285,6 +285,17 @@ export function restoreBeadsExtensions(text: string, envelope: BeadsExtensionSid
   bounded(restored);
   return { text: restored, loss: sidecar.loss };
 }
+/** Prove custody of every currently selected extension value, including presence, without changing restore semantics. */
+export function assertBeadsExtensionCustody(text: string, envelope: BeadsExtensionSidecar, fields: readonly string[]): void {
+  const sidecar = validateSidecar(envelope), current = captureBeadsExtensions(text, fields);
+  const retained = new Map(sidecar.records.map(row => [row.id, row.fields]));
+  if (current.records.length !== retained.size || current.records.some(row => !retained.has(row.id))) refuse("identity_mismatch", "Recapture the current complete snapshot with preserved identities before import.");
+  for (const row of current.records) for (const field of current.fields) {
+    const saved = retained.get(row.id)!;
+    if (!sidecar.fields.includes(field) || Object.hasOwn(row.fields, field) !== Object.hasOwn(saved, field) ||
+        canonical(row.fields[field]) !== canonical(saved[field])) refuse("field_conflict", "Recapture every current selected extension value before import; stale or incomplete sidecars cannot prove custody.");
+  }
+}
 /** Read one bounded input with a sanitized filesystem refusal. */
 async function input(file: string): Promise<string> {
   try {

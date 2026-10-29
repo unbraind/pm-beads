@@ -361,7 +361,7 @@ test("dependency-edge and parent-link failures degrade to warnings, not crashes"
     const file = s.jsonlPath("in.jsonl");
     writeFileSync(file, jsonl([
       { id: "bd-1", title: "Anchor" },
-      { id: "bd-2", title: "Wired", dependencies: ["bd-1"], parent: "bd-ghost-parent" },
+      { id: "bd-2", title: "Wired", dependencies: ["bd-1"], parent: "bd-1" },
     ]), "utf-8");
     const result = await runImport(ext, { args: [file], options: {}, pmRoot: join(s.dir, "ws") });
     assert.equal(result.imported, 2);
