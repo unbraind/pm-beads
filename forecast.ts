@@ -2,9 +2,10 @@
 import { open } from "node:fs/promises";
 import type { CommandHandlerContext, ExtensionApi } from "@unbrained/pm-cli/sdk/authoring";
 import { CommandError } from "./contracts.ts";
-import { canonicalBeadsRecord, parseBeadsSnapshot } from "./reconcile.ts";
+import { parseBeadsSnapshot } from "./reconcile.ts";
 import { BEADS_NATIVE_FIELDS, captureBeadsExtensions, restoreBeadsExtensions, type BeadsExtensionSidecar } from "./sidecar.ts";
 import { checkBeadsSchema, type BeadsSchemaValue } from "./snapshot-schema.ts";
+import { extractBlockerIds, type BeadsItem } from "./index.ts";
 import { jsonSourceEntries } from "./json-source.ts";
 
 /** Fixed budgets keep contracts and agent output independent of tracker size. */
@@ -115,6 +116,16 @@ export function assertBeadsDialectForecast(report: BeadsDialectForecast): void {
       report.counts.exact + report.counts.sidecarDependent + report.counts.unsupported !== report.fields.length ||
       Buffer.byteLength(JSON.stringify(report)) > BEADS_DIALECT_LIMITS.outputBytes) throw new BeadsDialectRefusal("invalid_contract", "Reduce contract fields; forecast counts and output must fit their documented finite budgets.");
 }
+/** Reject native edge payloads that the blocker-only domain cannot preserve, using the production edge mapper. */
+function assertBlockerDomain(value: unknown): void {
+  const edges = typeof value === "string" ? [value] : value;
+  if (!Array.isArray(edges)) throw new Error("blocker representation");
+  const keys = new Set(["id", "kind", "issue_id", "depends_on_id", "type"]);
+  for (const edge of edges) {
+    if (typeof edge !== "string" && Object.keys(edge as object).some(key => !keys.has(key))) throw new Error("opaque native edge");
+    if (extractBlockerIds({ dependencies: [edge] } as BeadsItem).length !== 1) throw new Error("unsupported edge semantics");
+  }
+}
 /** Validate the same snapshot/sidecar producers used by conversion; a guard never commits or repairs input. */
 export function assertBeadsDialectImportable(text: string, value: unknown, sidecar?: BeadsExtensionSidecar): BeadsDialectForecast {
   const report = forecastBeadsDialect(value);
@@ -132,11 +143,11 @@ export function assertBeadsDialectImportable(text: string, value: unknown, sidec
       const row = JSON.parse(line) as Record<string, unknown>;
       for (const [name, data] of Object.entries(row)) {
         const kind = declared.get(name);
+        if (kind === "blockers") assertBlockerDomain(data);
         if (!kind || (kind === "text" && typeof data !== "string") ||
             (kind === "priority" && (typeof data !== "number" || !Number.isInteger(data) || data < 0 || data > 4)) ||
             (kind === "labels" && !Array.isArray(data))) throw new Error("contract drift");
       }
-      canonicalBeadsRecord(row);
     }
     parseBeadsSnapshot(text);
   } catch { throw new BeadsDialectRefusal("invalid_snapshot", "Supply a valid complete snapshot matching the contract, with canonical native values and no undeclared fields; repair nesting before import."); }

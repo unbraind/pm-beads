@@ -22,7 +22,7 @@ Exact means **canonical mapped state on present fields**: titles and scalar alia
 | `text` | `id`, `title`/`name`, `description`, `assignee`/`owner`, `parent`, `deadline`/`due_date`/`due_at`, `sprint`, `release` | Native scalar text; IDs must be stable and encodable, titles nonblank, deadlines parseable ISO dates. Descriptions retain whitespace and CRLF. Planning fields use canonical nonempty values accepted by the receiver. |
 | `priority` | `priority` | Integer 0–4; no strings, fractions or clamping. |
 | `labels` | `labels`/`tags` | Dense string arrays interpreted as semantic sets by the package and SDK. |
-| `blockers` | `dependencies`/`blocked_by` | Existing Beads blocker-edge representations, with complete identities and no cycles. |
+| `blockers` | `dependencies`/`blocked_by` | Existing Beads blocker-edge representations, with complete identities and no cycles. Opaque edge properties and uninterpreted edge kinds refuse; use a top-level extension for foreign edge payloads. |
 | `json` | Unknown top-level fields only | Existing sidecar JSON/privacy/size limits; native nesting is unsupported. |
 
 Declare only one source alias for each native target. A contract declaring both `labels` and `tags`, for example, cannot prove which value wins and forecasts both as unsupported. Dotted paths are unsupported: a nested `planning.parent` cannot become a native parent implicitly. Nested **unknown top-level extensions** can be preserved recursively in sidecars.

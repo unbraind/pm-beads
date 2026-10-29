@@ -154,3 +154,20 @@ test("compiled forecast JSON/TOON succeeds with git absent and leaves a non-git 
   }
   assert.deepEqual((await client.listAllComplete()).items,before);
 });
+
+
+test("blocker domain refuses hidden native nesting and non-blocker edges instead of forecasting silent loss",()=>{
+  const contract:BeadsProducerContract={...minimal,fields:[...minimal.fields,{name:"dependencies",kind:"blockers"}]};
+  const root={id:"a",title:"A"};
+  for(const edge of [{id:"a",kind:"blocked_by",vendor:{nested:1}},{id:"a",kind:"related_to"},{issue_id:"a"}," "]) {
+    const text=[root,{id:"b",title:"B",dependencies:[edge]}].map(row=>JSON.stringify(row)).join("\n");
+    assert.throws(()=>assertBeadsDialectImportable(text,contract),refused("invalid_snapshot"));
+  }
+  assert.throws(()=>assertBeadsDialectImportable(JSON.stringify({...root,dependencies:null}),contract),refused("invalid_snapshot"));
+  for(const edge of ["a",{id:"a",kind:"blocked_by"},{issue_id:"b",depends_on_id:"a",type:"blocks"}]) {
+    const text=[root,{id:"b",title:"B",dependencies:[edge]}].map(row=>JSON.stringify(row)).join("\n");
+    assert.equal(assertBeadsDialectImportable(text,contract).importable,true);
+  }
+  const blocked:BeadsProducerContract={...minimal,fields:[...minimal.fields,{name:"blocked_by",kind:"blockers"}]};
+  assert.equal(assertBeadsDialectImportable(JSON.stringify(root)+"\n"+JSON.stringify({id:"b",title:"B",blocked_by:"a"}),blocked).importable,true);
+});
