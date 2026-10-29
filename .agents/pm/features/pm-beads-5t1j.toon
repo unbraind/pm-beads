@@ -1,0 +1,35 @@
+id: pm-beads-5t1j
+title: Forecast compatibility with named Beads producer dialects before import
+description: "Acceptance: two fixture dialects produce deterministic field-level exact, sidecar-dependent and unsupported forecasts; every exact mapping passes a real SDK round trip; unsupported native nesting refuses before import. Deliver typed SDK and CLI, compact TOON/JSON, typed remedies, README/example, seeded model evidence and read-only public tracker measurement."
+type: Feature
+status: in_progress
+priority: 2
+tags: []
+created_at: "2026-10-29T00:51:52.761Z"
+updated_at: "2026-10-29T01:07:35.257Z"
+assignee: codex-agent
+claim_principal: codex-agent
+author: codex-agent
+comments[4]{created_at,author,text}:
+  "2026-10-29T00:52:40.738Z",codex-agent,"Overlap rechecked against installed host SDK declarations, package commands and sibling pm-csv, pm-memory, pm-context and pm-ops sources. Host SDK has no named Beads producer forecast; pm-csv dialect descriptors concern table syntax and column mappings. Existing Beads sidecars preserve opted-in unknown top-level JSON; reconciliation, transfers and outgoing deltas exchange canonical snapshots. This feature forecasts named producer compatibility, reusing these mapping and sidecar functions. Forecast is read-only, has no journal or mutable coordinator, and promises no lock isolation; existing transaction leases do not exclude ordinary SDK writers."
+  "2026-10-29T01:01:28.025Z",codex-agent,"Implemented read-only schema-derived producer contracts, deterministic field forecasts, typed remedies and an optional dialect import guard. Exact means canonical mapped state on present fields, not raw JSON spelling. All 17 claimed native names/aliases passed SDK-read import/export/upsert round trips in six real non-git trackers, including CRLF descriptions, blockers, parents and ambient focus. Source status/type, source timestamps, closure audit and ambiguous competing aliases are conservatively unsupported; unknown top-level fields use the existing sidecar. No new leases, checkpoints or mutation journals exist. Existing writer-race tracking remains in pm-beads-51fi and pm-beads-qwvf; this representation guard does not certify transaction isolation."
+  "2026-10-29T01:06:04.808Z",codex-agent,"Public validation on frozen main f45fc815: 113 SDK-read records, 72353 native JSONL bytes; full 13-field export contract forecasts exact=9, sidecar-dependent=0, unsupported=4. An explicitly declared 9-field canonical projection passes the shared guard; matching sidecars retain 113 synthetic nested extensions. Full forecast JSON is 2598 bytes; measured analysis 1042.13 ms. Tracker copy is read-only and outside git, git absent from PATH; complete SDK reads and recursive fingerprint prove unchanged state. Focused forecast source coverage is 100% lines/branches/functions (6 passing tests). Behavioral reverts in a disposable non-git copy independently changed exact mapping and removed the unsupported guard: both failed the fixture regression; restoring the fixed implementation passed. The package worktree was never reverted."
+  "2026-10-29T01:07:35.239Z",codex-agent,"Packed acceptance passed all five real host installation paths (npm global, Bun global, project-local, npx, bunx) with host 2026.10.28, two wire formats each, one unchanged 64-file npm artifact, SHA-256 4d91804ada24463d636e57325f528c46bc81964f998a5004cbcd19ef5236df05. Each report matched the public SDK result and each non-git tracker stayed empty. Expanded focused suite passes 8/8, including 512 generated contract cases and compiled JSON/TOON with git absent. Typecheck, test typecheck, docstring lint and whitespace checks pass; full npm/Bun release gates will run in CI at unchanged thresholds."
+files[10]{path,scope}:
+  forecast.ts,project
+  index.ts,project
+  snapshot-schema.ts,project
+  test/fixtures/dialects/canonical.json,project
+  test/fixtures/dialects/extended.json,project
+  test/forecast-roundtrip.test.ts,project
+  test/forecast.test.ts,project
+  test/outgoing-properties.test.ts,project
+  test/packed-forecast-acceptance.ts,project
+  test/public-forecast-validation.ts,project
+tests[1]{command,scope,provenance{author,created_at,source_kind,source_ref}}:
+  node --test --test-concurrency=2 test/forecast.test.ts,project,codex-agent,"2026-10-29T01:06:40.307Z",local_mutation,feat/dialect-conversion-forecasts
+docs[3]{path,scope}:
+  docs/dialect-forecast-validation.md,project
+  examples/dialect-conversion-forecasts.md,project
+  README.md,project
+body: ""

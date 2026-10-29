@@ -9,6 +9,8 @@ import { ensureBeadIdentityField } from '../identity.ts';
 import { canonicalBeadsRecord, readLiveBeadsSnapshot, acknowledgeBeadsSnapshot, planBeadsReconciliation, applyBeadsReconciliation, readBeadsAcknowledgement, type BeadsAcknowledgement, type SnapshotRecord } from '../reconcile.ts';
 import { generateBeadsOutgoingDelta, replayBeadsOutgoingDelta, BeadsOutgoingRefusal } from '../outgoing.ts';
 import { harness, runImport, runExport } from './helpers.ts';
+import { assertBeadsDialectImportable, type BeadsProducerContract } from '../forecast.ts';
+import { pmItemToBead, type PmItem } from '../index.ts';
 import { beadsAcknowledgementDigest } from '../reconcile.ts';
 
 /** Exact real-format portable acknowledgement from an SDK-owned observation. */
@@ -48,6 +50,8 @@ test('512 random mutation/export/delta/reconciliation sequences with older repla
   const ext=await harness();t.after(()=>ext.deactivate());
   const oldPath=process.env.PATH;process.env.PATH=join(import.meta.dirname,'..','node_modules','.bin')+':'+oldPath;t.after(()=>{process.env.PATH=oldPath;});
   const file=join(dir,'export.jsonl');
+  const dialect=JSON.parse(await readFile(new URL('./fixtures/dialects/canonical.json',import.meta.url),'utf8')) as BeadsProducerContract;
+  const dialectFields=new Set(dialect.fields.map(field=>field.name));
   for(let sequence=0;sequence<512;sequence++) {
     // Each sequence contains a native mutation, a portable exchange, a retry and an older-input attempt.
     const field=fields[sequence%fields.length],id=['a','b','c'][next()%3],pmId=sourceIds.get(id)!;
@@ -65,6 +69,13 @@ test('512 random mutation/export/delta/reconciliation sequences with older repla
     else {if(choice)options[field]=`${field}-${choice}`;else options.unset=[field];}
     await oracle.update(pmId,preserveMutationStdinTokenFields(options,['description']));
     const observed=await readLiveBeadsSnapshot(sourceRoot);
+    // Forecast and guard use production normalization on every random state, with no writes or alternate model normalizer.
+    const nativeRows=(await oracle.listAllComplete()).items;
+    const externalIds=new Map(nativeRows.map(item=>[item.id,String(item.bead_id)]));
+    const dialectText=nativeRows.map(item=>Object.fromEntries(Object.entries(pmItemToBead(item as PmItem,externalIds,true)).filter(([name])=>dialectFields.has(name)))).map(row=>JSON.stringify(row)).join(sequence%2?'\r\n':'\n');
+    const forecast=assertBeadsDialectImportable(dialectText,dialect);
+    assert.equal(forecast.counts.exact,dialect.fields.length);assert.equal(forecast.importable,true);
+
     const target=snapshot(observed,sender.revision),before=structuredClone(recipient);
     const delta=generateBeadsOutgoingDelta(sequence%17===0?null:sender,target);
     recipient=replayBeadsOutgoingDelta(recipient,JSON.parse(JSON.stringify(delta))).acknowledgement;
@@ -119,7 +130,9 @@ test('export/upsert retains comma-bearing native tag boundaries through the SDK'
   const expected=(await client.get(id)).item.tags;
   const ext=await harness();t.after(()=>ext.deactivate());
   const oldPath=process.env.PATH;process.env.PATH=join(import.meta.dirname,'..','node_modules','.bin')+':'+oldPath;t.after(()=>{process.env.PATH=oldPath;});
-  const file=join(dir,'export.jsonl');await runExport(ext,{pmRoot,options:{output:file}});
+  const file=join(dir,'export.jsonl');
+  const dialect=JSON.parse(await readFile(new URL('./fixtures/dialects/canonical.json',import.meta.url),'utf8')) as BeadsProducerContract;
+  const dialectFields=new Set(dialect.fields.map(field=>field.name));await runExport(ext,{pmRoot,options:{output:file}});
   await runImport(ext,{pmRoot,args:[file],options:{upsert:true,'no-preserve-timestamps':true}});
   assert.deepEqual((await client.get(id)).item.tags,expected);
 });

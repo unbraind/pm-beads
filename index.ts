@@ -42,6 +42,8 @@ import { registerSidecarCommands } from "./sidecar.ts";
 export * from "./sidecar.ts";
 import { registerTransferCommands } from "./transfer.ts";
 export * from "./transfer.ts";
+import { registerForecastCommands, assertBeadsDialectImportable, readBeadsProducerContract, BeadsDialectRefusal } from "./forecast.ts";
+export * from "./forecast.ts";
 import { registerRepairCommands } from "./repair.ts";
 export * from "./repair.ts";
 import { inspectCompleteListResult, PmClient, preserveMutationStdinTokenFields, suppressHostOutput, listAllItemMetadata, assertInitializedTracker, PmCliError, type PmClientFullMutationOptions } from "@unbrained/pm-cli/sdk";
@@ -955,6 +957,7 @@ interface ImportOptions {
   upsert: boolean;
   mergeStrategy: MergeStrategy;
   batchSize?: number;
+  dialect?: string;
   typeOverride?: string;
   priorityOverride?: string;
   tagsOverride?: string;
@@ -1220,6 +1223,9 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
     );
   }
 
+  const dialectText = opts.dialect ? readFileOrThrow(filePath) : undefined;
+  if (opts.dialect) assertBeadsDialectImportable(dialectText!, await readBeadsProducerContract(opts.dialect));
+
   // --validate-only: run the fail-fast gate, surface the report, then stop —
   // no parsing, no create/update, no dependency wiring. Behaves like
   // `pm beads validate` but is scoped to the import path so a CI job can gate
@@ -1262,7 +1268,7 @@ async function runImport(filePath: string | undefined, pmRoot: string, opts: Imp
   const absolutePath = resolve(filePath);
   console.error(`Parsing Beads JSONL from: ${absolutePath}`);
 
-  const parsed = parseBeadsFile(filePath);
+  const parsed: ParsedBeadsRecord[] = dialectText === undefined ? parseBeadsFile(filePath) : dialectText.split("\n").filter(line => line.trim()).map(line => JSON.parse(line) as ParsedBeadsRecord);
   const records = parsed.filter((r) => !r.__invalid);
   let skipped = parsed.length - records.length;
   let failed = skipped;
@@ -2279,6 +2285,7 @@ async function runDiff(args: string[], opts: DiffOptions) {
 // `--priority` deliberately stays a string flag: the override is forwarded
 // verbatim to `pm create/update --priority`, which does its own validation.
 const IMPORT_FLAGS: FlagDefinition[] = [
+  { long: "--dialect", value_name: "file", value_type: "string", description: "Refuse incompatible producer contracts and snapshot shapes before any import write; sidecar-dependent contracts use the SDK guard." },
   { long: "--dry-run", value_type: "boolean", description: "Preview create/update/skip counts without writing" },
   { long: "--validate-only", value_type: "boolean", description: "Validate the input file then exit without importing (like `pm beads validate`, scoped to import)" },
   { long: "--upsert", value_type: "boolean", description: "Update existing items matched by their Beads id instead of creating duplicates" },
@@ -2471,6 +2478,14 @@ export function parseExportOptions(options: Record<string, unknown>): ExportOpti
   };
 }
 
+/** Refuse a supplied but unusable dialect guard instead of silently disabling it. */
+function parseDialectOption(options: Record<string, unknown>): string | undefined {
+  if (!Object.hasOwn(options, "dialect")) return undefined;
+  const value = options.dialect;
+  if (typeof value !== "string" || !value.trim()) throw new BeadsDialectRefusal("invalid_contract", "Pass a nonempty producer contract file to --dialect.");
+  return value;
+}
+
 function parseImportOptions(options: Record<string, unknown>, author: string): ImportOptions {
   return {
     author,
@@ -2479,6 +2494,7 @@ function parseImportOptions(options: Record<string, unknown>, author: string): I
     upsert: readBoolOption(options, "upsert"),
     mergeStrategy: parseMergeStrategy(options),
     batchSize: parsePositiveIntOption(options, "batch-size", "batchSize"),
+    dialect: parseDialectOption(options),
     preserveIds: resolvePreserveIds(options),
     preserveTimestamps: resolvePreserveTimestamps(options),
     typeOverride: optionString(options, "type"),
@@ -2518,7 +2534,7 @@ export function resolveImportInputFile(args: unknown, extraValueFlags: readonly 
   const valueFlags = new Set([
     "--type", "--priority", "--tags",
     "--filter", "--filter-status", "--filter-type",
-    "--merge-strategy", "--batch-size", "--file",
+    "--merge-strategy", "--batch-size", "--file", "--dialect",
     ...extraValueFlags,
   ]);
   for (let i = 0; i < args.length; i++) {
@@ -2570,6 +2586,7 @@ export default defineExtension({
     registerSidecarCommands(api);
     registerTransferCommands(api);
     registerRepairCommands(api);
+    registerForecastCommands(api);
     // -----------------------------------------------------------------------
     // schema — declare the bead_id provenance field
     // -----------------------------------------------------------------------

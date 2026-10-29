@@ -22,6 +22,8 @@ type Infer<S extends Schema> = S extends StringSchema ? string : S extends { typ
   S extends { type: "array"; items: infer I extends Schema } ? Infer<I>[] :
   S extends { type: "object"; properties: infer P extends Readonly<Record<string, Schema>>; required: infer R extends readonly string[] } ?
     { -readonly [K in keyof P as K extends R[number] ? K : never]: Infer<P[K]> } & { -readonly [K in keyof P as K extends R[number] ? never : K]?: Infer<P[K]> } : never;
+/** Derive package contract types from the shared strict descriptor interpreter. */
+export type BeadsSchemaValue<S extends Schema> = Infer<S>;
 const text = { type: "string", maxLength: BEADS_SNAPSHOT_LIMITS.string } as const;
 const id = { type: "string", maxLength: 4097, format: "identity" } as const;
 const hash = { type: "string", maxLength: 64, format: "hash" } as const;

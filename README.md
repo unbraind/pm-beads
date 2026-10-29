@@ -464,6 +464,20 @@ snapshots and the tracker. See the
 [worked example](examples/snapshot-reconciliation.md) for conflict, omission and
 recovery behavior.
 
+## Dialect conversion forecasts
+
+Compare an explicitly named producer contract with native Beads mappings before choosing an exchange format:
+
+```sh
+pm beads forecast producer.json --json
+pm beads forecast producer.json
+pm beads import incoming.jsonl --dialect producer.json --dry-run
+```
+
+Field receipts distinguish `exact` canonical-state mappings, `sidecar-dependent` unknown top-level extensions, and `unsupported` transformations. Both SDK and CLI share strict producer-contract validation and deterministic field ordering. Exactness concerns canonical mapped values on present fields; it does not certify raw JSON bytes, arbitrary receiver schemas or concurrency isolation. Status/type, source timestamps, closure audit, competing aliases and native nesting are conservatively unsupported. The optional import guard refuses incompatible contracts or nested native payloads before writes.
+
+Use `forecastBeadsDialect`, `parseBeadsProducerContract`, and `assertBeadsDialectImportable` from the typed SDK. The [contract example and remedies](examples/dialect-conversion-forecasts.md) document all native domains, sidecar custody, limits, typed refusals and no-git behavior. Forecasts are read-only and require no tracker.
+
 ## Unknown-field sidecars
 
 Preserve explicitly opted-in opaque Beads extensions through ordinary import/export:
@@ -629,7 +643,7 @@ witnesses with no candidate. See the [worked example and all bounds](examples/de
 Dependency repair packets inspect JSONL files everywhere, including non-git
 directories with no git executable. They never access tracker state.
 
-Import, export, validate, diff, sidecar capture/restore, snapshot reconciliation
+Dialect forecasts, import, export, validate, diff, sidecar capture/restore, snapshot reconciliation
 and resumable transfer work in a plain pm tracker without a git executable.
 Acknowledged outgoing delta generation and replay also work without git and do
 not initialize or mutate a tracker.
