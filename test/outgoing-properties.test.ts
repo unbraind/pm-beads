@@ -91,6 +91,8 @@ test('512 random mutation/export/delta/reconciliation sequences with older repla
       const expected=await native(receiver,targetIds);
       await runExport(ext,{pmRoot:targetRoot,options:{output:file}});
       const raw=await readFile(file,'utf8');await writeFile(file,raw.split('\n').filter(Boolean).join(sequence%16===0?'\r\n':'\n')+'\n');
+      // Dirty the receiver AFTER export: an explicit empty collection must restore the SDK-observed model, not leave stale tags.
+      for(const pmId of targetIds.values()) await receiver.update(pmId,{tags:'["stale-after-export"]'});
       await runImport(ext,{pmRoot:targetRoot,args:[file],options:{upsert:true,'no-preserve-timestamps':true}});
       assert.deepEqual(await native(receiver,targetIds),expected,`upsert sequence ${sequence}`);
     }

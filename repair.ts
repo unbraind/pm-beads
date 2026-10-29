@@ -2,9 +2,8 @@
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { open } from "node:fs/promises";
-import { createRequire } from "node:module";
-import type * as PmGraphSdk from "@unbrained/pm-cli/sdk/graph";
 import type { CommandHandlerContext, ExtensionApi } from "@unbrained/pm-cli/sdk/authoring";
+import { beadsGraphSdk } from "./graph-sdk.ts";
 import { CommandError } from "./contracts.ts";
 import { jsonSourceEntries, replaceJsonField } from "./json-source.ts";
 import { beadTitle, extractBlockerIds, normalizeBeadKey, validateBeadsText, type BeadsItem } from "./index.ts";
@@ -52,8 +51,6 @@ export interface BeadsDependencyRepairPacket {
 }
 interface Row extends BeadsRepairRow { item: BeadsItem }
 interface Parsed { lines: string[]; rows: Row[]; edges: BeadsRepairEdge[]; gaps: BeadsRepairGap[] }
-const require = createRequire(import.meta.url);
-let graphSdk: typeof PmGraphSdk | undefined;
 
 /** Raise a typed refusal without disclosing arbitrary input. */
 function refuse(code: BeadsRepairRefusalCode, remedy: string): never { throw new BeadsRepairRefusal(code, remedy); }
@@ -163,7 +160,7 @@ function parse(text: string, limits: BeadsRepairLimits): Parsed {
 /** Ask core for exact cycle components over opaque tokens, preserving external case and punctuation. */
 function components(rows: Row[], edges: BeadsRepairEdge[]): string[][] {
   // The supported module loader resolves the public peer export lazily, never argv or executable symlinks.
-  const sdk = graphSdk ??= require("@unbrained/pm-cli/sdk/graph") as typeof PmGraphSdk;
+  const sdk = beadsGraphSdk();
   // Diagnostic graphs must represent invalid self-edges that mutation APIs correctly refuse.
   const registry = new sdk.RelationshipKindRegistry(sdk.BUILTIN_RELATIONSHIP_KINDS.map(kind => ({ ...kind, allowSelf: true })));
   return sdk.analyzeRelationshipExecution(new sdk.RelationshipGraph(rows.map(row => `r${row.line}`), edges.map(edge => ({

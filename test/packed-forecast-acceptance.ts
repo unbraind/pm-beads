@@ -8,7 +8,7 @@ import { join, resolve } from "node:path";
 import { createRequire } from "node:module";
 import { PmClient } from "@unbrained/pm-cli/sdk";
 import { decodeToon } from "@unbrained/pm-cli/sdk/testing";
-import type * as ForecastSdk from "../forecast.ts";
+import type * as ForecastSdk from "../index.ts";
 const require = createRequire(import.meta.url);
 const root = resolve(import.meta.dirname, ".."), scratch = await mkdtemp(join(tmpdir(), "beads-forecast-pack-"));
 const childEnv = { ...process.env, NPM_CONFIG_USERCONFIG: "/dev/null", npm_config_userconfig: "/dev/null", GIT_CEILING_DIRECTORIES: scratch,
@@ -39,10 +39,37 @@ async function accept(name: string, packageDir: string, bin: string, prefix: str
   }
   assert.equal(await readFile(file, "utf8"), source);
   assert.equal((await client.listAllComplete()).items.length, 0);
-  results.push({ launcher: name, fields:4,formats:2,sdkResolved:true,nonGit:true });
+  // Exercise the actual packed producers and consumers, including refusals rendered in both formats.
+  const sourceFile=join(scratch,name,"records.jsonl"),contractFile=join(scratch,name,"contract.json"),exportFile=join(scratch,name,"export.jsonl");
+  const hierarchy={schema:1,producer:"packed/parents",fields:[{name:"id",kind:"text"},{name:"title",kind:"text"},{name:"parent",kind:"text"}]};
+  await writeFile(contractFile,JSON.stringify(hierarchy));
+  const launch=(args:string[],format="json")=>spawnSync(bin,[...prefix,"--path",pmRoot,...(format==="json"?["--json"]:[]),...args],{cwd:scratch,env:{...childEnv,...extra},encoding:"utf8",timeout:240_000,maxBuffer:1024*1024});
+  for(const rows of [[{id:"a",title:"A",parent:"missing"}],[{id:"a",title:"A",parent:"b"},{id:"b",title:"B",parent:"a"}]]){
+    await writeFile(sourceFile,rows.map(row=>JSON.stringify(row)).join("\r\n"));
+    for(const command of [["beads","import"],["beads-import"]])for(const format of ["json","toon"]){
+      const refused=launch([...command,sourceFile,"--dialect",contractFile],format);assert.equal(refused.status,2,`${name}: ${refused.stderr}`);
+      assert.equal((await client.listAllComplete()).items.length,0);
+    }
+  }
+  const extended={schema:1,producer:"packed/extensions",fields:[{name:"id",kind:"text"},{name:"title",kind:"text"},{name:"vendor",kind:"json"}]};
+  const bare='{"id":"a","title":"A"}',enriched='{"id":"a","title":"A","vendor":{"nested":[1,null,true]}}';
+  const stale=sdk.captureBeadsExtensions(bare,["vendor"]);
+  assert.throws(()=>sdk.assertBeadsDialectImportable(enriched,extended,stale),error=>error instanceof sdk.BeadsDialectRefusal&&error.code==="invalid_snapshot");
+  const sidecar=sdk.captureBeadsExtensions(enriched,["vendor"]);sdk.assertBeadsDialectImportable(enriched,extended,sidecar);
+  await writeFile(sourceFile,enriched);let outcome=launch(["beads","import",sourceFile,"--no-preserve-timestamps"]);assert.equal(outcome.status,0,outcome.stderr);
+  const id=(await client.listAllComplete()).items[0].id;
+  for(const command of [["beads","import"],["beads-import"]])for(const alias of ["labels","tags"]){
+    await client.update(id,{tags:'["old"]'});await writeFile(sourceFile,JSON.stringify({id:"a",title:"A",[alias]:[]}));
+    outcome=launch([...command,sourceFile,"--upsert","--no-preserve-timestamps"]);assert.equal(outcome.status,0,outcome.stderr);assert.deepEqual((await client.get(id)).item.tags,[]);
+  }
+  outcome=launch(["beads","export","--output",exportFile]);assert.equal(outcome.status,0,outcome.stderr);
+  const exported=await readFile(exportFile,"utf8");assert.deepEqual(JSON.parse(exported).labels,[]);
+  assert.deepEqual(JSON.parse(sdk.restoreBeadsExtensions(exported,sidecar).text).vendor,JSON.parse(enriched).vendor);
+  await client.update(id,{tags:'["replayed"]'});await writeFile(sourceFile,exported);outcome=launch(["beads","import",sourceFile,"--upsert","--no-preserve-timestamps"]);assert.equal(outcome.status,0,outcome.stderr);assert.deepEqual((await client.get(id)).item.tags,[]);
+  results.push({ launcher: name, fields:4,formats:2,sdkResolved:true,nonGit:true,reviewClasses:3 });
   process.stderr.write(`Packed acceptance passed: ${name}\n`);
 }
-const results: { launcher: string; fields:number; formats:number; sdkResolved: boolean; nonGit: boolean }[] = [];
+const results: { launcher: string; fields:number; formats:number; sdkResolved: boolean; nonGit: boolean; reviewClasses:number }[] = [];
 try {
   const packed = JSON.parse(run("npm", ["pack", "--ignore-scripts", "--json", "--pack-destination", scratch], root)) as { filename: string; files: { path: string }[] }[];
   const artifact = join(scratch, packed[0].filename), digest = createHash("sha256").update(await readFile(artifact)).digest("hex");
@@ -66,5 +93,7 @@ try {
   await accept("npx", packageDir, "npx", ["--yes", "--package", host, "pm"], { npm_config_cache: join(scratch, "npm-cache") });
   await accept("bunx", packageDir, "bunx", ["--bun", "--package", host, "pm"], { BUN_INSTALL_CACHE_DIR: join(scratch, "bun-cache") });
   assert.equal(createHash("sha256").update(await readFile(artifact)).digest("hex"), digest);
-  console.log(JSON.stringify({ host, artifactSha256: digest, artifactFiles: packed[0].files.length, exactArtifactUnchanged: true, results }, null, 2));
+  const verified=join(scratch,"verified-artifact");await mkdir(verified);run("tar",["-xf",artifact,"-C",verified]);
+  for(const entry of packed[0].files)assert.deepEqual(await readFile(join(verified,"package",entry.path)),await readFile(join(root,entry.path)),`Shipped file changed after validation: ${entry.path}`);
+  console.log(JSON.stringify({ host, artifactSha256: digest, artifactFiles: packed[0].files.length, exactArtifactUnchanged: true, artifactMatchesWorkspace:true, results }, null, 2));
 } finally { await rm(scratch, { recursive: true, force: true }); }

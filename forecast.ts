@@ -2,8 +2,9 @@
 import { open } from "node:fs/promises";
 import type { CommandHandlerContext, ExtensionApi } from "@unbrained/pm-cli/sdk/authoring";
 import { CommandError } from "./contracts.ts";
+import { assertBeadsParentGraph } from "./parents.ts";
 import { parseBeadsSnapshot } from "./reconcile.ts";
-import { BEADS_NATIVE_FIELDS, captureBeadsExtensions, restoreBeadsExtensions, type BeadsExtensionSidecar } from "./sidecar.ts";
+import { BEADS_NATIVE_FIELDS, captureBeadsExtensions, restoreBeadsExtensions, assertBeadsExtensionCustody, type BeadsExtensionSidecar } from "./sidecar.ts";
 import { checkBeadsSchema, type BeadsSchemaValue } from "./snapshot-schema.ts";
 import { extractBlockerIds, type BeadsItem } from "./index.ts";
 import { jsonSourceEntries } from "./json-source.ts";
@@ -137,7 +138,8 @@ export function assertBeadsDialectImportable(text: string, value: unknown, sidec
   }
   if (extensions.length && (!sidecar || extensions.some(field => !sidecar.fields.includes(field)))) throw new BeadsDialectRefusal("sidecar_required", "Capture every sidecar-dependent field before import and supply the matching sidecar to the dialect guard.");
   try {
-    captureBeadsExtensions(text, extensions);
+    if (sidecar) assertBeadsExtensionCustody(text, sidecar, extensions);
+    else captureBeadsExtensions(text, extensions);
     const declared = new Map((value as BeadsProducerContract).fields.map(field => [field.name, field.kind]));
     for (const line of text.split("\n").filter(line => line.trim())) {
       const row = JSON.parse(line) as Record<string, unknown>;
@@ -149,8 +151,9 @@ export function assertBeadsDialectImportable(text: string, value: unknown, sidec
             (kind === "labels" && !Array.isArray(data))) throw new Error("contract drift");
       }
     }
-    parseBeadsSnapshot(text);
-  } catch { throw new BeadsDialectRefusal("invalid_snapshot", "Supply a valid complete snapshot matching the contract, with canonical native values and no undeclared fields; repair nesting before import."); }
+    const records = parseBeadsSnapshot(text);
+    assertBeadsParentGraph(records.map(row => ({ id: row.id, parent: row.fields.parent })));
+  } catch { throw new BeadsDialectRefusal("invalid_snapshot", "Supply a valid complete snapshot matching the contract, with canonical native values and no undeclared fields; repair nesting, parent closure and cycles before import."); }
   return report;
 }
 /** Bound file reads before allocating source text, including growing files and nonregular inputs. */
