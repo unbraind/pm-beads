@@ -66,10 +66,16 @@ async function accept(name: string, packageDir: string, bin: string, prefix: str
   const exported=await readFile(exportFile,"utf8");assert.deepEqual(JSON.parse(exported).labels,[]);
   assert.deepEqual(JSON.parse(sdk.restoreBeadsExtensions(exported,sidecar).text).vendor,JSON.parse(enriched).vendor);
   await client.update(id,{tags:'["replayed"]'});await writeFile(sourceFile,exported);outcome=launch(["beads","import",sourceFile,"--upsert","--no-preserve-timestamps"]);assert.equal(outcome.status,0,outcome.stderr);assert.deepEqual((await client.get(id)).item.tags,[]);
-  results.push({ launcher: name, fields:4,formats:2,sdkResolved:true,nonGit:true,reviewClasses:3 });
+  await writeFile(sourceFile,[{id:"b",title:"B",parent:""},{id:"c",title:"C",parent:""},{id:"a",title:"A",parent:"b"}].map(row=>JSON.stringify(row)).join("\n"));
+  outcome=launch(["beads","import",sourceFile,"--upsert","--no-preserve-timestamps"]);assert.equal(outcome.status,0,outcome.stderr);
+  await writeFile(sourceFile,[{id:"b",title:"B",parent:"a"},{id:"a",title:"A",parent:"c"},{id:"c",title:"C",parent:""}].map(row=>JSON.stringify(row)).join("\r\n"));
+  outcome=launch(["beads-import",sourceFile,"--upsert","--dialect",contractFile,"--no-preserve-timestamps"]);assert.equal(outcome.status,0,outcome.stderr);
+  const rewired=(await client.listAllComplete()).items,b=rewired.find(row=>row.bead_id==="b")!,c=rewired.find(row=>row.bead_id==="c")!;
+  assert.equal((await client.get(id)).item.parent,c.id);assert.equal(b.parent,id);assert.equal(c.parent,undefined);
+  results.push({ launcher: name, fields:4,formats:2,sdkResolved:true,nonGit:true,reviewClasses:3,acyclicRewire:true });
   process.stderr.write(`Packed acceptance passed: ${name}\n`);
 }
-const results: { launcher: string; fields:number; formats:number; sdkResolved: boolean; nonGit: boolean; reviewClasses:number }[] = [];
+const results: { launcher: string; fields:number; formats:number; sdkResolved: boolean; nonGit: boolean; reviewClasses:number; acyclicRewire:boolean }[] = [];
 try {
   const packed = JSON.parse(run("npm", ["pack", "--ignore-scripts", "--json", "--pack-destination", scratch], root)) as { filename: string; files: { path: string }[] }[];
   const artifact = join(scratch, packed[0].filename), digest = createHash("sha256").update(await readFile(artifact)).digest("hex");

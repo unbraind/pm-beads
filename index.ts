@@ -522,13 +522,13 @@ function appendPlanningArgs(args: string[], item: BeadsItem, replace = false): v
     if (slot.value) args.push(`--${slot.name}`, slot.value);
     else if (replace && slot.aliases.some(alias => typeof item[alias] === "string")) args.push("--unset", slot.name);
   }
-  if (replace && typeof item.parent === "string" && !item.parent.trim()) args.push("--unset", "parent");
+  // Clear supplied parents before pass 2: retained links can create transient cycles during a valid rewire.
+  if (replace && typeof item.parent === "string") args.push("--unset", "parent");
 }
 
 function resolveParentId(parent: unknown, beadToPm: Map<string, string>): string | undefined {
   if (typeof parent !== "string" || !parent.trim()) return undefined;
-  const raw = parent.trim();
-  return beadToPm.get(raw) ?? raw;
+  return beadToPm.get(parent.trim());
 }
 
 // ---------------------------------------------------------------------------

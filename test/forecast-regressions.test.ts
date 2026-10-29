@@ -107,7 +107,7 @@ test("upsert validates composed receiver ancestry and retains omission semantics
   await writeFile(file,jsonl([{id:"a",title:"Ignored",parent:"b"},{id:"later",title:"Later",parent:"a"}]));assert.equal((await runImport(ext,{pmRoot,args:[file],options:{upsert:true,"merge-strategy":"skip"}})).imported,1);
   assert.equal((await client.get(a)).item.parent,undefined);assert.equal((await client.get(b)).item.parent,a);
   const legacy=(await create(client,{title:"Legacy",type:"Task",description:"[bead_id: legacy]",unset:["parent"]})).item.id;
-  await writeFile(file,jsonl([{id:"legacy",title:"Ignored legacy",parent:"a"}]));assert.equal((await runImport(ext,{pmRoot,args:[file],options:{upsert:true}})).skipped,1);assert.equal((await client.get(legacy)).item.parent,undefined);
+  await writeFile(file,jsonl([{id:"legacy",title:"Ignored legacy",parent:"a"}]));assert.equal((await runImport(ext,{pmRoot,args:[file],options:{upsert:true,"validate-only":true}}) as {valid:boolean}).valid,true);assert.equal((await runImport(ext,{pmRoot,args:[file],options:{upsert:true}})).skipped,1);assert.equal((await client.get(legacy)).item.parent,undefined);
   await writeFile(file,jsonl([{id:"duplicate",title:"First",parent:"a"},{id:"duplicate",title:"Second",parent:"a"}]));const repeated=await runImport(ext,{pmRoot,args:[file],options:{upsert:true}});assert.equal(repeated.imported,1);assert.equal(repeated.updated,1);
   await writeFile(file,jsonl([{title:"Anonymous",parent:a}]));await runImport(ext,{pmRoot,args:[file],options:{"no-preserve-ids":true}});
   assert.equal((await client.listAllComplete()).items.find(item=>item.title==="Anonymous")!.parent,a);
@@ -171,4 +171,21 @@ test("complete parent previews remain usable before tracker initialization throu
   await assert.rejects(readFile(pmRoot),{code:"ENOENT"});
   await mkdir(pmRoot);assert.equal((await readAndValidateBeads(file,pmRoot)).valid,true);
   assert.equal((await runImport(ext,{pmRoot,args:[file],options:{"validate-only":true}}) as {valid:boolean}).valid,true);
+});
+
+test("acyclic parent rewires preserve every link across all input orders and both importer aliases",async t=>{
+  const {dir,pmRoot,client,ext}=await receiver(t),file=join(dir,"rewire.jsonl");
+  const b=(await create(client,{title:"B",type:"Task",beadId:"b",unset:["parent"]})).item.id;
+  const a=(await create(client,{title:"A",type:"Task",beadId:"a",parent:b})).item.id;
+  const c=(await create(client,{title:"C",type:"Task",beadId:"c",unset:["parent"]})).item.id;
+  const rows=new Map([["a",{id:"a",title:"A",parent:"c"}],["b",{id:"b",title:"B",parent:"a"}],["c",{id:"c",title:"C",parent:""}]]);
+  const orders=[["b","a","c"],["b","c","a"],["a","b","c"],["a","c","b"],["c","a","b"],["c","b","a"]];
+  for(const command of ["native","beads-import"])for(const order of orders){
+    await client.update(b,{unset:["parent"]});await client.update(a,{parent:b});
+    const text=jsonl(order.map(id=>rows.get(id)!),order[0]==="b");assertBeadsDialectImportable(text,hierarchy);await writeFile(file,text);
+    const options={upsert:true,"no-preserve-timestamps":true};
+    const result=command==="native"?await runImport(ext,{pmRoot,args:[file],options}):await runCommand(ext,{command,pmRoot,args:[file],options});
+    assert.equal((result as {parents:number}).parents,2,`${command}: ${order.join(",")}`);
+    assert.equal((await client.get(a)).item.parent,c);assert.equal((await client.get(b)).item.parent,a);assert.equal((await client.get(c)).item.parent,undefined);
+  }
 });
