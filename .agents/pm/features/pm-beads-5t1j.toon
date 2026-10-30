@@ -3,12 +3,18 @@ title: Forecast compatibility with named Beads producer dialects before import
 description: "Acceptance: two fixture dialects produce deterministic field-level exact, sidecar-dependent and unsupported forecasts; every exact mapping passes a real SDK round trip; unsupported native nesting refuses before import. Deliver typed SDK and CLI, compact TOON/JSON, typed remedies, README/example, seeded model evidence and read-only public tracker measurement."
 type: Feature
 pm_format_version: 2
-status: in_progress
+status: closed
 priority: 2
 tags[1]: "gh:unbraind/pm-beads#190"
 created_at: "2026-10-29T00:51:52.761Z"
-updated_at: "2026-10-29T06:01:22.849Z"
+updated_at: "2026-10-30T18:02:46.764Z"
+closed_at: "2026-10-30T18:02:44.036Z"
+completed_at: "2026-10-29T06:26:50.000Z"
 author: codex-agent
+release: 2026.10.29
+resolution: "Delivered by PR #190 (ac6e36e): Forecast Beads producer compatibility before import"
+expected_result: Forecast compatibility with named Beads producer dialects before import
+actual_result: "PR #190 merged at 2026-10-29T06:26:50Z as ac6e36e; required CI passed on the merged head."
 comments[25]{created_at,author,text}:
   "2026-10-29T00:52:40.738Z",codex-agent,"Overlap rechecked against installed host SDK declarations, package commands and sibling pm-csv, pm-memory, pm-context and pm-ops sources. Host SDK has no named Beads producer forecast; pm-csv dialect descriptors concern table syntax and column mappings. Existing Beads sidecars preserve opted-in unknown top-level JSON; reconciliation, transfers and outgoing deltas exchange canonical snapshots. This feature forecasts named producer compatibility, reusing these mapping and sidecar functions. Forecast is read-only, has no journal or mutable coordinator, and promises no lock isolation; existing transaction leases do not exclude ordinary SDK writers."
   "2026-10-29T01:01:28.025Z",codex-agent,"Implemented read-only schema-derived producer contracts, deterministic field forecasts, typed remedies and an optional dialect import guard. Exact means canonical mapped state on present fields, not raw JSON spelling. All 17 claimed native names/aliases passed SDK-read import/export/upsert round trips in six real non-git trackers, including CRLF descriptions, blockers, parents and ambient focus. Source status/type, source timestamps, closure audit and ambiguous competing aliases are conservatively unsupported; unknown top-level fields use the existing sidecar. No new leases, checkpoints or mutation journals exist. Existing writer-race tracking remains in pm-beads-51fi and pm-beads-qwvf; this representation guard does not certify transaction isolation."
@@ -101,4 +107,5 @@ docs[3]{path,scope}:
   docs/dialect-forecast-validation.md,project
   examples/dialect-conversion-forecasts.md,project
   README.md,project
+close_reason: "Delivered by PR #190 (ac6e36e): Forecast Beads producer compatibility before import"
 body: ""
