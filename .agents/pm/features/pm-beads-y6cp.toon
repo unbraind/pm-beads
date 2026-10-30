@@ -3,13 +3,19 @@ title: Explain invalid Beads dependencies with bounded row repair packets
 description: "Overlap checked against beads validate, core relationship analytics, pm-graph analytics, and pm-csv provenance. This adds Beads JSONL row addresses and exact external identities plus revalidated edge-removal proposals. It does not replace core topology or CSV cell provenance."
 type: Feature
 pm_format_version: 2
-status: in_progress
+status: closed
 priority: 2
 tags[1]: "gh:unbraind/pm-beads#188"
 created_at: "2026-10-28T19:31:55.419Z"
-updated_at: "2026-10-28T21:47:52.333Z"
+updated_at: "2026-10-30T18:02:53.722Z"
+closed_at: "2026-10-30T18:02:51.408Z"
+completed_at: "2026-10-28T22:18:29.000Z"
 author: codex-agent
 acceptance_criteria: "A cycle involving three of 10000 rows returns those rows and edges within declared input, work and output budgets; every emitted candidate revalidates; malformed and unresolved references remain explicit gaps; no title-based identity inference."
+release: 2026.10.29
+resolution: "Delivered by PR #188 (f45fc81): Explain Beads dependency errors with bounded repair packets"
+expected_result: "A cycle involving three of 10000 rows returns those rows and edges within declared input, work and output budgets; every emitted candidate revalidates; malformed and unresolved references remain explicit gaps; no title-based identity inference."
+actual_result: "PR #188 merged at 2026-10-28T22:18:29Z as f45fc81; required CI passed on the merged head."
 comments[17]{created_at,author,text}:
   "2026-10-28T19:32:23.416Z",codex-agent,"Overlap: beads validate already reports invalid JSON, dangling blockers and cycle messages; pm-graph owns workspace analytics; pm-csv owns table provenance. Use core RelationshipGraph and analyzeRelationshipExecution over opaque row tokens to preserve case-sensitive external identities. Add a read-only repair packet, bounded candidate edge removals, explicit gaps and source-byte revision guards. No tracker writes, journals or role-based lifecycle decisions are added."
   "2026-10-28T19:47:49.245Z",codex-agent,"Implementation: typed read-only packet and preview APIs, canonical CLI plus alias, lazy public graph SDK loading, exact UTF-8 source revision guard, isolated row gaps, integer work/input/output ceilings, and bounded fully revalidated edge-removal candidates. Targeted numeric/alias/extreme-value corpora and 512 seeded graph operation sequences compare an independent transitive-closure model, preserve every untouched native field, replay older inputs and verify native state read back through the real SDK. Existing import/export/transfer/reconciliation/outgoing model suites remain in the unchanged CI full gate. Behavioral revert in a disposable non-git copy suppressed only the new cycle witness; the 10000-row regression failed (expected one cycle, got zero). New module measured 100% lines, branches and functions. Follow-up required for previously ignored blocks-only provider rows; repair keeps them explicit gaps."
@@ -61,4 +67,5 @@ tests[2]:
 docs[2]{path,scope}:
   examples/dependency-error-repair-packets.md,project
   README.md,project
+close_reason: "Delivered by PR #188 (f45fc81): Explain Beads dependency errors with bounded repair packets"
 body: ""

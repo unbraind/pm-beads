@@ -2,12 +2,18 @@ id: pm-beads-56vl
 title: Verify Dependabot sync workflow update in PR 169
 description: "Inspect the failed CI job, verify the timing regression once on the original head, and validate the workflow dependency update on current main without changing thresholds."
 type: Chore
-status: in_progress
+status: closed
 priority: 2
 tags[3]: ci,dependabot,"gh:unbraind/pm-beads#169"
 created_at: "2026-10-28T19:27:09.500Z"
-updated_at: "2026-10-28T19:46:28.086Z"
+updated_at: "2026-10-30T18:02:40.931Z"
+closed_at: "2026-10-30T18:02:38.805Z"
+completed_at: "2026-10-28T20:05:49.000Z"
 author: codex-agent
+release: 2026.10.29
+resolution: "Delivered by PR #169 (e27eec6): chore(deps): bump unbraind/pm-github/.github/workflows/pm-github-sync.yml from 2026.10.16 to 2026.10.19"
+expected_result: Verify Dependabot sync workflow update in PR 169
+actual_result: "PR #169 merged at 2026-10-28T20:05:49Z as e27eec6; required CI passed on the merged head."
 comments[4]{created_at,author,text}:
   "2026-10-28T19:28:02.872Z",codex-agent,"Original failure: the Node 22 polynomial-redos timing regression measured 8.43x against its unchanged 8x bound; no workflow contract assertion failed. Requested exactly one rerun of job 122183401263 at https://github.com/unbraind/pm-beads/actions/runs/40502498772 (attempt 2). Current main merged with a two-parent merge; the focused timing test passes locally. No implementation or threshold change is justified pending the rerun."
   "2026-10-28T19:35:10.695Z",codex-agent,"Cause class: stale CHANGELOG on the behind branch. The single original-head rerun at https://github.com/unbraind/pm-beads/actions/runs/40502498772/attempts/2 passed the original timing assertion but failed changelog:check because the newer release tag adds the missing release section. Current main supplies that section and regenerated changelog:check passes. This is not classified as a flaky job. No production code or test threshold changed; behavioral revert is not applicable to main synchronization and generated documentation."
@@ -20,4 +26,5 @@ tests[1]{command,scope,provenance{author,created_at,source_kind,source_ref}}:
   "node --test --test-concurrency=2 --test-name-pattern=\"every BEAD_ID_MARKER call site stays linear\" test/smoke.test.ts",project,codex-agent,"2026-10-28T19:28:24.678Z",local_mutation,dependabot/github_actions/unbraind/pm-github/dot-github/workflows/pm-github-sync.yml-2026.10.19
 docs[1]{path,scope}:
   "https://github.com/unbraind/pm-beads/actions/runs/40502498772",project
+close_reason: "Delivered by PR #169 (e27eec6): chore(deps): bump unbraind/pm-github/.github/workflows/pm-github-sync.yml from 2026.10.16 to 2026.10.19"
 body: ""

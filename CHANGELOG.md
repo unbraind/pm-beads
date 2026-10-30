@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026.10.29 - 2026-10-29
+
+### Added
+
+- Forecast compatibility with named Beads producer dialects before import ([pm-beads-5t1j](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/features/pm-beads-5t1j.toon))
+- Explain invalid Beads dependencies with bounded row repair packets ([pm-beads-y6cp](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/features/pm-beads-y6cp.toon))
+
+### Changed
+
+- Verify Dependabot sync workflow update in PR 169 ([pm-beads-56vl](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-56vl.toon))
+
 ## 2026.10.28 - 2026-10-28
 
 ### Added
