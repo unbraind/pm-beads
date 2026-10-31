@@ -1,6 +1,6 @@
 {
   "name": "pm-beads",
-  "version": "2026.10.29",
+  "version": "2026.10.31",
   "description": "Beads JSONL import/export and three-way snapshot reconciliation for pm-cli",
   "repository": {
     "type": "git",
