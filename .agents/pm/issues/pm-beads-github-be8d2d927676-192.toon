@@ -1,0 +1,21 @@
+id: pm-beads-github-be8d2d927676-192
+title: Forecast contract reader can block before rejecting nonregular inputs
+description: "GH issue #192: https://github.com/unbraind/pm-beads/issues/192 · author @unbraind · created 2026-10-29T07:14:23Z · updated 2026-10-29T07:14:23Z"
+type: Issue
+status: open
+priority: 2
+tags[2]: "gh:unbraind/pm-beads#192","github_author:unbraind"
+created_at: "2026-10-29T07:14:23Z"
+updated_at: "2026-11-01T09:18:43.280Z"
+author: pm-github
+github_close_reason: ""
+github_closed_at: ""
+github_created_at: "2026-10-29T07:14:23Z"
+github_link_only: false
+github_number: 192
+github_release: ""
+github_state: open
+github_state_reason: unspecified
+github_updated_at: "2026-10-29T07:14:23Z"
+github_url: "https://github.com/unbraind/pm-beads/issues/192"
+body: "## Static finding: producer contract open precedes regular-file rejection\n\nObserved on default head `ac6e36eb8b3cd3e3efca61186be87d4ad3991fc1`, tree-equivalent to reviewed PR #190 head `f97cfef6bc5d72bf0881a061a366c0c8e1312127`. This is source analysis corroborating the owner's [review finding](https://github.com/unbraind/pm-beads/pull/190#pullrequestreview-5693702370), **not a locally reproduced FIFO test** and not a claim about an npm publication.\n\n### Exact evidence\nIn [forecast.ts lines 159–172](https://github.com/unbraind/pm-beads/blob/ac6e36eb8b3cd3e3efca61186be87d4ad3991fc1/forecast.ts#L159-L172), `readBeadsProducerContract`:\n1. awaits `open(file, \"r\")`;\n2. only afterward calls `handle.stat()` and rejects `!info.isFile()`;\n3. translates I/O errors into the typed `io_error` remedy requesting a readable regular contract file no larger than 65536 bytes.\n\nThe ordinary blocking read-only open can wait for a FIFO writer before the regular-file test is reached. Thus the nonregular-input rejection is too late to uphold the bounded regular-file input contract. The public SDK reader and CLI forecast route share this reader.\n\n### Expected / impact\nReject nonregular contract input promptly with the existing typed refusal, without requiring another process to open the input or emit bytes. Preserve the 65536-byte cap and normal valid-file forecast semantics. A mistaken FIFO input can otherwise stall an agent's read-only compatibility/discovery workflow instead of returning an actionable receipt.\n\nThe [accepted forecast feature](https://github.com/unbraind/pm-beads/blob/ac6e36eb8b3cd3e3efca61186be87d4ad3991fc1/.agents/pm/features/pm-beads-5t1j.toon) calls for deterministic typed SDK/CLI compatibility receipts and remedies; the reader itself explicitly promises bounded nonregular-input handling.\n\n### Acceptance / regression criteria\n- Ensure input classification/opening cannot block waiting for a writer before the regular-file policy is enforced; retain safe handling if input changes during checking.\n- Verify direct SDK and CLI JSON/TOON paths return the expected typed refusal within a bounded test deadline for supported nonregular-input cases, with isolated fixtures and guaranteed cleanup.\n- Retain successful valid regular-file forecasts, malformed-contract refusals, and oversized/growing-file bounds without loosening limits.\n- No tracker/provider mutation or unrelated dependency changes are required.\n\n### Evidence limits / dedup\nNo FIFO, special-file or other security/path probe was executed in this review. The owner review reports the hang; this issue independently records the current source-order evidence. Existing all-status issues/PRs (191 records) and all 87 current canonical feature/issue/task records were checked. Earlier sidecar FIFO validation is a separate path, not a forecast-reader fix. No dedicated forecast open-order owner item was found."

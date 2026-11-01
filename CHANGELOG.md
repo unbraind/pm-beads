@@ -19,18 +19,12 @@
 
 ## 2026.10.27 - 2026-10-27
 
-### Fixed
-
-- Point the npm homepage at the package's website and link the author ([pm-beads-qkin](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-qkin.toon))
-
 ### Other
 
 - Use SDK certification for complete Beads workspace reads ([pm-beads-hsjo](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-hsjo.toon))
 
 ### Closed
 
-- Closed: Daily Release workflow is failing ([pm-beads-github-be8d2d927676-172](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-github-be8d2d927676-172.toon))
-- Closed: Daily Release workflow is failing ([pm-beads-github-be8d2d927676-162](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-github-be8d2d927676-162.toon))
 - Closed: Daily Release workflow is failing ([pm-beads-github-be8d2d927676-181](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-github-be8d2d927676-181.toon))
 
 ## 2026.10.26 - 2026-10-26
@@ -39,12 +33,26 @@
 
 - Resume bounded Beads transfers with dependency closure and chunk receipts ([pm-beads-tma4](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/features/pm-beads-tma4.toon))
 
+### Fixed
+
+- Point the npm homepage at the package's website and link the author ([pm-beads-qkin](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-qkin.toon))
+
+### Closed
+
+- Closed: Daily Release workflow is failing ([pm-beads-github-be8d2d927676-172](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-github-be8d2d927676-172.toon))
+
 ## 2026.10.25 - 2026-10-25
 
 ### Added
 
 - Preserve opted-in Beads extensions with versioned sidecars and explicit loss reports ([pm-beads-je7c](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/features/pm-beads-je7c.toon))
 - Reconcile Beads snapshots against an acknowledged base and live tracker ([pm-beads-i59r](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/features/pm-beads-i59r.toon))
+
+## 2026.10.24 - 2026-10-24
+
+### Closed
+
+- Closed: Daily Release workflow is failing ([pm-beads-github-be8d2d927676-162](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-github-be8d2d927676-162.toon))
 
 ## 2026.10.23 - 2026-10-23
 
@@ -64,12 +72,6 @@
 
 - Enable GitHub CodeQL code scanning ([pm-beads-uqb0](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-uqb0.toon))
 - Certify pm-beads on PM CLI/SDK 2026.10.4 and consolidate pending dependency updates ([pm-beads-8h18](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-8h18.toon))
-
-## 2026.10.21 - 2026-10-21
-
-### Closed
-
-- Closed: Daily Release workflow is failing ([pm-beads-github-be8d2d927676-85](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-github-be8d2d927676-85.toon))
 
 ## 2026.10.5 - 2026-10-05
 
@@ -133,6 +135,7 @@
 
 ### Closed
 
+- Closed: Daily Release workflow is failing ([pm-beads-github-be8d2d927676-85](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-github-be8d2d927676-85.toon))
 - Closed: Move the host CLI pin and its version-contract constant together so the bump can land ([pm-beads-vb7j](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-vb7j.toon))
 
 ## 2026.8.31 - 2026-08-31
