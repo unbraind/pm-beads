@@ -6,8 +6,10 @@ status: open
 priority: 2
 tags[2]: "gh:unbraind/pm-beads#192","github_author:unbraind"
 created_at: "2026-10-29T07:14:23Z"
-updated_at: "2026-11-01T09:18:43.280Z"
+updated_at: "2026-11-02T09:16:14.238Z"
 author: pm-github
+comments[1]{created_at,author,text}:
+  "2026-11-02T09:16:14.237Z",pi-glm,"Triage 2026-11-02 (missed-watch sweep): still valid. Current main still opens the producer contract with a blocking read-only open() before handle.stat() rejects nonregular inputs (forecast.ts readBeadsProducerContract), so a FIFO input can stall the reader before the typed io_error refusal. No other open pm-beads item tracks this; this imported item is the single owner. Corroborates the owner review finding on merged PR #190."
 github_close_reason: ""
 github_closed_at: ""
 github_created_at: "2026-10-29T07:14:23Z"
