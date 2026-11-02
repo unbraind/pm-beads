@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Closed
+
+- Closed: Daily Release workflow is failing ([pm-beads-github-be8d2d927676-184](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-github-be8d2d927676-184.toon))
+- Closed: Node 26 Bun gate misses nonzero CLI stderr fallback branch despite passing tests ([pm-beads-github-be8d2d927676-189](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-github-be8d2d927676-189.toon))
+
 ## 2026.10.29 - 2026-10-29
 
 ### Added
