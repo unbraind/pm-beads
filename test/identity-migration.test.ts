@@ -88,20 +88,30 @@ test('migration previews by default and skips peer edits at every read-to-write 
     const preview = await migrateBeadIdentities(dir);
     assert.ok(preview.pending.includes(item.id)); assert.equal(preview.dryRun, true);
     assert.deepEqual(await trackerBytes(dir), before);
-    let peerEdit: Promise<unknown> | undefined;
+    // Bootstrap the SDK before entering the bounded native mutation guard.
+    // The peer waits for an explicit signal, so the edit still begins at the
+    // selected boundary without spending the guard deadline on module loading.
+    const child = spawn(process.execPath, ['--input-type=module', '-e',
+      `import { PmClient } from '@unbrained/pm-cli/sdk';
+      const client = new PmClient({ pmRoot: process.argv[1], author: 'peer', noExtensions: true });
+      process.stdout.write('ready\\n');
+      await new Promise(resolve => process.stdin.once('data', resolve));
+      process.stdout.write('writing\\n');
+      await client.update(process.argv[2], { title: 'Peer title', description: 'Peer description', message: 'Peer edit' });`, dir, item.id], { cwd: root, stdio: ['pipe', 'pipe', 'pipe'] });
+    t.after(() => { child.kill(); });
+    let errors = ''; child.stderr.on('data', chunk => { errors += String(chunk); });
+    const peerEdit = new Promise<void>((resolve, reject) => { child.on('error', reject); child.on('close', code => code === 0 ? resolve() : reject(new Error(errors))); });
+    // Keep a failed migration from leaving an unobserved peer rejection.
+    void peerEdit.catch(() => {});
+    await new Promise<void>((resolve, reject) => { child.stdout.once('data', () => resolve()); void peerEdit.catch(reject); });
     let edited = false;
     const receipt = await migrateBeadIdentities(dir, 'migrator', { apply: true, async onTransition(phase, id) {
       if (id !== item.id || phase !== boundary || edited) return;
       edited = true;
       // Once locked, a real SDK peer queues behind migration; waiting here would deadlock.
-      const child = spawn(process.execPath, ['--input-type=module', '-e',
-        `import { PmClient } from '@unbrained/pm-cli/sdk';
-        const client = new PmClient({ pmRoot: process.argv[1], author: 'peer', noExtensions: true });
-        process.stdout.write('ready\\n');
-        await client.update(process.argv[2], { title: 'Peer title', description: 'Peer description', message: 'Peer edit' });`, dir, id], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
-      let errors = ''; child.stderr.on('data', chunk => { errors += String(chunk); });
-      peerEdit = new Promise<void>((resolve, reject) => { child.on('error', reject); child.on('close', code => code === 0 ? resolve() : reject(new Error(errors))); });
-      if (phase === 'locked') await new Promise<void>(resolve => { child.stdout.once('data', () => resolve()); });
+      const writing = phase === 'locked' ? new Promise<void>((resolve, reject) => { child.stdout.once('data', () => resolve()); void peerEdit.catch(reject); }) : undefined;
+      child.stdin.end('go\n');
+      if (writing) await writing;
       else await peerEdit;
     } });
     await peerEdit;

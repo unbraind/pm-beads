@@ -2,12 +2,25 @@ id: pm-beads-mxra
 title: Ambient receiver fixture must opt into explicit SDK focus inheritance (pm-cli GH-1577)
 description: ""
 type: Issue
-status: open
+status: in_progress
 priority: 2
-tags[4]: dependencies,migration,sdk,toolchain
+tags[5]: dependencies,"gh:unbraind/pm-beads#194",migration,sdk,toolchain
 created_at: "2026-11-03T05:56:35.145Z"
-updated_at: "2026-11-03T05:56:40.892Z"
+updated_at: "2026-11-03T09:52:47.550Z"
 author: pi-fleet-sdk-sentinel-1103
-comments[1]{created_at,author,text}:
+comments[4]{created_at,author,text}:
   "2026-11-03T05:56:40.892Z",pi-fleet-sdk-sentinel-1103,"npm test fails 5/567 on the pm-toolchain Dependabot branch. All five failures originate from the shared ambient receiver fixture's positive control asserting implicit.item.parent === focus after client.create({ title, createMode: 'progressive' }) without inheritFocus. pm-cli GH-1577 (2026.10.26) made focus inheritance explicit for SDK create. Expected fix: pass inheritFocus: true in that positive control create (or assert the new explicit behavior); then confirm the remaining exact-document assertions still hold. Also re-check the transfer/reconcile/import tests that rely on the same fixture."
+  "2026-11-03T09:07:04.940Z",codex-toolchain-1103,"Reproduced all five failures in test/ambient-defaults.test.ts: every failure occurs in the positive control before importer execution. Root cause is pm-cli 2026.10.26 GH-1577, present in the actual PR pin 2026.10.28: SDK create now requires inheritFocus:true. Classification: test contract drift. Keep exact full-document assertions; opt the focused control in and add a default-create control proving no inherited parent. Production sourceCreateOptions already explicitly unsets missing parent, so no production change is required."
+  "2026-11-03T09:36:44.809Z",codex-toolchain-1103,"Additional full-suite failure reproduced in isolation: the migration peer fixture waits for a freshly spawned process to import the entire SDK from inside the bounded beforeMutation guard. Under host contention this hits extension_mutation_guard_timed_out; the guard remains correct. Classification: test synchronization bug. Preload the independent peer before migration, then release it with an explicit pipe signal at the same listed/located/read/schema/update/locked boundary. Keep every exact peer document, revision, history and receipt assertion; preserve the native guard deadline and ensure child cleanup/rejections are observed."
+  "2026-11-03T09:52:33.570Z",codex-toolchain-1103,"Final focused validation: node --test test/ambient-defaults.test.ts passes 6/6, including every exact full document, and node --test test/identity-migration.test.ts passes 8/8 after peer prewarming. Focused peer boundary test also passes through pm test (117638ms). Typecheck, build:test and docstring pass; npm test ran build/build:test and the broad suite, found the old peer bootstrap timeout, and was interrupted after roughly 44 minutes while large unchanged property tests remained active. It is not a completed full-suite pass. Both changed test files are now independently verified. Changelog regenerated and checked with fetched tags, with no content diff; dist is not tracked. No production change, release gate, or coverage run was needed."
+files[3]{path,scope}:
+  mutation.ts,project
+  test/ambient-defaults.test.ts,project
+  test/identity-migration.test.ts,project
+tests[3]{command,scope,provenance{author,created_at,source_kind,source_ref}}:
+  node --test test/ambient-defaults.test.ts,project,codex-toolchain-1103,"2026-11-03T09:07:13.641Z",local_mutation,dependabot/npm_and_yarn/pm-toolchain-83955e8a70
+  node --test test/identity-migration.test.ts,project,codex-toolchain-1103,"2026-11-03T09:37:20.113Z",local_mutation,dependabot/npm_and_yarn/pm-toolchain-83955e8a70
+  "node --test --test-name-pattern=\"migration previews by default\" test/identity-migration.test.ts",project,codex-toolchain-1103,"2026-11-03T09:41:50.885Z",local_mutation,dependabot/npm_and_yarn/pm-toolchain-83955e8a70
+docs[1]{path,scope}:
+  CHANGELOG.md,project
 body: ""
