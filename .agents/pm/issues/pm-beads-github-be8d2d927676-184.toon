@@ -6,17 +6,18 @@ status: closed
 priority: 2
 tags[3]: "gh:unbraind/pm-beads#184","github_author:github-actions[bot]",release-failure
 created_at: "2026-10-27T10:25:19Z"
-updated_at: "2026-11-02T09:49:01.186Z"
+updated_at: "2026-11-03T10:24:23.756Z"
 closed_at: "2026-11-02T09:26:22Z"
 completed_at: "2026-11-02T09:26:22Z"
 author: pm-github
+release: v2026.11.02
 close_reason: "Closed on GitHub as completed on 2026-11-02T09:26:22Z"
 github_close_reason: "Closed on GitHub as completed on 2026-11-02T09:26:22Z"
 github_closed_at: "2026-11-02T09:26:22Z"
 github_created_at: "2026-10-27T10:25:19Z"
 github_link_only: false
 github_number: 184
-github_release: ""
+github_release: v2026.11.02
 github_state: closed
 github_state_reason: completed
 github_updated_at: "2026-11-02T09:26:22Z"
