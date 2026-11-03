@@ -33,7 +33,10 @@ async function receiver(t: test.TestContext) {
     assignee: "ambient-assignee", parent: focus, description: "Ambient description",
   }, { path: pmRoot });
   // Positive controls prove the ambient configuration is live, using real SDK operations.
-  const implicit = await client.create({ title: "Default control", createMode: "progressive" });
+  // pm-cli 2026.10.26 (GH-1577) requires SDK callers to opt into focus inheritance.
+  const independent = await client.create({ title: "Independent control", createMode: "progressive" });
+  assert.equal(independent.item.parent, undefined);
+  const implicit = await client.create({ title: "Default control", createMode: "progressive", inheritFocus: true });
   assert.equal(implicit.item.type, "Issue");
   assert.equal(implicit.item.parent, focus);
   assert.equal(implicit.parent_source, "focus");
