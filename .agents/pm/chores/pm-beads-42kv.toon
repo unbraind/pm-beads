@@ -1,0 +1,20 @@
+id: pm-beads-42kv
+title: Migrate off SDK sentinels for the pm-toolchain bump
+description: ""
+type: Chore
+status: in_progress
+priority: 2
+tags[4]: dependencies,"gh:unbraind/pm-beads#194",migration,sdk
+created_at: "2026-11-03T05:55:58.111Z"
+updated_at: "2026-11-03T06:26:46.459Z"
+assignee: pi-fleet-sdk-sentinel-1103
+claim_principal: pi-fleet-sdk-sentinel-1103
+author: pi-fleet-sdk-sentinel-1103
+comments[2]{created_at,author,text}:
+  "2026-11-03T05:56:33.867Z",pi-fleet-sdk-sentinel-1103,"Sweep result: no former SDK sentinel sites exist in this repository (no parent:'none' / assignee:'none' fixtures, no '--parent none' CLI flags, no '-' text sentinels; production code already uses the typed unset contract). The pm-toolchain bump here pins pm-cli 2026.10.25 -> 2026.10.28, which predates the GH-1614 sentinel change. The five failing tests all share one root cause in the ambient receiver fixture: the positive control still asserts implicit focus inheritance on SDK create, which pm-cli 2026.10.26 GH-1577 made opt-in (inheritFocus: true; SDK/MCP default false, CLI default true). This is not the sentinel change, so per task scope it is recorded and left for a follow-up rather than fixed here."
+  "2026-11-03T06:26:46.455Z",pi-fleet-sdk-sentinel-1103,"Result: npm test 562/567 pass; 5 failures share one root cause, the pm-cli GH-1577 explicit focus-inheritance change (not the sentinel change). release:check passes typecheck, release-workflow verification, build and docstring, then stops at the coverage gate on those same 5 tests. Changelog regenerated (no diff). No code changes in this repo because it has no sentinel sites; follow-up item tracks the fixture migration."
+files[1]{path,scope}:
+  test/ambient-defaults.test.ts,project
+tests[1]{command,scope,provenance{author,created_at,source_kind,source_ref}}:
+  npm test,project,pi-fleet-sdk-sentinel-1103,"2026-11-03T05:56:43.426Z",local_mutation,dependabot/npm_and_yarn/pm-toolchain-83955e8a70
+body: ""
