@@ -2,12 +2,17 @@ id: pm-beads-mxra
 title: Ambient receiver fixture must opt into explicit SDK focus inheritance (pm-cli GH-1577)
 description: ""
 type: Issue
-status: in_progress
+status: closed
 priority: 2
 tags[5]: dependencies,"gh:unbraind/pm-beads#194",migration,sdk,toolchain
 created_at: "2026-11-03T05:56:35.145Z"
-updated_at: "2026-11-03T09:55:34.410Z"
+updated_at: "2026-11-04T05:36:00.350Z"
+closed_at: "2026-11-04T05:36:00.337Z"
+completed_at: "2026-11-04T05:36:00.337Z"
 author: pi-fleet-sdk-sentinel-1103
+resolution: Implemented and merged in #194 (c31a868).
+expected_result: The change described by this item is on main.
+actual_result: "Merged in #194 as c31a868; checks successful at head 497912a: CodeQL, codeql, enable-auto-merge, semgrep-cloud-platform/scan, test (22), test (26)."
 comments[5]{created_at,author,text}:
   "2026-11-03T05:56:40.892Z",pi-fleet-sdk-sentinel-1103,"npm test fails 5/567 on the pm-toolchain Dependabot branch. All five failures originate from the shared ambient receiver fixture's positive control asserting implicit.item.parent === focus after client.create({ title, createMode: 'progressive' }) without inheritFocus. pm-cli GH-1577 (2026.10.26) made focus inheritance explicit for SDK create. Expected fix: pass inheritFocus: true in that positive control create (or assert the new explicit behavior); then confirm the remaining exact-document assertions still hold. Also re-check the transfer/reconcile/import tests that rely on the same fixture."
   "2026-11-03T09:07:04.940Z",codex-toolchain-1103,"Reproduced all five failures in test/ambient-defaults.test.ts: every failure occurs in the positive control before importer execution. Root cause is pm-cli 2026.10.26 GH-1577, present in the actual PR pin 2026.10.28: SDK create now requires inheritFocus:true. Classification: test contract drift. Keep exact full-document assertions; opt the focused control in and add a default-create control proving no inherited parent. Production sourceCreateOptions already explicitly unsets missing parent, so no production change is required."
@@ -24,4 +29,5 @@ tests[3]{command,scope,provenance{author,created_at,source_kind,source_ref}}:
   "node --test --test-name-pattern=\"migration previews by default\" test/identity-migration.test.ts",project,codex-toolchain-1103,"2026-11-03T09:41:50.885Z",local_mutation,dependabot/npm_and_yarn/pm-toolchain-83955e8a70
 docs[1]{path,scope}:
   CHANGELOG.md,project
+close_reason: "Delivered by #194 \"chore(deps-dev): bump the pm-toolchain group across 1 directory with 3 updates\" (merged as c31a868). Checks successful at the PR head 497912a: CodeQL, codeql, enable-auto-merge, semgrep-cloud-platform/scan, test (22), test (26)."
 body: ""

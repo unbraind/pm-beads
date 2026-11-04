@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Ambient receiver fixture must opt into explicit SDK focus inheritance (pm-cli GH-1577) ([pm-beads-mxra](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-mxra.toon))
+
 ## 2026.11.2 - 2026-11-02
 
 ### Closed
