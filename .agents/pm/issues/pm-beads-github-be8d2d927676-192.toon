@@ -6,10 +6,22 @@ status: open
 priority: 2
 tags[2]: "gh:unbraind/pm-beads#192","github_author:unbraind"
 created_at: "2026-10-29T07:14:23Z"
-updated_at: "2026-11-02T09:16:14.238Z"
+updated_at: "2026-11-06T14:25:58.269Z"
 author: pm-github
-comments[1]{created_at,author,text}:
+comments[6]{created_at,author,text}:
   "2026-11-02T09:16:14.237Z",pi-glm,"Triage 2026-11-02 (missed-watch sweep): still valid. Current main still opens the producer contract with a blocking read-only open() before handle.stat() rejects nonregular inputs (forecast.ts readBeadsProducerContract), so a FIFO input can stall the reader before the typed io_error refusal. No other open pm-beads item tracks this; this imported item is the single owner. Corroborates the owner review finding on merged PR #190."
+  "2026-11-06T14:11:59.895Z",codex-sol,"Main 85b6392 still has the original blocking open before descriptor classification; git log shows forecast.ts last changed in ac6e36e (#190). Plan: reproduce SDK and compiled CLI JSON/TOON FIFO hangs in deadline-bounded child processes with a real non-git SDK tracker; use nonblocking read-only open plus descriptor classification to remove the writer wait without a path-check race. Preserve typed refusals, regular-file compatibility and byte limits."
+  "2026-11-06T14:13:45.293Z",codex-sol,"Failing-first reproduction on unchanged main: npm run build && node --test --test-concurrency=2 test/forecast-file-input.test.ts failed 3/3 tests. SDK, CLI JSON and CLI TOON all reached the FIFO case and exceeded a 5000 ms child-process deadline (ETIMEDOUT); prior regular-file, regular symlink, malformed, oversized and directory cases passed. Child processes were killed and isolated fixtures cleaned up. Fix uses O_RDONLY | O_NONBLOCK, matching the existing sidecar reader, then fstat on that same descriptor before the unchanged bounded read."
+  "2026-11-06T14:21:15.346Z",codex-sol,"Final focused command passed 12/12 tests with zero failures, cancellations or skips through pm test --run --progress. This includes all three compiled SDK/CLI nonregular-input regressions and existing forecast contract/guard tests. Typecheck, test typecheck, docstring gate (21 files, 158 documented declarations) and git diff --check pass. Initial 5000 ms startup budget also timed out valid-file child startup under host contention; final subprocess budget matches the existing compiled CLI acceptance test at 30000 ms. The superseded broader run was interrupted and is not counted as passing evidence. Test-result tracking is disabled by project policy, so this comment records the successful linked-test receipt without changing policy."
+  "2026-11-06T14:24:27.203Z",codex-sol,"Behavioral revert proof: disposable non-git source copy; only readBeadsProducerContract open(file, O_RDONLY | O_NONBLOCK) changed back to open(file, \"r\"); npm run build succeeded, then node --test --test-concurrency=2 test/forecast-file-input.test.ts failed all 3/3 tests specifically on FIFO deadlines at the final 30000 ms budget (0 passes, 0 cancellations, 0 skips). Prior regular-file/refusal cases passed in each route. Copy removed in finally; working implementation never reverted. Clean-home pm health --strict-exit --require-merge-drivers passes; ordinary-home health has a global extension host version-skew failure, and clean-home health retains only advisory telemetry/provenance warnings. No dependency, history or telemetry policy change is needed for #192."
+  "2026-11-06T14:25:50.915Z",codex-sol,"After the isolated revert proof, rebuilt the unchanged fixed working source and reran node --test --test-concurrency=2 test/forecast-file-input.test.ts: 3/3 pass, 0 failures/cancellations/skips. Ready for the single PR and orchestrator verification; final-head CI will run the full npm/Bun release gates on Node 22/26, and the requested queue review loop follows immediately after PR creation. Claim released for handoff; issue is not closed. Changelog regeneration follows the final tracker write."
+files[2]{path,scope}:
+  forecast.ts,project
+  test/forecast-file-input.test.ts,project
+tests[1]{command,scope,provenance{author,created_at,source_kind,source_ref}}:
+  "npm run build && npm run build:test && node --test --test-concurrency=2 test/forecast-file-input.test.ts test/forecast.test.ts",project,codex-sol,"2026-11-06T14:17:31.869Z",local_mutation,forecast-reader-rejects-nonregular-first
+docs[1]{path,scope}:
+  docs/dialect-forecast-validation.md,project
 github_close_reason: ""
 github_closed_at: ""
 github_created_at: "2026-10-29T07:14:23Z"
