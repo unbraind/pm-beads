@@ -1,4 +1,5 @@
 /** Read-only compatibility forecasts for explicit, versioned Beads producer contracts. */
+import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 import type { CommandHandlerContext, ExtensionApi } from "@unbrained/pm-cli/sdk/authoring";
 import { CommandError } from "./contracts.ts";
@@ -159,7 +160,8 @@ export function assertBeadsDialectImportable(text: string, value: unknown, sidec
 /** Bound file reads before allocating source text, including growing files and nonregular inputs. */
 export async function readBeadsProducerContract(file: string): Promise<BeadsProducerContract> {
   try {
-    const handle = await open(file, "r");
+    // A FIFO must not wait for a writer before descriptor-based classification.
+    const handle = await open(file, constants.O_RDONLY | constants.O_NONBLOCK);
     try {
       const info = await handle.stat();
       if (!info.isFile() || info.size > BEADS_DIALECT_LIMITS.bytes) throw new Error("size");
