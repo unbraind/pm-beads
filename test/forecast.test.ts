@@ -115,7 +115,19 @@ test("bounded contract file I/O, CLI receipts and both importer guards work with
     await assert.rejects(command==="native"?runImport(ext,opts):runCommand(ext,{...opts,command}),refused("unsupported_dialect"));
     assert.equal((await client.listAllComplete()).items.length,0);
   }
-  for(const dialect of [" ",false,42]) await assert.rejects(runImport(ext,{pmRoot,args:[source],options:{dialect}}),refused("invalid_contract"));
+  // GH-1665 applies CLI string coercion before either importer guard runs.
+  for(const command of ["native","beads-import"]) {
+    for(const dialect of [" ","","\t",null]) {
+      const opts={pmRoot,args:[source],options:{dialect}};
+      await assert.rejects(command==="native"?runImport(ext,opts):runCommand(ext,{...opts,command}),refused("invalid_contract"));
+      assert.equal((await client.listAllComplete()).items.length,0);
+    }
+    for(const dialect of [false,42]) {
+      const opts={pmRoot,args:[source],options:{dialect}};
+      await assert.rejects(command==="native"?runImport(ext,opts):runCommand(ext,{...opts,command}),refused("io_error"));
+      assert.equal((await client.listAllComplete()).items.length,0);
+    }
+  }
   await writeFile(file,JSON.stringify(minimal));
   const oldPath=process.env.PATH;process.env.PATH=join(import.meta.dirname,"..","node_modules",".bin")+":"+oldPath;
   try {
