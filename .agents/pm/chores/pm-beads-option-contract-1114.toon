@@ -1,0 +1,20 @@
+id: pm-beads-option-contract-1114
+title: Adopt pm-cli option contract and current pm-toolchain
+description: Supersede Dependabot PR 224; retain dialect guard refusals and no-write evidence on current published dependencies.
+type: Chore
+status: in_progress
+priority: 2
+tags[2]: dependencies,"gh:unbraind/pm-beads#224"
+created_at: "2026-11-14T10:25:16.995Z"
+updated_at: "2026-11-14T10:27:37.013Z"
+author: codex-toolchain-1114a
+comments[2]{created_at,author,text}:
+  "2026-11-14T10:26:09.658Z",codex-toolchain-1114a,"Failure -> cause -> fix: bounded producer-contract I/O test expected invalid_contract for dialect false/42; GH-1665 (pm-cli CHANGELOG 2026.11.8) now coerces them to CLI path strings, so the documented refusal is io_error, exit 2. Retain those cases with the typed I/O matcher, replace malformed-option coverage with empty/blank path values, and run every guard case through BOTH native importer and extension command. Each refusal checks the real non-git tracker still contains no imported items. Null remains uncoerced by the public direct-call contract and must still refuse invalid_contract. Original focused suite: 8 pass, 1 fail; restoring original assertions reproduces the migration failure. No production changes or threshold changes."
+  "2026-11-14T10:27:31.107Z",codex-toolchain-1114a,"Local validation passes: forecast suite 9/9, linked forecast test, npm/Bun typecheck, build:test, and docstrings (158 declarations). Production sources are unchanged. Full npm and Bun release gates are queued serially behind the existing fleet gate to respect the shared-host limit; CI also certifies the unchanged 100% line/branch/function thresholds. No standalone lint script is declared."
+files[3]{path,scope}:
+  package-lock.json,project
+  package.json,project
+  test/forecast.test.ts,project
+tests[1]{command,scope,provenance{author,created_at,source_kind,source_ref}}:
+  node --test --test-concurrency=2 test/forecast.test.ts,project,codex-toolchain-1114a,"2026-11-14T10:26:16.192Z",local_mutation,chore/adopt-pm-cli-option-contract
+body: ""
