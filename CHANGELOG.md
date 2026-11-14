@@ -40,6 +40,14 @@
 - Closed: Daily Release workflow is failing ([pm-beads-github-be8d2d927676-184](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-github-be8d2d927676-184.toon))
 - Closed: Node 26 Bun gate misses nonzero CLI stderr fallback branch despite passing tests ([pm-beads-github-be8d2d927676-189](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-github-be8d2d927676-189.toon))
 
+## 2026.11.1 - 2026-11-01
+
+No changes.
+
+## 2026.10.31 - 2026-10-31
+
+No changes.
+
 ## 2026.10.29 - 2026-10-29
 
 ### Added
@@ -113,11 +121,55 @@
 - Enable GitHub CodeQL code scanning ([pm-beads-uqb0](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-uqb0.toon))
 - Certify pm-beads on PM CLI/SDK 2026.10.4 and consolidate pending dependency updates ([pm-beads-8h18](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-8h18.toon))
 
+## 2026.10.21 - 2026-10-21
+
+No changes.
+
+## 2026.10.20 - 2026-10-20
+
+No changes.
+
+## 2026.10.19 - 2026-10-19
+
+No changes.
+
+## 2026.10.18 - 2026-10-18
+
+No changes.
+
+## 2026.10.17 - 2026-10-17
+
+No changes.
+
+## 2026.10.16 - 2026-10-16
+
+No changes.
+
+## 2026.10.15 - 2026-10-15
+
+No changes.
+
+## 2026.10.12 - 2026-10-12
+
+No changes.
+
+## 2026.10.11 - 2026-10-11
+
+No changes.
+
+## 2026.10.9 - 2026-10-09
+
+No changes.
+
 ## 2026.10.5 - 2026-10-05
 
 ### Other
 
 - Auto-merge green Dependabot updates and group the pm toolchain into one daily PR ([pm-beads-lgqs](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-lgqs.toon))
+
+## 2026.10.4 - 2026-10-04
+
+No changes.
 
 ## 2026.9.26 - 2026-09-26
 
@@ -152,6 +204,10 @@
 ### Other
 
 - Certify pm CLI 2026.9.10 and pick up the canonical auditor fixes the lockfile was holding back ([pm-beads-e7xw](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-e7xw.toon))
+
+## 2026.9.9 - 2026-09-09
+
+No changes.
 
 ## 2026.9.8 - 2026-09-08
 
@@ -260,6 +316,10 @@
 
 - Resolve pm-changelog to the release that derives release dates in UTC ([pm-beads-bjqg](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-bjqg.toon))
 
+## 2026.8.3 - 2026-08-03
+
+No changes.
+
 ## 2026.7.29 - 2026-07-29
 
 ### Added
@@ -325,11 +385,23 @@
 - Closed: Merge-safety docs follow-up: clarify verify scope + pin pm-cli 2026.7.22 (Greptile P1/P2) ([pm-beads-fiq7](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-fiq7.toon))
 - Closed: Recommend pm merge reconcile (2026.7.22) over raw history-repair in Multi-agent merge safety docs ([pm-beads-dlsd](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-dlsd.toon))
 
+## 2026.7.22 - 2026-07-22
+
+No changes.
+
+## 2026.7.20 - 2026-07-20
+
+No changes.
+
 ## 2026.7.19 - 2026-07-19
 
 ### Other
 
 - Harden release bun-verify so registry-mirror lag cannot block the GitHub release ([pm-beads-87lb](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-87lb.toon))
+
+## 2026.7.13 - 2026-07-13
+
+No changes.
 
 ## 2026.7.11 - 2026-07-11
 
@@ -341,6 +413,10 @@
 
 - Adopt current pm SDK, changelog, Node types, TypeScript 7, and checkout action ([pm-beads-8wev](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-8wev.toon))
 
+## 2026.7.10 - 2026-07-10
+
+No changes.
+
 ## 2026.7.6 - 2026-07-06
 
 ### Fixed
@@ -351,6 +427,14 @@
 
 - Align Node engine with pm CLI runtime ([pm-beads-7wd9](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-7wd9.toon))
 - Regenerate CHANGELOG after pm close item ([pm-beads-tsu9](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-tsu9.toon))
+
+## 2026.6.14 - 2026-06-14
+
+No changes.
+
+## 2026.6.13 - 2026-06-13
+
+No changes.
 
 ## 2026.6.12 - 2026-06-12
 
@@ -370,6 +454,14 @@
 ### Closed
 
 - Closed: Promote pm beads validate to first-class command registration ([pm-beads-azv0](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-azv0.toon))
+
+## 2026.6.10-1 - 2026-06-10
+
+No changes.
+
+## 2026.6.10 - 2026-06-09
+
+No changes.
 
 ## 2026.6.9 - 2026-06-09
 
@@ -399,6 +491,10 @@
 ### Added
 
 - beads validate does not detect dependency cycles ([pm-beads-27rw](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/features/pm-beads-27rw.toon))
+
+## 2026.6.5 - 2026-06-05
+
+No changes.
 
 ## 2026.6.4-1 - 2026-06-04
 
@@ -435,6 +531,14 @@
 ### Fixed
 
 - Command handler threw plain Error (no exitCode) → runtime double-invocation ([pm-beads-itf1](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-itf1.toon))
+
+## 2026.5.31 - 2026-05-31
+
+No changes.
+
+## 2026.5.30 - 2026-05-30
+
+No changes.
 
 ## 2026.5.29 - 2026-05-29
 

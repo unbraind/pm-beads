@@ -211,11 +211,5 @@ test("every changelog and release-note read uses the local CLI with unbounded ho
     assert.match(script, /--pm-arg=--output-budget\s+--pm-arg=unbounded/u);
     assert.match(script, /--pm-arg=--output-limit\s+--pm-arg=unbounded/u);
   }
-  const commands = releaseWorkflow.split("\n").filter((line) => line.includes("npx pm-changelog"));
-  assert.equal(commands.length, 3);
-  for (const command of commands) {
-    assert.match(command, /--pm-bin \.\/node_modules\/\.bin\/pm/u);
-    assert.match(command, /--pm-arg=--output-budget\s+--pm-arg=unbounded/u);
-    assert.match(command, /--pm-arg=--output-limit\s+--pm-arg=unbounded/u);
-  }
+  assert.match(releaseWorkflow, /uses: unbraind\/pm-ops\/\.github\/workflows\/daily-release\.yml@[a-f0-9]{40}/u);
 });
