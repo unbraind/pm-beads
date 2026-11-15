@@ -1,3 +1,4 @@
+import { testTime } from "./support/time.ts";
 /** Exercise one immutable npm artifact through five real npm/Bun host installation paths. */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -16,7 +17,7 @@ const childEnv = { ...process.env, NPM_CONFIG_USERCONFIG: "/dev/null", npm_confi
 for (const key of Object.keys(childEnv)) if (/TOKEN|SECRET|PASSWORD|CREDENTIAL|API_KEY|NPM_MEDIA_SERVER/i.test(key)) delete childEnv[key as keyof typeof childEnv];
 /** Execute a bounded install or command without exposing environment values or inherited credentials. */
 function run(bin: string, args: string[], cwd = scratch, extra: Record<string, string> = {}): string {
-  const result = spawnSync(bin, args, { cwd, env: { ...childEnv, ...extra }, encoding: "utf8", timeout: 240_000, maxBuffer: 16 * 1024 * 1024 });
+  const result = spawnSync(bin, args, { cwd, env: { ...childEnv, ...extra }, encoding: "utf8", timeout: testTime(240_000), maxBuffer: 16 * 1024 * 1024 });
   if (result.status !== 0) throw new Error(`Acceptance subprocess failed (${bin.split("/").at(-1)}): ${result.stderr.slice(-1000)}`);
   return result.stdout;
 }
@@ -32,7 +33,7 @@ async function accept(name: string, packageDir: string, bin: string, prefix: str
   const contract=JSON.parse(source),expected=sdk.forecastBeadsDialect(contract);
   for (const format of ["json", "toon"]) {
     const args = [...prefix, "--path", pmRoot, ...(format === "json" ? ["--json"] : []), "beads", "forecast", file];
-    const output = spawnSync(bin, args, { cwd: scratch, env: { ...childEnv, ...extra }, encoding: "utf8", timeout: 240_000, maxBuffer: 1024 * 1024 });
+    const output = spawnSync(bin, args, { cwd: scratch, env: { ...childEnv, ...extra }, encoding: "utf8", timeout: testTime(240_000), maxBuffer: 1024 * 1024 });
     assert.equal(output.status, 0, `${name}: ${output.stderr}`);
     const packet = format === "json" ? JSON.parse(output.stdout) : decodeToon(output.stdout);
     assert.deepEqual(packet,expected);assert.equal(packet.counts.exact,2);assert.equal(packet.counts.sidecarDependent,1);assert.equal(packet.counts.unsupported,1);
@@ -43,7 +44,7 @@ async function accept(name: string, packageDir: string, bin: string, prefix: str
   const sourceFile=join(scratch,name,"records.jsonl"),contractFile=join(scratch,name,"contract.json"),exportFile=join(scratch,name,"export.jsonl");
   const hierarchy={schema:1,producer:"packed/parents",fields:[{name:"id",kind:"text"},{name:"title",kind:"text"},{name:"parent",kind:"text"}]};
   await writeFile(contractFile,JSON.stringify(hierarchy));
-  const launch=(args:string[],format="json")=>spawnSync(bin,[...prefix,"--path",pmRoot,...(format==="json"?["--json"]:[]),...args],{cwd:scratch,env:{...childEnv,...extra},encoding:"utf8",timeout:240_000,maxBuffer:1024*1024});
+  const launch=(args:string[],format="json")=>spawnSync(bin,[...prefix,"--path",pmRoot,...(format==="json"?["--json"]:[]),...args],{cwd:scratch,env:{...childEnv,...extra},encoding:"utf8",timeout: testTime(240_000),maxBuffer:1024*1024});
   for(const rows of [[{id:"a",title:"A",parent:"missing"}],[{id:"a",title:"A",parent:"b"},{id:"b",title:"B",parent:"a"}]]){
     await writeFile(sourceFile,rows.map(row=>JSON.stringify(row)).join("\r\n"));
     for(const command of [["beads","import"],["beads-import"]])for(const format of ["json","toon"]){

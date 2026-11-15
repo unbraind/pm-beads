@@ -1,3 +1,4 @@
+import { testTime } from "./support/time.ts";
 /** Exercise one immutable npm artifact through five real npm/Bun host installation paths. */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -16,7 +17,7 @@ const childEnv = { ...process.env, NPM_CONFIG_USERCONFIG: "/dev/null", npm_confi
 for (const key of Object.keys(childEnv)) if (/TOKEN|SECRET|PASSWORD|CREDENTIAL|API_KEY|NPM_MEDIA_SERVER/i.test(key)) delete childEnv[key as keyof typeof childEnv];
 /** Execute a bounded install or command without exposing environment values or inherited credentials. */
 function run(bin: string, args: string[], cwd = scratch, extra: Record<string, string> = {}): string {
-  const result = spawnSync(bin, args, { cwd, env: { ...childEnv, ...extra }, encoding: "utf8", timeout: 240_000, maxBuffer: 16 * 1024 * 1024 });
+  const result = spawnSync(bin, args, { cwd, env: { ...childEnv, ...extra }, encoding: "utf8", timeout: testTime(240_000), maxBuffer: 16 * 1024 * 1024 });
   if (result.status !== 0) throw new Error(`Acceptance subprocess failed (${bin.split("/").at(-1)}): ${result.stderr.slice(-1000)}`);
   return result.stdout;
 }
@@ -31,7 +32,7 @@ async function accept(name: string, packageDir: string, bin: string, prefix: str
   const source = await readFile(file, "utf8"), sdk = require(join(packageDir, "dist/index.js")) as typeof RepairSdk;
   for (const format of ["json", "toon"]) {
     const args = [...prefix, "--path", pmRoot, ...(format === "json" ? ["--json"] : []), "beads", "repair", file];
-    const output = spawnSync(bin, args, { cwd: scratch, env: { ...childEnv, ...extra }, encoding: "utf8", timeout: 240_000, maxBuffer: 1024 * 1024 });
+    const output = spawnSync(bin, args, { cwd: scratch, env: { ...childEnv, ...extra }, encoding: "utf8", timeout: testTime(240_000), maxBuffer: 1024 * 1024 });
     assert.equal(output.status, 1, `${name}: ${output.error?.message ?? output.signal ?? ""} ${output.stderr}`);
     const packet = format === "json" ? JSON.parse(output.stdout) : decodeToon(output.stdout);
     assert.equal(packet.cycles.length, 1); assert.equal(packet.candidates.length, 1); assert.equal(packet.cycles[0].rows.length, 3);

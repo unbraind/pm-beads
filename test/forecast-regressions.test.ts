@@ -1,3 +1,4 @@
+import { testDepth } from "./support/depth.ts";
 /** Review regressions: custody is value-bound, parent graphs are closed, and explicit empties replace receiver state. */
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -28,7 +29,7 @@ function invalid(error:unknown){return error instanceof BeadsDialectRefusal&&err
 
 test("512 sidecar state transitions bind custody to present values, deletions and older replayed inputs",()=>{
   const next=random(0x190c057),history:string[]=[];
-  for(let sequence=0;sequence<512;sequence++){
+  for(let sequence=0;sequence<testDepth(512);sequence++){
     const prior={id:"a",title:"A",...(sequence%4?{vendor:{list:[null,true,next()%100],nested:{revision:sequence}}}:{})};
     const before=jsonl([prior],sequence%2===0),sidecar=captureBeadsExtensions(before,["vendor"]);
     assertBeadsExtensionCustody(before,sidecar,["vendor"]);assertBeadsDialectImportable(before,custody,sidecar);
@@ -49,7 +50,7 @@ test("512 sidecar state transitions bind custody to present values, deletions an
 
 test("512 parent graphs agree with an independent closed-graph model, including anonymous, external and legacy identities",()=>{
   const next=random(0x190c1c1e),ids=["A","a","constructor","__proto__","é","e\u0301"];
-  for(let sequence=0;sequence<512;sequence++){
+  for(let sequence=0;sequence<testDepth(512);sequence++){
     const rows=ids.map(id=>({id,title:id,parent:next()%3?ids[next()%ids.length]:next()%2?"":"missing"}));
     let valid=true;
     for(const row of rows){const seen=new Set<string>();let id:string|undefined=row.id;while(id){if(seen.has(id)){valid=false;break;}seen.add(id);const current=rows.find(row=>row.id===id);if(!current){valid=false;break;}id=current.parent;}}
@@ -199,7 +200,7 @@ test("duplicate target rows compose deferred parent and blocker replacements aga
   const a=(await create(client,{title:"A",type:"Task",beadId:"a",unset:["parent"]})).item.id;
   const reference=(await create(client,{title:"Reference",type:"Task",unset:["parent"]})).item.id;
   const choices=["b","c","","omit","null"] as const;
-  for(let sequence=0;sequence<64;sequence++){
+  for(let sequence=0;sequence<testDepth(64);sequence++){
     await client.update(a,{unset:["parent"]});await client.update(reference,{unset:["parent"]});
     const edits=sequence===0?["b",""] as const:sequence===1?["b","omit"] as const:Array.from({length:2+next()%3},()=>choices[next()%choices.length]);
     const rows=[];
@@ -253,7 +254,7 @@ test("reconciliation keeps external relationship identities through colliding na
 
 test("512 duplicate parent graphs validate effective patches rather than superseded edges",()=>{
   const next=random(0x190d0c),ids=["a","b","c"],parents=[...ids,"","missing",undefined,null];
-  for(let sequence=0;sequence<512;sequence++){
+  for(let sequence=0;sequence<testDepth(512);sequence++){
     const rows: Array<{id:string;parent?:string|null}> = ids.map(id=>({id}));
     const model=new Map<string,string|undefined>(ids.map(id=>[id,undefined]));
     for(let operation=0;operation<9;operation++){

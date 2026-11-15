@@ -1,3 +1,4 @@
+import { testDepth } from "../support/depth.ts";
 /** Deterministic JSON fuzzing with a hard parent deadline and real non-git tracker/filesystem checks. */
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -87,7 +88,7 @@ try {
   const exclusions = new Set([source, destination]);
   const before = await fingerprint(dir, exclusions);
   const fields = new Set<string>();
-  for (let index = 0; index < 2048; index++) {
+  for (let index = 0; index < testDepth(2048); index++) {
     // The known blocker is a permanent seed-corpus entry; the remaining 2047 cases are PRNG-generated.
     const value = index === 0 ? '{"toString":0}' : jsonValue();
     const field = index === 0 ? 'title' : [...BEADS_NATIVE_FIELDS, 'vendor', 'unselected'][random(BEADS_NATIVE_FIELDS.length + 2)];
@@ -131,8 +132,8 @@ try {
   }
   assert.equal(await fingerprint(dir, exclusions), before);
   assert.deepEqual(await readdir(destinationDir), ['result']);
-  for (const counts of Object.values(stages)) { assert.equal(counts.successes + counts.refusals, 2048); assert.ok(counts.successes > 0 && counts.refusals > 0); }
+  for (const counts of Object.values(stages)) { assert.equal(counts.successes + counts.refusals, testDepth(2048)); assert.ok(counts.successes > 0 && counts.refusals > 0); }
   for (const field of BEADS_NATIVE_FIELDS) assert.ok(fields.has(field), 'unfuzzed native field');
   for (const kind of ['toString', 'valueOf', '__proto__', 'deep', 'huge', '1e309', 'NaN', '"\\ud800"', '"\\udfff"']) assert.ok(generated.has(kind), 'missing hostile family');
-  console.log(JSON.stringify({ seed: '0x163e2026', cases: 2048, calls, successes, refusals, stages, categories: [...categories].sort(), outsideDestinationUnchanged: true, milliseconds: Math.round(performance.now() - started) }));
+  console.log(JSON.stringify({ seed: '0x163e2026', cases: testDepth(2048), calls, successes, refusals, stages, categories: [...categories].sort(), outsideDestinationUnchanged: true, milliseconds: Math.round(performance.now() - started) }));
 } finally { await rm(dir, { recursive: true, force: true }); }

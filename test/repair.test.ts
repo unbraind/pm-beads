@@ -1,3 +1,4 @@
+import { testDepth } from "./support/depth.ts";
 /** Dependency packet properties, exact coordinates, refusal corpora and non-git CLI acceptance. */
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -121,7 +122,7 @@ test("512 seeded random graph operation sequences preserve all SDK-read native s
   const model = new Map<string, Set<string>>([...["A", "a", "constructor", "__proto__", "é", "e\u0301"]].map(id => [id, new Set<string>()]));
   const old: string[] = [];
   const oldPackets: ReturnType<typeof explainBeadsDependencies>[] = [];
-  for (let sequence = 0; sequence < 512; sequence++) {
+  for (let sequence = 0; sequence < testDepth(512); sequence++) {
     const names = [...model.keys()], id = names[next() % names.length], target = names[next() % names.length];
     if (next() & 1) model.get(id)!.add(target); else model.get(id)!.delete(target);
     const source = jsonl(names.map((id, index) => ({ ...before[index % before.length], id, title: " same ", dependencies: [...model.get(id)!], parent: undefined, blocked_by: undefined }))).replaceAll("\n", sequence % 2 ? "\r\n" : "\n");

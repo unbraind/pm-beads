@@ -1,3 +1,4 @@
+import { testDepth } from "./support/depth.ts";
 /** Seeded serialization properties and exhaustive per-row settings drift in real non-git trackers. */
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -38,16 +39,17 @@ for (const seed of [0x1652026, 0xc0ffee]) {
       '[bead_id:', '[bead_id: ] [bead_id: a]', 'é 🧠 中文 e\u0301 \u0000', 'line one\r\nline two\r\n',
       'long'.repeat(4096), '[bead_id: x]\r\n[bead_id: y]\r\n[bead_id: z]',
       'legacy position\n\n[bead_id: conflicting]', '[bead_id: r0]', '  whitespace\n\n', '\r\n'];
-    const rows = Array.from({ length: 512 }, (_, index) => ({ id: `r${index}`, title: `Row ${index}`,
+    const rows = Array.from({ length: testDepth(512) }, (_, index) => ({ id: `r${index}`, title: `Row ${index}`,
       description: fragments[index % fragments.length] + (index < fragments.length ? "" : fragments[next() % fragments.length]),
-      tags: [`tag-${next() % 13}`, 'Unicode-é'], dependencies: index && index % 64 === 0 ? [`r${index - 1}`] : [] }));
+      tags: [`tag-${next() % 13}`, 'Unicode-é'], dependencies: index === 1 || (index > 0 && index % 64 === 0) ? [`r${index - 1}`] : [] }));
+    assert.ok(rows.some(row => row.dependencies.length > 0), 'each depth must transfer a dependency');
     const plan = planBeadsTransfer(rows.map(row => JSON.stringify(row)).join('\r\n'), rows.map(row => row.id), `seed-${seed}`,
       await snapshotBeadsTransferSettings(pmRoot), { maxBytes: 16_777_216 });
     const saved = JSON.stringify(plan) + '\n', before = structuredClone(plan);
     const file = join(pmRoot, 'saved-plan.json'); await writeFile(file, saved);
     const loaded = JSON.parse(await readFile(file, 'utf8')) as BeadsTransferPlan;
     const validated = validateBeadsTransferPlan(loaded);
-    assert.equal(validated.records.length, 512);
+    assert.equal(validated.records.length, rows.length);
     assert.deepEqual(plan, before); assert.deepEqual(loaded, before);
     assert.equal(JSON.stringify(validated) + '\n', saved);
     assert.equal(JSON.stringify(validateBeadsTransferPlan(JSON.parse(JSON.stringify(validated)) as BeadsTransferPlan)) + '\n', saved);
@@ -55,7 +57,7 @@ for (const seed of [0x1652026, 0xc0ffee]) {
     const source = new Map(rows.map(row => [row.id, row]));
     for (const row of validated.records) assert.equal(row.fields.description, source.get(row.id)!.description);
     const receipt = await applyBeadsTransfer(pmRoot, validated, 'property-test', { maxChunks: 100 });
-    assert.equal(receipt.transferred, 512); assert.equal(receipt.skipped, 0); assert.equal(receipt.complete, true);
+    assert.equal(receipt.transferred, rows.length); assert.equal(receipt.skipped, 0); assert.equal(receipt.complete, true);
     const originalIds = new Map((await client.listAllComplete()).items.map(item => [String(item.bead_id), item.id]));
     assert.deepEqual([...originalIds.keys()].sort(), rows.map(row => row.id).sort());
     const ext = await harness(); t.after(() => ext.deactivate());
@@ -65,28 +67,31 @@ for (const seed of [0x1652026, 0xc0ffee]) {
     const output = join(pmRoot, 'export.jsonl');
     await runExport(ext, { pmRoot, options: { output } });
     const exported = (await readFile(output, 'utf8')).trimEnd().split('\n').map(line => JSON.parse(line) as BeadsItem);
-    assert.equal(exported.length, 512);
+    assert.equal(exported.length, rows.length);
     for (const row of exported) {
       assert.ok(source.has(row.id!), `exported id ${row.id} must be a source id`);
       assert.equal(row.id, `r${String(row.title).slice(4)}`);
       assert.equal(row.description, source.get(row.id!)!.description);
+      assert.deepEqual(row.dependencies ?? [], source.get(row.id!)!.dependencies.map(id => ({ issue_id: row.id, depends_on_id: id, type: 'blocks' })));
       row.title = `Upsert exactly ${row.id}`;
     }
     await writeFile(output, exported.map(row => JSON.stringify(row)).join('\n'));
     const upsert = await runImport(ext, { pmRoot, args: [output], options: { upsert: true, 'no-preserve-timestamps': true } });
-    assert.equal(upsert.imported, 0); assert.equal(upsert.updated, 512); assert.equal(upsert.skipped, 0);
+    assert.equal(upsert.imported, 0); assert.equal(upsert.updated, rows.length); assert.equal(upsert.skipped, 0);
     const after = (await client.listAllComplete()).items;
-    assert.equal(after.length, 512);
+    assert.equal(after.length, rows.length);
     for (const item of after) {
       const id = String(item.bead_id);
       assert.equal(item.id, originalIds.get(id));
       assert.equal(item.title, `Upsert exactly ${id}`);
       assert.equal(item.description, source.get(id)!.description);
+      assert.deepEqual((item.dependencies ?? []).map(edge => edge.id).sort(), source.get(id)!.dependencies.map(id => originalIds.get(id)).sort());
     }
     await runExport(ext, { pmRoot, options: { output } });
     for (const line of (await readFile(output, 'utf8')).trimEnd().split('\n')) {
       const row = JSON.parse(line) as BeadsItem;
       assert.ok(source.has(row.id!)); assert.equal(row.description, source.get(row.id!)!.description);
+      assert.deepEqual(row.dependencies ?? [], source.get(row.id!)!.dependencies.map(id => ({ issue_id: row.id, depends_on_id: id, type: 'blocks' })));
     }
 
   });

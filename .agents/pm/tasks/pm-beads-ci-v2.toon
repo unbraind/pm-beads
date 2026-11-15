@@ -1,0 +1,39 @@
+id: pm-beads-ci-v2
+title: Apply Fleet CI v2 quick PR and deep tiers
+description: Companion pm-cli-website-dyhg. Preserve required checks and all original gate contracts while reducing repeated PR work.
+type: Task
+status: in_progress
+priority: 2
+tags[3]: ci,"gh:unbraind/pm-beads#232",performance
+created_at: "2026-11-15T15:44:24.757Z"
+updated_at: "2026-11-15T19:03:31.087Z"
+author: codex-sol
+comments[11]{created_at,author,text}:
+  "2026-11-15T15:44:30.404Z",codex-sol,"Required checks are test (22) and test (26); CodeQL is optional. Plan: one quick Node 26 release gate, Node 22 build/tests, docs-sensitive identity and metadata checks, full npm/Bun deep gates. Latest successful main run 43704644296 returned empty logs through gh; retrieving the archive for baseline timing."
+  "2026-11-15T15:47:10.130Z",codex-sol,"Archive baseline: outgoing properties reached 338.876 seconds per 512-case test; transfer pipeline reached 45.886 seconds. Quick uses first 52/512 and 205/2048 cases; fixed boundary fixtures remain unchanged. Docs gate retains compiled README/example acceptance, requiring a build. No lint script exists; docstring gate retained. Packed acceptance scripts are manual outside the release gate; explicit Bun/module/bunx smoke added. No release workflow/verifier changes."
+  "2026-11-15T15:47:57.682Z",codex-sol,"Baseline jobs API: Node 26 created-to-completed 1h49m45s, execution 7m29s; Node 22 wall 2h12m04s, execution 16m18s. Initial test typecheck required npm run build first because compiled fixture imports do not exist in a fresh checkout; build plus test typecheck now pass. Strict YAML validation passes; actionlint is unavailable."
+  "2026-11-15T15:53:21.897Z",codex-sol,"Local validation: typecheck, build, test typecheck, docstring gate and strict YAML parse pass. pm test --run --progress passed all 96 touched quick tests with zero skips in 359.605 seconds; separate docs/CodeQL controls passed 8 tests in 132.973 seconds. The single quick coverage run is now in progress with a 20-minute external limit. PR 232 initial CI run 43732014561 has both required jobs queued, so no completed wall time is available. Removed redundant standalone release-workflow verification since release:check already executes it."
+  "2026-11-15T16:06:16.842Z",codex-sol,"Final local proof: PM_TEST_DEPTH=quick PM_TEST_TIME_SCALE=3 npm run coverage passed unchanged 100% lines, branches and functions across all 21 required source files in 754.15 seconds (12m34s). No late-seed-only coverage gaps or flaky failures reproduced. Strict pm health --strict-exit --require-merge-drivers passed. PM test execution tracking is disabled by project policy, so explicit results are preserved here. Manual packed-acceptance scripts were typechecked but not executed; only their harness timeouts changed. CI run https://github.com/unbraind/pm-beads/actions/runs/43732014561 was observed without waiting for the hosted queue; final-head CI remains an external verification risk."
+  "2026-11-15T16:15:56.219Z",codex-sol,"Corrective input-audit result: pm-ops trackedPublishSources reads shebangs from every tracked file, including docs/tracker files. Add verify:release-publish-attestation to the cheap path and tier table. Verifier implementation and release-owned files remain unchanged. This is a workflow-only correction after the successful quick coverage run."
+  "2026-11-15T17:19:28.524Z",codex-sol,"Final cross-package receipt audit found both required checks passed on source head 1e4be3d, run https://github.com/unbraind/pm-beads/actions/runs/43734511967. Jobs API: test (22) created 16:16:07Z, started 16:31:50Z, completed 16:34:20Z = 18m13s wall / 2m30s execution. test (26) created 16:16:07Z, started 16:58:38Z, completed 17:01:04Z = 44m57s wall / 2m26s execution. This final commit records the timing receipt only; source and workflows stay unchanged. Its own CI is not awaited. The item remains unclosed for orchestrator verification."
+  "2026-11-15T18:49:47.924Z",codex-sol,"Round C: verify the supplied review findings, repair failing checks, audit CI tier boundaries and harness controls, and run focused gates. Review threads remain untouched; no merge or closure."
+  "2026-11-15T18:54:55.152Z",codex-sol,"Both dependency-edge findings are valid: row 1 now links row 0, and export, native upsert and final export assert dependency preservation at quick depth. Self-review checks documentation/privacy/identity gates, unscaled product budgets, integer timeouts, validation before spawn, platform filenames and generated-only quick thresholds."
+  "2026-11-15T18:59:58.239Z",codex-sol,Self-review found the same CodeQL executable-tracker exclusion as the supplied gantt finding. Inert tracker data now uses extension-specific exclusions; actual glob matching proves root and nested executable files remain eligible.
+  "2026-11-15T19:03:30.179Z",codex-sol,"Round C validation passed: typecheck, test TypeScript compilation, focused behavior and workflow/tooling suites, strict unique-key YAML parsing, and package changelog regeneration/check. Lint passed where the package provides a lint script; packages without one passed their existing docstring gate. No configured coverage source changed, so no package coverage run was added. Existing isolated coverage-tooling fixtures are part of the focused tooling suites. All supplied review findings are valid and repaired. Self-review additionally preserves executable tracker scans and all applicable docs/privacy/identity/package/attestation gates. Product budgets and coverage thresholds remain unchanged. Validation uses the local Node 24 runtime; Node 22/26, native Windows and deep runtime certification remain CI evidence. Threads untouched; no merge or item closure. Release ownership after recording this evidence."
+files[8]{path,scope}:
+  .github/workflows/ci-deep.yml,project
+  .github/workflows/ci.yml,project
+  .github/workflows/codeql.yml,project
+  scripts/coverage-gate.ts,project
+  test/ci-codeql.test.ts,project
+  test/support/depth.ts,project
+  test/support/time.ts,project
+  test/transfer-properties.test.ts,project
+tests[4]{command,scope,timeout_seconds,provenance{author,created_at,source_kind,source_ref}}:
+  npm run typecheck,project,1200,codex-sol,"2026-11-15T15:46:33.456Z",local_mutation,ci/quick-pr-tier-deep-local-tier
+  node --test --test-concurrency=2 test/test-controls.test.ts test/compat.test.ts test/forecast-regressions.test.ts test/forecast-file-input.test.ts test/forecast.test.ts test/outgoing-producers.test.ts test/outgoing-properties.test.ts test/repair-precision.test.ts test/repair.test.ts test/sidecar-adversarial.test.ts test/transfer-cli.test.ts test/transfer-properties.test.ts,project,1200,codex-sol,"2026-11-15T15:46:35.504Z",local_mutation,ci/quick-pr-tier-deep-local-tier
+  "npm run typecheck && npm run lint --if-present && npm run build && npm run build:test && PM_TEST_DEPTH=quick node --test --test-concurrency=2 test/transfer-properties.test.ts test/test-controls.test.ts test/release-workflow.test.ts test/codeql-workflow.test.ts test/gates-scripts.test.ts && node --input-type=module -e 'import {readFileSync,readdirSync} from \"node:fs\"; import {parseDocument} from \"yaml\"; for(const file of readdirSync(\".github/workflows\").filter(f=>/\\.ya?ml$/.test(f))){ const d=parseDocument(readFileSync(\".github/workflows/\"+file,\"utf8\"),{uniqueKeys:true}); if(d.errors.length) throw new Error(file+\": \"+d.errors.join(\";\")); } console.log(\"Strict workflow YAML passed\");'",project,900,codex-sol,"2026-11-15T18:55:04.442Z",local_mutation,ci/quick-pr-tier-deep-local-tier
+  "npm run typecheck && npm run lint --if-present && npm run build:test && node --test test/ci-codeql.test.ts",project,900,codex-sol,"2026-11-15T19:00:13.904Z",local_mutation,ci/quick-pr-tier-deep-local-tier
+docs[1]{path,scope}:
+  docs/ci-tiers.md,project
+body: ""

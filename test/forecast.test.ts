@@ -1,3 +1,5 @@
+import { testTime } from "./support/time.ts";
+import { testDepth } from "./support/depth.ts";
 /** Deterministic producer-contract forecasts, boundary fuzzing and guard equivalence. */
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -140,7 +142,7 @@ test("bounded contract file I/O, CLI receipts and both importer guards work with
 
 test("512 seeded producer contracts validate and emit finite deterministic forecasts over their whole declared field domain",()=>{
   let seed=0x291026;
-  for(let sequence=0;sequence<512;sequence++) {
+  for(let sequence=0;sequence<testDepth(512);sequence++) {
     seed=(Math.imul(seed,1664525)+1013904223)>>>0;
     const kinds=["text","priority","labels","blockers","json"] as const;
     const contract:BeadsProducerContract={...minimal,producer:`seeded/v${sequence}`,fields:[...minimal.fields,
@@ -161,7 +163,7 @@ test("compiled forecast JSON/TOON succeeds with git absent and leaves a non-git 
   const contractFile=join(dir,"producer.json");await writeFile(contractFile,JSON.stringify(minimal));
   for(const format of ["json","toon"]) {
     const result=spawnSync(process.execPath,[join(root,"node_modules/@unbrained/pm-cli/dist/cli.js"),"--path",pmRoot,...(format==="json"?["--json"]:[]),"beads","forecast",contractFile],{
-      cwd:dir,encoding:"utf8",env:{...process.env,PATH:"",GIT_CEILING_DIRECTORIES:tmpdir()},timeout:30000});
+      cwd:dir,encoding:"utf8",env:{...process.env,PATH:"",GIT_CEILING_DIRECTORIES:tmpdir()},timeout: testTime(30000)});
     assert.equal(result.status,0,result.stdout+result.stderr);assert.deepEqual(format==="json"?JSON.parse(result.stdout):decodeToon(result.stdout),forecastBeadsDialect(minimal));
   }
   assert.deepEqual((await client.listAllComplete()).items,before);

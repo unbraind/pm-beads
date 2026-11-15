@@ -1,0 +1,67 @@
+name: CI Deep
+
+# Exhaustive validation is observational after merge; never a required PR check.
+on:
+  push:
+    branches: [main]
+  schedule:
+    # Daily off-peak run, separate from release (03:23 and hourly :41) and CodeQL (Monday 02:11).
+    - cron: "29 1 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-deep-${{ github.ref }}
+  cancel-in-progress: true
+
+# Distinct check names prevent a manual branch run from matching required PR checks.
+jobs:
+  deep:
+    # Busy local slots must queue. Only the fleet controller disables this pool
+    # after all local hosts have been unreachable for ten minutes.
+    runs-on: ${{ vars.PM_LOCAL_DEEP != 'off' && fromJSON('["self-hosted","pm-local"]') || 'ubuntu-latest' }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [22, 26]
+    env:
+      PM_TEST_DEPTH: full
+      # Acceptance watchdogs allow slower local installs without becoming unbounded.
+      PM_TEST_TIME_SCALE: 3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: ${{ runner.environment == 'github-hosted' && 'npm' || '' }}
+
+      - name: Setup Bun
+        if: runner.environment == 'github-hosted'
+        uses: oven-sh/setup-bun@v2.2.0
+
+      - name: Report Bun version
+        run: bun --version
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify tracked pm project health
+        run: ./node_modules/.bin/pm health --strict-exit --require-merge-drivers
+
+      - name: Full npm release gate
+        run: npm run release:check
+
+      - name: Full Bun release gate
+        run: bun run release:check
+
+      - name: Verify Bun can install the package graph
+        run: bun install --no-save
