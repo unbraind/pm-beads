@@ -1,3 +1,4 @@
+import { testTime } from "./support/time.ts";
 /** Real process deadlines for forecast contract inputs, including FIFOs with no writer. */
 import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
@@ -99,7 +100,7 @@ for (const route of ["sdk", "json", "toon"] as const) {
     await symlink(regular, linkedRegular);
     await writeFile(malformed, "{");
     await writeFile(oversized, JSON.stringify(contract).padEnd(65_537));
-    const made = spawnSync("mkfifo", [fifo], { encoding: "utf8", timeout: 5_000 });
+    const made = spawnSync("mkfifo", [fifo], { encoding: "utf8", timeout: testTime(5_000) });
     assert.equal(made.status, 0, made.stderr);
     await symlink(fifo, linkedFifo);
     // Both callers exercise the compiled public reader; no FIFO writer is ever started.
@@ -107,7 +108,7 @@ for (const route of ["sdk", "json", "toon"] as const) {
       [oversized, "io_error"], [dir, "io_error"], [fifo, "io_error"], [linkedFifo, "io_error"]] as const) {
       const args = forecastArgs(route, file, pmRoot);
       const result = spawnSync(process.execPath, args, {
-        cwd: dir, encoding: "utf8", timeout: 30_000, killSignal: "SIGKILL",
+        cwd: dir, encoding: "utf8", timeout: testTime(30_000), killSignal: "SIGKILL",
         env: { ...process.env, PATH: "", GIT_CEILING_DIRECTORIES: dir },
       });
       assert.equal(result.error, undefined, `${route}: ${file.slice(dir.length + 1)} exceeded the process deadline: ${result.error?.message}`);
@@ -143,7 +144,7 @@ for (const route of ["sdk", "json", "toon"] as const) {
     await writeFile(file, JSON.stringify(contract));
     const result = await atReadBarrier(route, file, dir, pmRoot, "opened", async () => {
       await rename(file, retained);
-      const made = spawnSync("mkfifo", [file], { encoding: "utf8", timeout: 5_000 });
+      const made = spawnSync("mkfifo", [file], { encoding: "utf8", timeout: testTime(5_000) });
       assert.equal(made.status, 0, made.stderr);
       assert.equal((await lstat(file)).isFIFO(), true);
     });

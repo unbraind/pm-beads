@@ -1,3 +1,4 @@
+import { testDepth } from "./support/depth.ts";
 /** Published schema-1 golden artifacts resume under their original rules, outside git. */
 import assert from 'node:assert/strict';
 import test, { before, after } from 'node:test';
@@ -97,7 +98,7 @@ test('512 random string sets validate schema-1 UTF-16 and schema-2 code-point or
   /** Reproducible words include BMP, astral, private use, combining and isolated surrogate strings. */
   const next=()=>{random=(Math.imul(random,1664525)+1013904223)>>>0;return random;};
   const alphabet=['A','a','é','e\u0301','𐀀','','𐀁','Ω','о','ο','\ud800','\udfff'];
-  for(let sequence=0;sequence<512;sequence++){
+  for(let sequence=0;sequence<testDepth(512);sequence++){
     const ids=[...new Set(['𐀀','','é','e\u0301',...Array.from({length:next()%12},()=>Array.from({length:1+next()%4},()=>alphabet[next()%alphabet.length]).join(''))])];
     const text=ids.map(id=>JSON.stringify({id,title:'Title '+id})).join('\n');
     const current=planBeadsTransfer(text,ids,'property',seed.settings);

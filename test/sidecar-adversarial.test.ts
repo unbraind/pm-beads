@@ -1,3 +1,5 @@
+import { testDepth } from "./support/depth.ts";
+import { testTime } from "./support/time.ts";
 /** Adversarial public-entrypoint checks use bounded fixtures and real filesystem operations. */
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -58,11 +60,11 @@ test('native types preserve supported scalar, nullable, label and dependency rep
   }
 });
 
-test('seeded hostile JSON fuzz: 2048 cases through capture, parse, restore, integrity verification and filesystem publication', { timeout: 30000 }, () => {
+test('seeded hostile JSON fuzz: 2048 cases through capture, parse, restore, integrity verification and filesystem publication', { timeout: testTime(30000) }, () => {
   // A separate process supplies a hard deadline even for a synchronous infinite loop.
-  const result = JSON.parse(execFileSync(process.execPath, [join(import.meta.dirname, 'fixtures', 'sidecar-fuzz.ts')], { encoding: 'utf8', timeout: 25000 }));
-  assert.equal(result.cases, 2048);
-  assert.equal(result.calls, 2048 * 4 + 16);
+  const result = JSON.parse(execFileSync(process.execPath, [join(import.meta.dirname, 'fixtures', 'sidecar-fuzz.ts')], { encoding: 'utf8', timeout: testTime(25000) }));
+  assert.equal(result.cases, testDepth(2048));
+  assert.equal(result.calls, testDepth(2048) * 4 + 16);
   assert.ok(result.successes > 0 && result.refusals > 0);
   assert.equal(result.outsideDestinationUnchanged, true);
 });
@@ -128,7 +130,7 @@ test('unified privacy also screens native, unselected and malformed envelope slo
   }
 });
 
-test('JSON scanner bounds escaped-quote runs and preserves string punctuation', { timeout: 10000 }, () => {
+test('JSON scanner bounds escaped-quote runs and preserves string punctuation', { timeout: testTime(10000) }, () => {
   const description = '\\"'.repeat(200000) + '{}[]:';
   const raw = JSON.stringify({ id: 'bd-one', title: 'One', description, vendor: { ['a"\\:{}[]']: 'visible' } });
   const sidecar = captureBeadsExtensions(raw, ['vendor']);
@@ -269,7 +271,7 @@ test('SDK arrays require plain prototypes before serialization or iteration', ()
   assert.throws(() => restoreBeadsExtensions(base, fields), refusal('invalid_input'));
 });
 
-test('filesystem matrix refuses unsafe data and special outputs; concurrent capture publishes complete envelopes', { timeout: 30000 }, async t => {
+test('filesystem matrix refuses unsafe data and special outputs; concurrent capture publishes complete envelopes', { timeout: testTime(30000) }, async t => {
   const dir = await mkdtemp(join(tmpdir(), 'beads-adversarial-'));
   t.after(() => rm(dir, { recursive: true, force: true }));
   const host = await harness();

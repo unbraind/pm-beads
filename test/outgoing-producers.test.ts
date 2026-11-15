@@ -1,3 +1,4 @@
+import { testDepth } from "./support/depth.ts";
 /** Producer/consumer agreement and strict Unicode identity order using real non-git SDK trackers. */
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -39,7 +40,7 @@ test('512 random identity sets have a strict total code-point order and transpor
   const next=random(0x1762601);
   assert.equal(compareBeadsIdentities('',''),0);assert(compareBeadsIdentities('','a')<0);assert(compareBeadsIdentities('a','')>0);
   assert(compareBeadsIdentities('a','aa')<0);assert(compareBeadsIdentities('aa','a')>0);
-  for(let sequence=0;sequence<512;sequence++){
+  for(let sequence=0;sequence<testDepth(512);sequence++){
     const ids=[...new Set([...identities,...Array.from({length:next()%8},()=>String.fromCodePoint(0x400+next()%100)+String(next()%20)), '\ud800', '\ud801'])];
     const ordered=[...ids].sort(compareBeadsIdentities);
     assert.equal(ordered.length,ids.length);

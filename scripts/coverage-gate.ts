@@ -36,6 +36,7 @@
  */
 
 import { spawnSync } from "node:child_process";
+import { testTime } from "../test/support/time.ts";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
@@ -149,7 +150,7 @@ function resolveEmitPaths(repoRoot: string): { outDir: string; rootDir: string }
     // outcome this function documents) instead of blocking on a network
     // download. The timeout bounds a hung compiler so the gate cannot stall a
     // release check indefinitely.
-    timeout: 60_000,
+    timeout: testTime(60_000),
     shell: process.platform === "win32",
   });
   if (shown.status !== 0 || !shown.stdout) return undefined;
@@ -391,7 +392,7 @@ export function runGate(repoRoot: string): GateResult {
       // forever; a timed-out run is a spawn failure and fails closed (see
       // {@link evaluateRun}).
       maxBuffer: 64 * 1024 * 1024,
-      timeout: 15 * 60_000,
+      timeout: testTime(15 * 60_000),
       // Pin the timezone so the measurement is reproducible on any machine.
       // Code that branches on a timestamp's UTC offset takes different paths under
       // a local offset than under UTC, which moves the reported percentage between

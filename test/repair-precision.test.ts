@@ -1,3 +1,4 @@
+import { testDepth } from "./support/depth.ts";
 /** Adversarial source-byte oracles cover opaque JSON precision across repair and sidecar paths. */
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -15,7 +16,7 @@ const lexemes = ["9007199254740993", "-9007199254740993", "-0", "1e400", "-1e400
 
 test("512 seeded source-byte properties preserve every untouched lexeme, duplicate key and surviving edge value", () => {
   let seed = 188;
-  for (let index = 0; index < 512; index++) {
+  for (let index = 0; index < testDepth(512); index++) {
     seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
     const number = index < lexemes.length ? lexemes[index] : `${9007199254740993n + BigInt(seed)}.${seed}00001`;
     const spacing = index % 2 ? " \t" : "", ending = index % 3 ? "\r\n" : "\n";

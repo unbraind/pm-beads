@@ -1,3 +1,4 @@
+import { testTime } from "./support/time.ts";
 /** Real compiled command and process-death acceptance without git. */
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -40,7 +41,7 @@ test('compiled CLI plans TOON/JSON, drains and replays chunks, and emits nonzero
   assert.equal(overwrite.status, 2, overwrite.stdout + overwrite.stderr); assert.equal(await readFile(file, 'utf8'), before);
 });
 
-test('a genuinely SIGKILLed transfer resumes its SDK checkpoint without duplicate items or dangling edges', { timeout: 90_000 }, async t => {
+test('a genuinely SIGKILLed transfer resumes its SDK checkpoint without duplicate items or dangling edges', { timeout: testTime(90_000) }, async t => {
   const dir = await mkdtemp(join(tmpdir(), 'beads-transfer-kill-'));
   t.after(() => rm(dir, { recursive: true, force: true }));
   const pmRoot = join(dir, 'tracker'), file = join(dir, 'plan.json');

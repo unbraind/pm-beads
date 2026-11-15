@@ -3,8 +3,10 @@ name: CodeQL
 on:
   push:
     branches: [main]
+    paths-ignore: ['.agents/pm/**', '**/*.md', 'docs/**', 'package-lock.json']
   pull_request:
     branches: [main]
+    paths-ignore: ['.agents/pm/**', '**/*.md', 'docs/**', 'package-lock.json']
   schedule:
     # Weekly CodeQL scan, minute/hour staggered across the pm fleet so the
     # repos do not all fire against the API at the same time.
@@ -21,6 +23,7 @@ jobs:
       actions: read
       contents: read
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

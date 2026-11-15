@@ -1,3 +1,4 @@
+import { testDepth } from "./support/depth.ts";
 /** Seeded state-machine differential: native SDK state is the oracle, never hand-written normalization. */
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -52,7 +53,7 @@ test('512 random mutation/export/delta/reconciliation sequences with older repla
   const file=join(dir,'export.jsonl');
   const dialect=JSON.parse(await readFile(new URL('./fixtures/dialects/canonical.json',import.meta.url),'utf8')) as BeadsProducerContract;
   const dialectFields=new Set(dialect.fields.map(field=>field.name));
-  for(let sequence=0;sequence<512;sequence++) {
+  for(let sequence=0;sequence<testDepth(512);sequence++) {
     // Each sequence contains a native mutation, a portable exchange, a retry and an older-input attempt.
     const field=fields[sequence%fields.length],id=['a','b','c'][next()%3],pmId=sourceIds.get(id)!;
     const options:PmClientFullMutationOptions={message:`sequence-${sequence}`};

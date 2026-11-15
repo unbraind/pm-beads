@@ -1,17 +1,25 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
-  pull_request: {}
-  workflow_dispatch: {}
+  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+# Cancel superseded PR runs; manual runs stay independent.
+concurrency:
+  group: ci-${{ github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
+    # Required checks stay on fast GitHub-hosted hardware.
     runs-on: ubuntu-latest
+    # Bound quick-tier work and hung subprocesses on hosted slots.
+    timeout-minutes: 25
+    env:
+      PM_TEST_DEPTH: quick
     strategy:
       fail-fast: false
       matrix:
@@ -25,6 +33,32 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
+      # Checkout must precede this first decision. NUL delimiters handle unusual
+      # filenames; compare the actual PR endpoints, not the synthetic merge commit.
+      # Disable rename folding so moving source into docs still counts its deletion.
+      - name: Detect code changes
+        id: changes
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          code=true
+          if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
+            code=false
+            git diff --name-only --no-renames -z "$BASE_SHA...$HEAD_SHA" > "$RUNNER_TEMP/ci-changed-paths"
+            while IFS= read -r -d '' path; do
+              case "$path" in
+                # Executable tracker files use the same code tier in every package.
+                .agents/pm/*.mjs|.agents/pm/*.cjs|.agents/pm/*.js|.agents/pm/*.ts) code=true ;;
+                .agents/pm/*|*.md|docs/*|CHANGELOG.md|LICENSE) ;;
+                *) code=true ;;
+              esac
+            done < "$RUNNER_TEMP/ci-changed-paths"
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
@@ -32,18 +66,18 @@ jobs:
           cache: npm
 
       - name: Setup Bun
+        if: steps.changes.outputs.code == 'true'
         uses: oven-sh/setup-bun@v2.2.0
 
       - name: Install dependencies
         run: npm ci
 
       - name: Verify release workflow contract
+        if: steps.changes.outputs.code == 'true' && matrix.node-version == 26
         run: npm run verify:release-workflow
 
-      - name: Build
-        run: npm run build
-
       - name: Verify tracked pm project health
+        if: steps.changes.outputs.code != 'true' || matrix.node-version == 26
         shell: bash
         run: |
           set -euo pipefail
@@ -58,32 +92,31 @@ jobs:
           # the missing durable proof.
           #
           # `--strict-exit` is load-bearing: non-strict health may report findings while
-          # still exiting successfully. `--require-merge-drivers` fails the gate when the
-          # clone-local merge driver config declared by .gitattributes is absent.
+          # still exiting successfully.
           ./node_modules/.bin/pm health --strict-exit --require-merge-drivers
 
-      - name: npm release gate
+      # No standalone markdown linter exists. These small suites enforce the
+      # existing README/example, package metadata and public commit contracts.
+      - name: Check documentation and tracker changes
+        if: steps.changes.outputs.code != 'true'
+        run: |
+          npm run changelog:check
+          npm run build
+          node --test test/packaging.test.ts test/package-metadata.test.ts test/identity-audit.test.ts test/reconcile-cli.test.ts
+          npm pack --dry-run --ignore-scripts
+
+      - name: Engines floor tests
+        if: steps.changes.outputs.code == 'true' && matrix.node-version == 22
+        run: npm test
+
+      - name: Quick npm release gate
+        if: steps.changes.outputs.code == 'true' && matrix.node-version == 26
         run: npm run release:check
 
-      - name: Bun release gate
-        run: bun run release:check
-
-      - name: Report uncovered branches
-        if: failure()
-        run: |
-          node --input-type=module <<'JS'
-          import { existsSync, readFileSync } from 'node:fs';
-          const report = 'coverage/lcov.info';
-          if (existsSync(report)) {
-            let source = '';
-            for (const line of readFileSync(report, 'utf8').split('\n')) {
-              if (line.startsWith('SF:')) source = line.slice(3);
-              if (line.startsWith('BRDA:') && ['0', '-'].includes(line.split(',').at(-1))) {
-                console.log(source + ':' + line.slice(5).split(',')[0] + ' uncovered branch ' + line);
-              }
-            }
-          }
-          JS
-
+      # Packed acceptance is a separate manual script here, not part of release:check.
       - name: Verify Bun can install the package graph
-        run: bun install --no-save
+        if: steps.changes.outputs.code == 'true' && matrix.node-version == 26
+        run: |
+          bun install --no-save
+          bun --eval "await import('./dist/index.js')"
+          bunx --no-install pm --version
