@@ -16,7 +16,8 @@ PRs and dispatch run quick depth; superseded PRs cancel. Every PR job has a
 | Production dependency audit | — | yes | — | npm + Bun |
 | Pack dry-run / file list | — | yes | ignore scripts, after docs build | npm + Bun |
 | Changelog consistency | — | yes | yes | npm + Bun |
-| Publish attestation / release changelog date | via tests | gate | — | npm + Bun |
+| Publish attestation | via tests | gate | yes | npm + Bun |
+| Release changelog date | via tests | gate | — | npm + Bun |
 | Bun graph install, compiled module load, bunx CLI smoke | — | yes | — | graph install plus full Bun gate |
 | CodeQL | matching paths | separate workflow | filtered | main matching paths and weekly scan |
 
@@ -65,3 +66,6 @@ Local quick coverage passed all 21 required source files at 100% lines, branches
 and functions in 754.15 seconds (12m34s); touched tests passed 96/96 in 359.605
 seconds, with no skips. These local times are not directly comparable to hosted
 full-matrix execution times.
+
+The attestation auditor reads shebangs in every tracked file, including docs and
+tracker files, so the docs path also runs publish-attestation verification.

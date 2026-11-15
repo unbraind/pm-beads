@@ -97,6 +97,7 @@ jobs:
         if: steps.changes.outputs.code != 'true'
         run: |
           npm run changelog:check
+          npm run verify:release-publish-attestation
           npm run build
           node --test test/packaging.test.ts test/package-metadata.test.ts test/identity-audit.test.ts test/reconcile-cli.test.ts
           npm pack --dry-run --ignore-scripts
