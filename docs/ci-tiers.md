@@ -60,3 +60,8 @@ up to 338.876 seconds for the 512-sequence outgoing property test and
 not a new full-depth local measurement. Full depth is intentionally left to deep.
 Quick coverage and PR CI observations are recorded in the linked tracker item
 and PR; pending jobs are not reported as passing.
+
+Local quick coverage passed all 21 required source files at 100% lines, branches
+and functions in 754.15 seconds (12m34s); touched tests passed 96/96 in 359.605
+seconds, with no skips. These local times are not directly comparable to hosted
+full-matrix execution times.

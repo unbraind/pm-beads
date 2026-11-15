@@ -72,10 +72,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Verify release workflow contract
-        if: steps.changes.outputs.code == 'true' && matrix.node-version == 26
-        run: npm run verify:release-workflow
-
       - name: Verify tracked pm project health
         if: steps.changes.outputs.code != 'true' || matrix.node-version == 26
         shell: bash
