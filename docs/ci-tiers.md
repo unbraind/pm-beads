@@ -75,3 +75,5 @@ Both required checks passed on `1e4be3d` in
 Jobs API queue-inclusive wall / execution times: Node 22 18m13s / 2m30s;
 Node 26 44m57s / 2m26s. The final receipt-only commit does not change the
 validated source or workflows and its CI is not awaited.
+
+CodeQL ignores inert tracker data extensions while keeping executable tracker scripts eligible on PRs and main pushes.
