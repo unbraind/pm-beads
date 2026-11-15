@@ -69,3 +69,9 @@ full-matrix execution times.
 
 The attestation auditor reads shebangs in every tracked file, including docs and
 tracker files, so the docs path also runs publish-attestation verification.
+
+Both required checks passed on `1e4be3d` in
+[run 43734511967](https://github.com/unbraind/pm-beads/actions/runs/43734511967).
+Jobs API queue-inclusive wall / execution times: Node 22 18m13s / 2m30s;
+Node 26 44m57s / 2m26s. The final receipt-only commit does not change the
+validated source or workflows and its CI is not awaited.
