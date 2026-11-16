@@ -2,7 +2,10 @@
 
 ## 2026.11.16 - 2026-11-16
 
-No changes.
+### Other
+
+- Apply Fleet CI v2 quick PR and deep tiers ([pm-beads-ci-v2](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-ci-v2.toon))
+- Adopt pm-cli option contract and current pm-toolchain ([pm-beads-option-contract-1114](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-option-contract-1114.toon))
 
 ## 2026.11.15 - 2026-11-15
 

@@ -2,12 +2,17 @@ id: pm-beads-ci-v2
 title: Apply Fleet CI v2 quick PR and deep tiers
 description: Companion pm-cli-website-dyhg. Preserve required checks and all original gate contracts while reducing repeated PR work.
 type: Task
-status: in_progress
+status: closed
 priority: 2
 tags[3]: ci,"gh:unbraind/pm-beads#232",performance
 created_at: "2026-11-15T15:44:24.757Z"
-updated_at: "2026-11-15T19:03:31.087Z"
+updated_at: "2026-11-16T20:23:06.708Z"
+closed_at: "2026-11-16T20:23:06.678Z"
+completed_at: "2026-11-16T20:23:06.678Z"
 author: codex-sol
+resolution: Implemented and merged in #232 (b15be5c).
+expected_result: The change described by this item is on main.
+actual_result: "Merged in #232 as b15be5c; checks successful at head a0271ee: CodeQL, codeql, semgrep-cloud-platform/scan, test (22), test (26)."
 comments[11]{created_at,author,text}:
   "2026-11-15T15:44:30.404Z",codex-sol,"Required checks are test (22) and test (26); CodeQL is optional. Plan: one quick Node 26 release gate, Node 22 build/tests, docs-sensitive identity and metadata checks, full npm/Bun deep gates. Latest successful main run 43704644296 returned empty logs through gh; retrieving the archive for baseline timing."
   "2026-11-15T15:47:10.130Z",codex-sol,"Archive baseline: outgoing properties reached 338.876 seconds per 512-case test; transfer pipeline reached 45.886 seconds. Quick uses first 52/512 and 205/2048 cases; fixed boundary fixtures remain unchanged. Docs gate retains compiled README/example acceptance, requiring a build. No lint script exists; docstring gate retained. Packed acceptance scripts are manual outside the release gate; explicit Bun/module/bunx smoke added. No release workflow/verifier changes."
@@ -36,4 +41,5 @@ tests[4]{command,scope,timeout_seconds,provenance{author,created_at,source_kind,
   "npm run typecheck && npm run lint --if-present && npm run build:test && node --test test/ci-codeql.test.ts",project,900,codex-sol,"2026-11-15T19:00:13.904Z",local_mutation,ci/quick-pr-tier-deep-local-tier
 docs[1]{path,scope}:
   docs/ci-tiers.md,project
+close_reason: "Delivered by #232 \"ci: run quick PR gates once and move exhaustive matrix to deep CI\" (merged as b15be5c). Checks successful at the PR head a0271ee: CodeQL, codeql, semgrep-cloud-platform/scan, test (22), test (26)."
 body: ""
