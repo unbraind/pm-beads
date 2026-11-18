@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026.11.18 - 2026-11-18
+
+### Dependencies
+
+- Bump pm-changelog ([#237](https://github.com/unbraind/pm-beads/pull/237))
+
 ## 2026.11.17 - 2026-11-17
 
 ### Other
