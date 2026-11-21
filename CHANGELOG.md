@@ -32,14 +32,9 @@ No changes.
 
 ## 2026.11.9 - 2026-11-09
 
-### Dependencies
+### Fixed
 
-- Bump the pm-toolchain group with 3 updates ([#217](https://github.com/unbraind/pm-beads/pull/217))
-- Bump unbraind/pm-github/.github/workflows/pm-github-sync.yml ([#216](https://github.com/unbraind/pm-beads/pull/216))
-- Bump unbraind/pm-github/.github/workflows/pm-github-closeout.yml ([#215](https://github.com/unbraind/pm-beads/pull/215))
-- Bump the codeql-action group with 2 updates ([#214](https://github.com/unbraind/pm-beads/pull/214))
-- Bump the pm-toolchain group with 2 updates ([#212](https://github.com/unbraind/pm-beads/pull/212))
-- Bump @unbrained/pm-cli ([#211](https://github.com/unbraind/pm-beads/pull/211))
+- Forecast contract reader can block before rejecting nonregular inputs ([pm-beads-github-be8d2d927676-192](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-github-be8d2d927676-192.toon))
 
 ## 2026.11.4 - 2026-11-04
 

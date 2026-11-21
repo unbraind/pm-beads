@@ -1,0 +1,21 @@
+id: pm-beads-github-be8d2d927676-220
+title: Duplicate #194 import identity across two closed tracker records blocks gated sync
+description: "GH issue #220: https://github.com/unbraind/pm-beads/issues/220 · author @unbraind · created 2026-11-10T11:29:56Z · updated 2026-11-10T11:29:56Z"
+type: Issue
+status: open
+priority: 2
+tags[2]: "gh:unbraind/pm-beads#220","github_author:unbraind"
+created_at: "2026-11-10T11:29:56Z"
+updated_at: "2026-11-21T09:52:24.314Z"
+author: pm-github
+github_close_reason: ""
+github_closed_at: ""
+github_created_at: "2026-11-10T11:29:56Z"
+github_link_only: false
+github_number: 220
+github_release: ""
+github_state: open
+github_state_reason: unspecified
+github_updated_at: "2026-11-10T11:29:56Z"
+github_url: "https://github.com/unbraind/pm-beads/issues/220"
+body: "## Evidence and classification\nTracker-data identity conflict, supported by hosted failure and static canonical records, not a Beads runtime or SDK regression.\n\nAt default commit `cd480903b7a2fbd8b591291d19a53147c904fe2a`, the [scheduled sync job](https://github.com/unbraind/pm-beads/actions/runs/42794394335/job/129755693049) using pm-github 2026.11.4 exits 1: `import plan is not idempotent — 1 duplicate provenance tag(s) in the existing corpus`. It explicitly reports no item written and no branch published.\n\nBoth distinct closed records carry the same import-identity tag `gh:unbraind/pm-beads#194`:\n- [pm-beads-42kv](https://github.com/unbraind/pm-beads/blob/cd480903b7a2fbd8b591291d19a53147c904fe2a/.agents/pm/chores/pm-beads-42kv.toon), SDK sentinel migration chore, closed via #209.\n- [pm-beads-mxra](https://github.com/unbraind/pm-beads/blob/cd480903b7a2fbd8b591291d19a53147c904fe2a/.agents/pm/issues/pm-beads-mxra.toon), focus-inheritance fixture follow-up, closed via #208.\n\nThese are different work records with separate IDs and substantive comments/tests, both delivered by #194. A delivery reference is not necessarily a unique imported GitHub identity. Static scanning of all 119 canonical .toon records found this sole repeated gh tag. This explains the preflight conflict without claiming any history corruption.\n\n## Expected behavior and impact\nPreserve both work records and their history while representing the shared delivery relation without making one external import identity ambiguous. Keep the gate fail-closed: current safety behavior is correct, but scheduled issue synchronization cannot proceed on this corpus.\n\n## Acceptance / validation\n1. Decide which record, if any, owns the unique imported identity; represent the other #194 delivery reference through an appropriate non-identity relationship/reference. Do not delete or merge away substantive comments, test receipts, IDs, closure evidence or history merely to satisfy the gate.\n2. Reproduce preflight on a recoverable isolated copy of this exact corpus before correction; verify the duplicate refusal and zero writes.\n3. After authorized tracker correction, verify one unambiguous import identity, preserved item/history contents, and two consecutive import/gate passes with no unintended second-pass mutation.\n4. Retain a regression fixture for two distinct work records delivered by one PR, distinguishing delivery provenance from import identity. A many-to-one import redesign is a separate proposal, not required by this report.\n\n## Limits and deduplication\nHosted log plus static inspection only; no import or tracker mutation performed in this review. All 219 current all-status issues/PRs, #194/#208/#209 conversations and all canonical records checked; no existing owner for this concrete conflict found. Existing closure records are not evidence that the current sync gate passes."
