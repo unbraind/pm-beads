@@ -1,9 +1,9 @@
 {
   "schema": 1,
   "repository": "unbraind/pm-beads",
-  "baseSha": "75b9a045010e730b318ecf680bdb7844a3fc8e30",
-  "version": "2026.11.17",
-  "runId": 44079485752,
+  "baseSha": "bd0e2843afd142a1efba43a1e063f97f07f22044",
+  "version": "2026.11.22",
+  "runId": 45018335676,
   "runAttempt": 1,
   "configDigest": "a07e2deabf5bb731b11c2ec72a8c6cddf5521bc19863eaf74b357e59d3eead9a"
 }
