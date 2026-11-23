@@ -52,6 +52,13 @@ export async function runImport(
   return result as ImportResult;
 }
 
+/** Invoke the registered handler with a configuration payload outside CLI flag parsing. */
+export async function runConfiguredImport(ext: ExtensionTestHarness, command: "beads import" | "beads-import", pmRoot: string, file: string): Promise<ImportResult> {
+  const registered = ext.activation.commands.handlers.find(handler => handler.command === command);
+  assert.ok(registered);
+  return await registered.run({ command, args: [], options: { file }, pm_root: pmRoot, global: { json: false } }) as ImportResult;
+}
+
 /** Run the registered `beads export` handler through the real host engine. */
 export async function runExport(
   ext: ExtensionTestHarness,

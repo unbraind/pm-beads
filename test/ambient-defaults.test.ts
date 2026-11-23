@@ -168,7 +168,11 @@ test("legacy importer and alias pin author for create, upsert, links and close u
   const ext = await harness(); t.after(() => ext.deactivate());
   const file = join(dir, "source.jsonl");
   await writeFile(file, '{"id":"a","title":"A"}\n{"id":"b","title":"B","parent":"a","dependencies":["a"],"status":"closed"}');
-  assert.equal((await runImport(ext, { args: [file], options: { preserveTimestamps: false }, pmRoot, global: { author: "source-agent" } })).imported, 2);
+  await assert.rejects(runImport(ext, { args: [file], options: { preserveTimestamps: false }, pmRoot, global: { author: "source-agent" } }), {
+    code: "unknown_option",
+  });
+  assert.equal((await client.listAllComplete()).items.some(item => item.bead_id === "a" || item.bead_id === "b"), false);
+  assert.equal((await runImport(ext, { args: [file], options: { "no-preserve-timestamps": true }, pmRoot, global: { author: "source-agent" } })).imported, 2);
   const all = (await client.listAllComplete()).items;
   const a = all.find(item => item.bead_id === "a")!, b = all.find(item => item.bead_id === "b")!;
   assert.deepEqual(stable(await document(pmRoot, a.id)), expected(a.id, "a", "A", { description: "A" }));
@@ -178,7 +182,7 @@ test("legacy importer and alias pin author for create, upsert, links and close u
     closed_at: "<time>", completed_at: "<time>", parent: a.id,
     dependencies: [{ id: a.id, kind: "blocked_by", author: "source-agent", created_at: "<time>", author_source: "asserted", source_kind: "cli:update:dep" }],
   }));
-  await runCommand(ext, { command: "beads-import", args: [file], options: { upsert: true, preserveTimestamps: false }, pmRoot, global: { author: "source-agent" } });
+  await runCommand(ext, { command: "beads-import", args: [file], options: { upsert: true, "no-preserve-timestamps": true }, pmRoot, global: { author: "source-agent" } });
   assert.deepEqual(stable(await document(pmRoot, a.id)), expected(a.id, "a", "A", { description: "A" }));
   assert.deepEqual(stable(await document(pmRoot, b.id)), before);
   for (const id of [a.id, b.id]) {
