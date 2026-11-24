@@ -60,6 +60,11 @@ No changes.
 
 - Migrate off SDK sentinels for the pm-toolchain bump ([pm-beads-42kv](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-42kv.toon))
 
+### Dependencies
+
+- Bump the pm-toolchain group with 3 updates ([#207](https://github.com/unbraind/pm-beads/pull/207))
+- Bump the pm-toolchain group across 1 directory with 3 updates ([#194](https://github.com/unbraind/pm-beads/pull/194))
+
 ## 2026.11.2 - 2026-11-02
 
 ### Closed
@@ -67,9 +72,16 @@ No changes.
 - Closed: Daily Release workflow is failing ([pm-beads-github-be8d2d927676-184](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-github-be8d2d927676-184.toon))
 - Closed: Node 26 Bun gate misses nonzero CLI stderr fallback branch despite passing tests ([pm-beads-github-be8d2d927676-189](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-github-be8d2d927676-189.toon))
 
+### Dependencies
+
+- Bump @types/node ([#201](https://github.com/unbraind/pm-beads/pull/201))
+
 ## 2026.11.1 - 2026-11-01
 
-No changes.
+### Dependencies
+
+- Bump unbraind/pm-github/.github/workflows/pm-github-sync.yml ([#197](https://github.com/unbraind/pm-beads/pull/197))
+- Bump unbraind/pm-github/.github/workflows/pm-github-closeout.yml ([#198](https://github.com/unbraind/pm-beads/pull/198))
 
 ## 2026.10.31 - 2026-10-31
 
@@ -86,11 +98,20 @@ No changes.
 
 - Verify Dependabot sync workflow update in PR 169 ([pm-beads-56vl](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-56vl.toon))
 
+### Dependencies
+
+- Bump the pm-toolchain group with 3 updates ([#191](https://github.com/unbraind/pm-beads/pull/191))
+- Bump unbraind/pm-github/.github/workflows/pm-github-sync.yml from 2026.10.16 to 2026.10.19 ([#169](https://github.com/unbraind/pm-beads/pull/169))
+
 ## 2026.10.28 - 2026-10-28
 
 ### Added
 
 - Send acknowledged Beads changes as compact field operations ([pm-beads-1hs9](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/features/pm-beads-1hs9.toon))
+
+### Dependencies
+
+- Bump the pm-toolchain group with 3 updates ([#185](https://github.com/unbraind/pm-beads/pull/185))
 
 ## 2026.10.27 - 2026-10-27
 
@@ -101,6 +122,10 @@ No changes.
 ### Closed
 
 - Closed: Daily Release workflow is failing ([pm-beads-github-be8d2d927676-181](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-github-be8d2d927676-181.toon))
+
+### Dependencies
+
+- Bump the pm-toolchain group across 1 directory with 3 updates ([#177](https://github.com/unbraind/pm-beads/pull/177))
 
 ## 2026.10.26 - 2026-10-26
 
@@ -122,6 +147,11 @@ No changes.
 
 - Preserve opted-in Beads extensions with versioned sidecars and explicit loss reports ([pm-beads-je7c](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/features/pm-beads-je7c.toon))
 - Reconcile Beads snapshots against an acknowledged base and live tracker ([pm-beads-i59r](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/features/pm-beads-i59r.toon))
+
+### Dependencies
+
+- Bump unbraind/pm-github/.github/workflows/pm-github-closeout.yml ([#168](https://github.com/unbraind/pm-beads/pull/168))
+- Bump the codeql-action group with 2 updates ([#167](https://github.com/unbraind/pm-beads/pull/167))
 
 ## 2026.10.24 - 2026-10-24
 
@@ -148,21 +178,32 @@ No changes.
 - Enable GitHub CodeQL code scanning ([pm-beads-uqb0](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-uqb0.toon))
 - Certify pm-beads on PM CLI/SDK 2026.10.4 and consolidate pending dependency updates ([pm-beads-8h18](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-8h18.toon))
 
+### Dependencies
+
+- Bump the pm-toolchain group across 1 directory with 3 updates ([#158](https://github.com/unbraind/pm-beads/pull/158))
+
 ## 2026.10.21 - 2026-10-21
 
 No changes.
 
 ## 2026.10.20 - 2026-10-20
 
-No changes.
+### Dependencies
+
+- Bump the pm-toolchain group with 2 updates ([#154](https://github.com/unbraind/pm-beads/pull/154))
 
 ## 2026.10.19 - 2026-10-19
 
-No changes.
+### Dependencies
+
+- Bump the pm-toolchain group with 3 updates ([#152](https://github.com/unbraind/pm-beads/pull/152))
 
 ## 2026.10.18 - 2026-10-18
 
-No changes.
+### Dependencies
+
+- Bump the codeql-action group with 2 updates ([#150](https://github.com/unbraind/pm-beads/pull/150))
+- Bump the pm-toolchain group across 1 directory with 3 updates ([#144](https://github.com/unbraind/pm-beads/pull/144))
 
 ## 2026.10.17 - 2026-10-17
 
@@ -174,19 +215,28 @@ No changes.
 
 ## 2026.10.15 - 2026-10-15
 
-No changes.
+### Dependencies
+
+- Bump @types/node ([#142](https://github.com/unbraind/pm-beads/pull/142))
+- Bump @unbrained/pm-cli ([#141](https://github.com/unbraind/pm-beads/pull/141))
 
 ## 2026.10.12 - 2026-10-12
 
-No changes.
+### Dependencies
+
+- Bump the pm-toolchain group with 3 updates ([#138](https://github.com/unbraind/pm-beads/pull/138))
 
 ## 2026.10.11 - 2026-10-11
 
-No changes.
+### Dependencies
+
+- Bump the codeql-action group with 2 updates ([#136](https://github.com/unbraind/pm-beads/pull/136))
 
 ## 2026.10.9 - 2026-10-09
 
-No changes.
+### Dependencies
+
+- Bump the pm-toolchain group with 2 updates ([#134](https://github.com/unbraind/pm-beads/pull/134))
 
 ## 2026.10.5 - 2026-10-05
 
@@ -214,11 +264,22 @@ No changes.
 
 - Certify pm CLI 2026.9.21 and install merge drivers through the canonical pm-ops launcher ([pm-beads-hmg2](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/tasks/pm-beads-hmg2.toon))
 
+### Dependencies
+
+- Bump yaml from 2.9.0 to 2.9.1 ([#118](https://github.com/unbraind/pm-beads/pull/118))
+- Bump @types/node from 26.5.1 to 26.6.2 ([#119](https://github.com/unbraind/pm-beads/pull/119))
+
 ## 2026.9.18 - 2026-09-18
 
 ### Other
 
 - Certify pm CLI 2026.9.17 ([pm-beads-e4cs](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-e4cs.toon))
+
+### Dependencies
+
+- Bump pm-changelog from 2026.9.6 to 2026.9.13 ([#112](https://github.com/unbraind/pm-beads/pull/112))
+- Bump @types/node from 26.4.1 to 26.5.1 ([#113](https://github.com/unbraind/pm-beads/pull/113))
+- Bump the codeql-action group across 1 directory with 2 updates ([#114](https://github.com/unbraind/pm-beads/pull/114))
 
 ## 2026.9.13 - 2026-09-13
 
@@ -248,6 +309,10 @@ No changes.
 
 - Pin the pm toolchain to 2026.9 and stop requiring a clock-stamped changelog control ([pm-beads-3cun](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/chores/pm-beads-3cun.toon))
 
+### Dependencies
+
+- Bump @types/node from 26.4.0 to 26.4.1 ([#103](https://github.com/unbraind/pm-beads/pull/103))
+
 ## 2026.9.3 - 2026-09-03
 
 ### Security
@@ -274,6 +339,10 @@ No changes.
 
 - Closed: Pin pm-changelog 2026.8.30 before the next release ([pm-beads-h8cp](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-h8cp.toon))
 
+### Dependencies
+
+- Bump @types/node from 26.2.0 to 26.4.0 ([#91](https://github.com/unbraind/pm-beads/pull/91))
+
 ## 2026.8.29 - 2026-08-29
 
 ### Fixed
@@ -299,6 +368,12 @@ No changes.
 
 - Closed: The identity gate deadlocks the one remediation its own failure message prescribes ([pm-beads-a3xr](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-a3xr.toon))
 - Closed: Remove absolute host paths and non-public identities from the entire reachable Git history ([pm-beads-lajb](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-lajb.toon))
+
+### Dependencies
+
+- Bump pm-ops from 2026.8.8 to 2026.8.10 ([#72](https://github.com/unbraind/pm-beads/pull/72))
+- Bump pm-changelog from 2026.8.6 to 2026.8.12 ([#71](https://github.com/unbraind/pm-beads/pull/71))
+- Bump @types/node from 26.1.2 to 26.2.0 ([#70](https://github.com/unbraind/pm-beads/pull/70))
 
 ## 2026.8.16 - 2026-08-16
 
@@ -345,7 +420,10 @@ No changes.
 
 ## 2026.8.3 - 2026-08-03
 
-No changes.
+### Dependencies
+
+- Bump pm-changelog from 2026.7.25 to 2026.7.29 ([#58](https://github.com/unbraind/pm-beads/pull/58))
+- Bump @types/node from 26.1.1 to 26.1.2 ([#59](https://github.com/unbraind/pm-beads/pull/59))
 
 ## 2026.7.29 - 2026-07-29
 
@@ -391,6 +469,10 @@ No changes.
 
 - Closed: Documented install command fails: pm install github.com/unbraind/pm-beads cannot resolve an entry file ([pm-beads-00wh](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-00wh.toon))
 
+### Dependencies
+
+- Bump pm-changelog from 2026.7.24 to 2026.7.25 ([#48](https://github.com/unbraind/pm-beads/pull/48))
+
 ## 2026.7.25 - 2026-07-25
 
 ### Other
@@ -418,7 +500,11 @@ No changes.
 
 ## 2026.7.20 - 2026-07-20
 
-No changes.
+### Dependencies
+
+- Bump actions/setup-node from 6 to 7 ([#34](https://github.com/unbraind/pm-beads/pull/34))
+- Bump @unbrained/pm-cli from 2026.7.11 to 2026.7.19 ([#35](https://github.com/unbraind/pm-beads/pull/35))
+- Bump pm-changelog from 2026.7.11 to 2026.7.18 ([#36](https://github.com/unbraind/pm-beads/pull/36))
 
 ## 2026.7.19 - 2026-07-19
 
@@ -428,7 +514,10 @@ No changes.
 
 ## 2026.7.13 - 2026-07-13
 
-No changes.
+### Dependencies
+
+- Bump pm-changelog from 2026.7.10 to 2026.7.11 ([#33](https://github.com/unbraind/pm-beads/pull/33))
+- Bump @unbrained/pm-cli from 2026.7.10 to 2026.7.11 ([#32](https://github.com/unbraind/pm-beads/pull/32))
 
 ## 2026.7.11 - 2026-07-11
 
