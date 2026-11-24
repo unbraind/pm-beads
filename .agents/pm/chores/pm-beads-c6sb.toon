@@ -1,0 +1,25 @@
+id: pm-beads-c6sb
+title: Keep published dependency updates in the generated changelog
+description: Pass the dependency updates flag through the package changelog entry points so regeneration preserves published dependency bullets.
+type: Chore
+status: in_progress
+priority: 2
+tags[2]: changelog,maintenance
+created_at: "2026-11-24T06:08:06.492Z"
+updated_at: "2026-11-24T06:11:04.343Z"
+author: codex-agent
+estimated_minutes: 30
+acceptance_criteria: Every changelog entry point uses dependency updates. Removing the flag from any entry point fails the regression.
+comments[2]{created_at,author,text}:
+  "2026-11-24T06:08:14.325Z",codex-agent,"Apply the dependency updates flag to all direct invocations and verify the release workflow scripts, full regeneration, and flag-only reverts."
+  "2026-11-24T06:11:01.719Z",codex-agent,"Full regeneration adds 39 dependency bullets versus main and keeps all 14 previously published bullets. Removing only the option from any of the four scripts independently fails the named assertion. Restoring the flags passes the regression. Typecheck, docstring, build, and 81 focused tests passed."
+files[2]{path,scope}:
+  package.json,project
+  test/release-workflow.test.ts,project
+tests[3]{command,scope,provenance{author,created_at,source_kind,source_ref}}:
+  node --test --test-concurrency=2 test/release-workflow.test.ts,project,codex-agent,"2026-11-24T06:08:23.639Z",local_mutation,fix/changelog-keep-dependency-updates
+  "npm run changelog:check",project,codex-agent,"2026-11-24T06:08:26.492Z",local_mutation,fix/changelog-keep-dependency-updates
+  "npm run release:notes",project,codex-agent,"2026-11-24T06:08:29.421Z",local_mutation,fix/changelog-keep-dependency-updates
+docs[1]{path,scope}:
+  CHANGELOG.md,project
+body: ""
