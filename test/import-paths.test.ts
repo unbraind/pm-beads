@@ -17,7 +17,8 @@ import {
   EXIT_CODE,
   parseBeadsFile,
 } from "../index.ts";
-import {CHMOD_ROOT_SKIP, EXISTING_MARKER_ITEM, envelope, harness, jsonl, runCommand, runImport, stubScenario, type ImportResult} from "./helpers.ts";
+import {CHMOD_ROOT_SKIP, EXISTING_MARKER_ITEM, envelope, harness, jsonl, runCommand, runConfiguredImport, runImport, stubScenario, type ImportResult} from "./helpers.ts";
+import { PmClient } from "@unbrained/pm-cli/sdk";
 import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -609,22 +610,18 @@ test("--no-preserve-ids imports without bead markers and --batch-size batches re
   }
 });
 
-test("the legacy beads-import alias also falls back to the --file option", async () => {
+test("the configured legacy beads-import alias also falls back to the file key", async t => {
   const ext = await harness();
-  const s = stubScenario({ listEnvelope: envelope([]) });
-  try {
-    const file = s.jsonlPath("opt.jsonl");
-    writeFileSync(file, jsonl([{ id: "bd-opt2", title: "Via alias option" }]), "utf-8");
-    const result = (await runCommand(ext, {
-      command: "beads-import",
-      options: { file },
-      pmRoot: join(s.dir, "ws"),
-    })) as ImportResult;
-    assert.equal(result.imported, 1);
-  } finally {
-    await ext.deactivate();
-    s.restorePath();
-  }
+  t.after(() => ext.deactivate());
+  const pmRoot = mkdtempSync(join(tmpdir(), "beads-configured-alias-"));
+  t.after(() => rmSync(pmRoot, { recursive: true, force: true }));
+  const client = new PmClient({ pmRoot, author: "fixture", noExtensions: true });
+  await client.init("sample");
+  const file = join(pmRoot, "opt.jsonl");
+  writeFileSync(file, jsonl([{ id: "bd-opt2", title: "Via alias option" }]), "utf-8");
+  await assert.rejects(runCommand(ext, { command: "beads-import", options: { file }, pmRoot }), { code: "unknown_option" });
+  assert.equal((await runConfiguredImport(ext, "beads-import", pmRoot, file)).imported, 1);
+  assert.deepEqual((await client.listAllComplete()).items.map(item => item.bead_id), ["bd-opt2"]);
 });
 
 

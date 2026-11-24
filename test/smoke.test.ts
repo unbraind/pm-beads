@@ -218,8 +218,9 @@ test("an unencodable id aborts the import BEFORE any record is written", async (
     `${JSON.stringify({ id: "bd-1", title: "fine" })}\n${JSON.stringify({ id: "b".repeat(4098), title: "unreadable" })}\n`,
     "utf-8",
   );
+  await assert.rejects(runImport(ext, { args: [file], options: { "preserve-ids": true } }), { code: "unknown_option" });
   await assert.rejects(
-    () => runImport(ext, { args: [file], options: { "preserve-ids": true }, global: { json: false } }),
+    () => runImport(ext, { args: [file], global: { json: false } }),
     (err: unknown) => {
       assert.match((err as Error).message, /cannot read back/);
       assert.match((err as Error).message, /4098 characters/);
@@ -250,7 +251,7 @@ test("a filtered-out record's unencodable id does not abort the import", async (
   // unencodable one skipped.
   const result = await runImport(ext, {
     args: [file],
-    options: { "preserve-ids": true, "filter-status": "open", "dry-run": true },
+    options: { "filter-status": "open", "dry-run": true },
     global: { json: false },
   });
   assert.strictEqual(result.wouldImport, 1, "exactly the open record must be selected");
@@ -292,7 +293,7 @@ test("the skip exclusion is scoped to records the loop would actually leave alon
   await assert.rejects(
     () => runImport(ext, {
       args: [file],
-      options: { "preserve-ids": true, upsert: true, "merge-strategy": "skip", "dry-run": true },
+      options: { upsert: true, "merge-strategy": "skip", "dry-run": true },
       global: { json: false },
     }),
     (err: unknown) => (err as Error).message.includes("cannot read back"),

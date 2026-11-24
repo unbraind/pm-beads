@@ -75,9 +75,9 @@ test('real import and export preserve NUL, whitespace and marker descriptions wi
   const rows = ['[bead_id: x] text [bead_id: y]', 'body\n\n[bead_id: forged]', ' \r\n\u0000é\n ', '', '-']
     .map((description, i) => ({ id: `row-${i}`, title: `Row ${i}`, description }));
   await writeFile(input, rows.map(row => JSON.stringify(row)).join('\n'));
-  const created = await runImport(ext, { pmRoot, args: [input], options: { preserveTimestamps: false } });
+  const created = await runImport(ext, { pmRoot, args: [input], options: { 'no-preserve-timestamps': true } });
   assert.equal(created.imported, rows.length); assert.equal(created.skipped, 0);
-  const upserted = await runImport(ext, { pmRoot, args: [input], options: { upsert: true, preserveTimestamps: false } });
+  const upserted = await runImport(ext, { pmRoot, args: [input], options: { upsert: true, 'no-preserve-timestamps': true } });
   assert.equal(upserted.updated, rows.length); assert.equal(upserted.imported, 0);
   await runExport(ext, { pmRoot, options: { output } });
   const exported = (await readFile(output, 'utf8')).trimEnd().split('\n').map(line => JSON.parse(line) as { id: string; description: string });
@@ -96,9 +96,9 @@ test('real import and export preserve NUL, whitespace and marker descriptions wi
   assert.equal(messages.filter(message => message.includes('Migrated')).length, 0);
   const legacyUpsert = (await client.create({ title: 'Before', description: '[bead_id: legacy-upsert]' })).item;
   await writeFile(input, JSON.stringify({ id: 'legacy-upsert', title: 'After', description: '[bead_id: forged]' }));
-  assert.equal((await runImport(ext, { pmRoot, args: [input], options: { upsert: true, preserveTimestamps: false } })).skipped, 1);
+  assert.equal((await runImport(ext, { pmRoot, args: [input], options: { upsert: true, 'no-preserve-timestamps': true } })).skipped, 1);
   await migrateBeadIdentities(pmRoot, 'identity-test', { apply: true });
-  assert.equal((await runImport(ext, { pmRoot, args: [input], options: { upsert: true, preserveTimestamps: false } })).updated, 1);
+  assert.equal((await runImport(ext, { pmRoot, args: [input], options: { upsert: true, 'no-preserve-timestamps': true } })).updated, 1);
   const saved = (await client.get(legacyUpsert.id)).item;
   assert.equal(saved.bead_id, 'legacy-upsert'); assert.equal(saved.description, '[bead_id: forged]'); assert.equal(saved.title, 'After');
   assert.equal(messages.filter(message => message.includes('Migrated')).length, 1);
@@ -114,10 +114,10 @@ test('literal description SDK mutations report validation failures and retain up
   const ext = await harness(); t.after(() => ext.deactivate());
   const input = join(pmRoot, 'rows.jsonl');
   await writeFile(input, JSON.stringify({ id: 'literal', title: 'create', description: '\u0000\r\n' }));
-  await assert.rejects(runImport(ext, { pmRoot, args: [input], options: { type: 'UnsupportedType', preserveTimestamps: false } }), /No items imported/);
-  await assert.rejects(runImport(ext, { pmRoot, args: [input], options: { priority: 'invalid', preserveTimestamps: false } }), /No items imported/);
-  assert.equal((await runImport(ext, { pmRoot, args: [input], options: { preserveTimestamps: false } })).imported, 1);
-  const updated = await runImport(ext, { pmRoot, args: [input], options: { upsert: true, type: 'bug', preserveTimestamps: false } });
+  await assert.rejects(runImport(ext, { pmRoot, args: [input], options: { type: 'UnsupportedType', 'no-preserve-timestamps': true } }), /No items imported/);
+  await assert.rejects(runImport(ext, { pmRoot, args: [input], options: { priority: 'invalid', 'no-preserve-timestamps': true } }), /No items imported/);
+  assert.equal((await runImport(ext, { pmRoot, args: [input], options: { 'no-preserve-timestamps': true } })).imported, 1);
+  const updated = await runImport(ext, { pmRoot, args: [input], options: { upsert: true, type: 'bug', 'no-preserve-timestamps': true } });
   assert.equal(updated.updated, 1); assert.equal(updated.skipped, 0);
   assert.equal((await client.listAllComplete()).items[0].description, '\u0000\r\n');
 });
@@ -133,7 +133,7 @@ test('identity opt-out still marks new descriptions as user text and cannot manu
   const input = join(pmRoot, 'rows.jsonl'), output = join(pmRoot, 'export.jsonl');
   const description = 'User body\n\n[bead_id: forged]';
   await writeFile(input, JSON.stringify({ id: 'source', title: 'Opt out', description }));
-  const created = await runImport(ext, { pmRoot, args: [input], options: { 'no-preserve-ids': true, preserveTimestamps: false } });
+  const created = await runImport(ext, { pmRoot, args: [input], options: { 'no-preserve-ids': true, 'no-preserve-timestamps': true } });
   assert.equal(created.imported, 1);
   const item = (await client.listAllComplete()).items[0]; assert.equal(item.bead_id, '');
   await runExport(ext, { pmRoot, options: { output } });

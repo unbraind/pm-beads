@@ -1,7 +1,7 @@
 /**
  * Truth-table tests for the pure mapping helpers' individual branch arms, plus
  * the option-fallback arms of the registered handlers (an omitted options bag,
- * an explicit `--file` fallback when args carry no positional, and CSV/filter
+ * an explicit configuration file key when args carry no positional, and CSV/filter
  * grammar corner cases). These arms are individually unreachable through the
  * end-to-end scenarios and are driven directly here.
  */
@@ -28,9 +28,10 @@ import {
   metadataToPmItems,
   pmItemPassesFilter,
 } from "../index.ts";
-import {envelope, harness, jsonl, runCommand, runExport, runImport, stubScenario} from "./helpers.ts";
-import { isHostOutputSuppressed } from "@unbrained/pm-cli/sdk";
-import { writeFileSync } from "node:fs";
+import {envelope, harness, jsonl, runCommand, runConfiguredImport, runExport, runImport, stubScenario} from "./helpers.ts";
+import { PmClient, isHostOutputSuppressed } from "@unbrained/pm-cli/sdk";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 // Exact alias → canonical-status pairs, driven from the mapStatus table so a
@@ -135,25 +136,18 @@ test("resolveImportInputFile skips non-string tokens and the values of known fla
 
 // --- Handler fallback arms --------------------------------------------------
 
-const EMPTY_WS = { listEnvelope: envelope([]) };
-
-test("the importer falls back to the --file option when args carry no positional", async () => {
+test("the configured importer falls back to the file key when args carry no positional", async t => {
   const ext = await harness();
-  const s = stubScenario(EMPTY_WS);
-  try {
-    const file = s.jsonlPath("in.jsonl");
-    writeFileSync(file, jsonl([{ id: "bd-opt", title: "Via option" }]), "utf-8");
-    const { result } = await ext.runImporter({
-      importer: "beads",
-      options: { file },
-      pmRoot: join(s.dir, "ws"),
-      global: { json: false },
-    });
-    assert.equal((result as { imported?: number }).imported, 1);
-  } finally {
-    await ext.deactivate();
-    s.restorePath();
-  }
+  t.after(() => ext.deactivate());
+  const pmRoot = mkdtempSync(join(tmpdir(), "beads-configured-import-"));
+  t.after(() => rmSync(pmRoot, { recursive: true, force: true }));
+  const client = new PmClient({ pmRoot, author: "fixture", noExtensions: true });
+  await client.init("sample");
+  const file = join(pmRoot, "in.jsonl");
+  writeFileSync(file, jsonl([{ id: "bd-opt", title: "Via option" }]), "utf-8");
+  await assert.rejects(runImport(ext, { options: { file }, pmRoot }), { code: "unknown_option" });
+  assert.equal((await runConfiguredImport(ext, "beads import", pmRoot, file)).imported, 1);
+  assert.deepEqual((await client.listAllComplete()).items.map(item => item.bead_id), ["bd-opt"]);
 });
 
 test("handlers tolerate an entirely omitted options bag", async () => {

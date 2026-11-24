@@ -1,0 +1,38 @@
+id: pm-beads-sdk-host-1123
+title: Adopt pm-cli 2026.11.23 host-aligned SDK behaviour
+description: "Resume the existing SDK migration branch and certify the current published toolchain. Companion item: pm-cli-website-spus."
+type: Chore
+status: in_progress
+priority: 2
+tags: []
+created_at: "2026-11-23T19:44:24.328Z"
+updated_at: "2026-11-23T22:19:56.423Z"
+author: codex-agent
+acceptance_criteria: Classify host-alignment failures and preserve refusal and guard coverage; use transaction-owned finalization for applicable importer batches and prove rollback; run unchanged package gates and record upstream blockers.
+comments[7]{created_at,author,text}:
+  "2026-11-23T19:44:33.536Z",codex-agent,Resumed the existing migration branch and confirmed all three exact pins match npm latest. Reviewing the installed host contracts and running the complete suite with two workers.
+  "2026-11-23T19:49:29.465Z",codex-agent,"The installed harness routes both importer and alias through native flag validation. The undeclared preserveTimestamps option is refused as unknown_option. The existing fixtures now send the declared no-preserve-timestamps flag, keeping the complete author, relationship, and literal description assertions. Added a pre-dispatch refusal and zero-write check."
+  "2026-11-23T20:00:10.625Z",codex-agent,"A second class affects the identity migration guard. With pm-cli 2026.11.23, high-level update opens its own SDK dispatch scope and ignores the in-memory guard installed by the outer extension scope. The native runUpdate lifecycle operation keeps the guard in scope and executes it under the item lock. Existing peer-edit, annotation, observer-error and author invariants remain load-bearing."
+  "2026-11-23T20:57:44.180Z",codex-agent,"Isolated revert proof: restoring the undeclared preserveTimestamps fixture makes the legacy importer author test fail with unknown_option. Restoring high-level update alone makes the annotation-only edit regression fail because the migration does not skip the changed item. Public 2026.11.14 fired the same scoped hook through high-level dispatch. The native lifecycle route passed real migration and peer-edit refusal probes on 2026.10.15 and 2026.11.14."
+  "2026-11-23T21:08:18.309Z",codex-agent,"The same native flag validation refuses the undeclared positive preserve-ids spelling and file options on both Beads paths. Verified all three refusals in the installed harness. The ID-fidelity fixtures use the native preserve-by-default behavior. Configuration fallback still imports records through both registered handlers on real temp trackers, with native file-option refusal checked separately."
+  "2026-11-23T21:51:00.891Z",codex-agent,The eight linked identity migration regressions passed. The initial exhaustive npm run hit the coverage runner’s 15-minute process deadline while model tests were active. No assertion failure was reported before the process timeout. Retrying the same full npm gate with the repository deep CI time scale of 3 and unchanged coverage thresholds.
+  "2026-11-23T22:19:53.972Z",codex-agent,"Final local verification: full npm run release:check passed on retry with the deep CI time scale of 3. PR-tier bun run release:check also passed. Each ran 577 of 577 tests with zero skips and 100% lines, branches and functions across 21 measured sources. The three linked commands passed 180 of 180 tests. Both gates passed changelog, release workflow, and attestation checks. Existing reconciliation tests proved earlier item fields restore after a later failure. Transfer and reconciliation handle item lifecycle and source writes inside their transaction steps, with no post-batch finalization write to move."
+files[10]{path,scope}:
+  identity.ts,project
+  package-lock.json,project
+  package.json,project
+  test/ambient-defaults.test.ts,project
+  test/helper-truth-tables.test.ts,project
+  test/helpers.ts,project
+  test/identity-migration.test.ts,project
+  test/identity.test.ts,project
+  test/import-paths.test.ts,project
+  test/smoke.test.ts,project
+tests[3]{command,scope,provenance{author,created_at,source_kind,source_ref}}:
+  node --test --test-concurrency=2 test/ambient-defaults.test.ts test/identity.test.ts,project,codex-agent,"2026-11-23T19:49:24.880Z",local_mutation,deps/adopt-pm-cli-host-alignment-1122
+  node --test --test-concurrency=2 test/identity-migration.test.ts,project,codex-agent,"2026-11-23T20:00:03.127Z",local_mutation,deps/adopt-pm-cli-host-alignment-1122
+  node --test --test-concurrency=2 test/helper-truth-tables.test.ts test/import-paths.test.ts test/smoke.test.ts,project,codex-agent,"2026-11-23T21:08:14.221Z",local_mutation,deps/adopt-pm-cli-host-alignment-1122
+docs[2]{path,scope}:
+  CHANGELOG.md,project
+  README.md,project
+body: ""

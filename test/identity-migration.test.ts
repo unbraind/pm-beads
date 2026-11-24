@@ -114,8 +114,8 @@ test('migration previews by default and skips peer edits at every read-to-write 
       if (writing) await writing;
       else await peerEdit;
     } });
+    assert.ok(edited, `Migration did not reach the ${boundary} boundary for the selected item`);
     await peerEdit;
-    assert.ok(edited);
     const saved = (await client.get(item.id)).item;
     assert.equal(saved.title, 'Peer title'); assert.equal(saved.description, 'Peer description');
     if (boundary === 'listed' || boundary === 'located') { assert.ok(!receipt.pending.includes(item.id)); assert.equal(saved.bead_id, undefined); }

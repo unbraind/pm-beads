@@ -1,6 +1,6 @@
 /** Structured Beads provenance and the narrowly scoped historical envelope reader. */
 import {
-  PmClient, preserveMutationStdinTokenFields, hashDocument, runWithActiveExtensions, setActiveExtensionHooks, update,
+  PmClient, preserveMutationStdinTokenFields, hashDocument, runUpdate, runWithActiveExtensions, setActiveExtensionHooks,
   PmCliError, EXIT_CODE, type PmClientFullMutationOptions, type ItemDocument,
 } from "@unbrained/pm-cli/sdk";
 import type { ExtensionApi } from "@unbrained/pm-cli/sdk/authoring";
@@ -74,8 +74,8 @@ export async function migrateBeadIdentities(pmRoot: string, author?: string, opt
     const mutation: PmClientFullMutationOptions = { author, beadId: legacy.id, description: legacy.description, message: "Migrate legacy Beads identity to bead_id" };
     await options.onTransition?.("before_update", item.id);
     try {
-      // The SDK has no native update precondition (pm-cli#1576). Like pm-github#174,
-      // the transactional hook compares the whole item under the SDK item lock.
+      // The native lifecycle operation uses this request's guard registry.
+      // High-level SDK dispatch opens a new scope and drops this in-memory guard.
       await runWithActiveExtensions({ path: pmRoot, noExtensions: true }, async () => {
         setActiveExtensionHooks({ beforeCommand: [], afterCommand: [], onRead: [], onWrite: [], onIndex: [],
           beforeMutation: [{ layer: "project", name: "beads-identity-revision", run: async context => {
@@ -83,7 +83,7 @@ export async function migrateBeadIdentities(pmRoot: string, author?: string, opt
             if (hashDocument(context.before!) !== revision) throw new PmCliError("Legacy Beads item changed; migration skipped.", 1, { code: "beads_identity_changed" });
           } }],
         });
-        await update(item.id, preserveMutationStdinTokenFields(mutation, ["description"]), { pmRoot, noExtensions: true, author });
+        await runUpdate(item.id, preserveMutationStdinTokenFields(mutation, ["description"]), { path: pmRoot, noExtensions: true, author });
       });
       receipt.migrated.push(item.id);
     } catch (error) {
