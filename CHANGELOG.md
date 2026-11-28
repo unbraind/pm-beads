@@ -2,6 +2,10 @@
 
 ## 2026.11.26 - 2026-11-26
 
+### Closed
+
+- Closed: Daily Release workflow is failing ([pm-beads-github-be8d2d927676-204](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-github-be8d2d927676-204.toon))
+
 ### Dependencies
 
 - Bump unbraind/pm-ops/.github/workflows/daily-release.yml from 2026.11.18 to 2026.11.22 ([#249](https://github.com/unbraind/pm-beads/pull/249))
@@ -50,6 +54,10 @@ No changes.
 - Bump the pm-toolchain group with 3 updates ([#219](https://github.com/unbraind/pm-beads/pull/219))
 
 ## 2026.11.9 - 2026-11-09
+
+### Fixed
+
+- Forecast contract reader can block before rejecting nonregular inputs ([pm-beads-github-be8d2d927676-192](https://github.com/unbraind/pm-beads/blob/main/.agents/pm/issues/pm-beads-github-be8d2d927676-192.toon))
 
 ### Dependencies
 
